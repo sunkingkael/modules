@@ -607,7 +607,7 @@ function crm_contacts_tab($business_id) {
 
     ob_start();
     ?>
-    <!-- Add button + filter -->
+    <!-- Filter Bar -->
     <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:16px;">
         <div class="crm-filter-bar" style="margin:0;flex:1;">
             <input type="text" id="contact-search" class="crm-search-input" placeholder="Search contacts by name, email or company...">
@@ -623,6 +623,7 @@ function crm_contacts_tab($business_id) {
         </button>
     </div>
 
+    <!-- Contacts Table -->
     <div class="bntm-table-wrapper">
         <table class="bntm-table" id="contacts-table">
             <thead>
@@ -646,24 +647,26 @@ function crm_contacts_tab($business_id) {
                     <td>
                         <div style="font-weight:500;color:#111827;"><?php echo esc_html($c->first_name . ' ' . $c->last_name); ?></div>
                     </td>
-                    <td><?php echo esc_html($c->email); ?></td>
-                    <td><?php echo esc_html($c->phone); ?></td>
-                    <td><?php echo esc_html($c->company); ?></td>
+                    <td style="font-size:13px;color:#6b7280;"><?php echo esc_html($c->email ?: '—'); ?></td>
+                    <td style="font-size:13px;color:#6b7280;"><?php echo esc_html($c->phone ?: '—'); ?></td>
+                    <td style="font-size:13px;color:#6b7280;"><?php echo esc_html($c->company ?: '—'); ?></td>
                     <td><span class="crm-badge crm-badge-<?php echo esc_attr($c->status); ?>"><?php echo esc_html($c->status); ?></span></td>
                     <td style="font-size:13px;color:#6b7280;"><?php echo date('M j, Y', strtotime($c->created_at)); ?></td>
                     <td>
                         <div class="crm-actions">
-                            <button class="bntm-btn-icon" title="View" onclick="crmViewContact('<?php echo esc_attr($c->rand_id); ?>')">
+                            <button class="bntm-btn-icon" title="View details" onclick="crmViewContact('<?php echo esc_attr($c->rand_id); ?>')">
                                 <svg width="15" height="15" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
                             </button>
                             <button class="bntm-btn-icon" title="Edit" onclick="crmEditContact(<?php echo esc_attr(json_encode(['rand_id'=>$c->rand_id,'first_name'=>$c->first_name,'last_name'=>$c->last_name,'email'=>$c->email,'phone'=>$c->phone,'company'=>$c->company,'status'=>$c->status,'notes'=>$c->notes])); ?>)">
                                 <svg width="15" height="15" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
                             </button>
+                            <a class="bntm-btn-icon" title="Open page" href="<?php echo esc_url(home_url('/crm/contact/' . $c->rand_id)); ?>" target="_blank">
+                                <svg width="15" height="15" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4m-4-6l6-6m0 0v4m0-4H10"/></svg>
+                            </a>
                             <button class="bntm-btn-icon" title="Delete" onclick="crmDeleteContact('<?php echo esc_attr($c->rand_id); ?>', this)" style="color:#ef4444;">
                                 <svg width="15" height="15" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
                             </button>
                         </div>
-                            <a class="bntm-btn-secondary bntm-btn-small" style="display:inline-flex;align-items:center;gap:6px;border-radius:6px;padding:6px 10px;text-decoration:none;" href="<?php echo esc_url(home_url('/crm/contact/' . $c->rand_id)); ?>" target="_blank">Open Page</a>
                     </td>
                 </tr>
                 <?php endforeach; ?>
