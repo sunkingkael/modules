@@ -665,7 +665,7 @@ function crm_contacts_tab($business_id) {
                             </a>
                             <button class="bntm-btn-icon" title="Delete" onclick="crmDeleteContact('<?php echo esc_attr($c->rand_id); ?>', this)" style="color:#ef4444;">
                                 <svg width="15" height="15" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
-                            </button>
+                            </a>
                         </div>
                     </td>
                 </tr>
@@ -1764,7 +1764,7 @@ function bntm_render_contact_page($rand_id) {
                 </div>
             </div>
             <div>
-                <a class="bntm-btn-secondary" href="<?php echo esc_url(admin_url('admin.php?page=bntm-crm&tab=contacts')); ?>">Back to contacts</a>
+                <a class="bntm-btn-secondary" href="<?php echo esc_url(admin_url('crm-dashboard/?tab=contacts')); ?>">Back to contacts</a>
             </div>
         </div>
 
