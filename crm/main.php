@@ -663,6 +663,7 @@ function crm_contacts_tab($business_id) {
                                 <svg width="15" height="15" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
                             </button>
                         </div>
+                            <a class="bntm-btn-secondary bntm-btn-small" style="display:inline-flex;align-items:center;gap:6px;border-radius:6px;padding:6px 10px;text-decoration:none;" href="<?php echo esc_url(home_url('/crm/contact/' . $c->rand_id)); ?>" target="_blank">Open Page</a>
                     </td>
                 </tr>
                 <?php endforeach; ?>
@@ -1683,6 +1684,148 @@ function crm_settings_tab($business_id) {
         };
     })();
     </script>
+    <?php
+    return ob_get_clean();
+}
+
+// ============================================================
+// PUBLIC CONTACT PAGE ROUTE + RENDERER
+// ============================================================
+
+add_action('init', 'bntm_crm_register_contact_route');
+add_filter('query_vars', 'bntm_crm_query_vars');
+add_action('template_redirect', 'bntm_crm_template_redirect');
+
+function bntm_crm_register_contact_route() {
+    add_rewrite_tag('%crm_contact%', '([^&]+)');
+    add_rewrite_rule('^crm/contact/([^/]+)/?$', 'index.php?crm_contact=$matches[1]', 'top');
+
+    // Flush once after registering the rule (do not flush on every request)
+    if (!get_option('bntm_crm_rewrites_flushed')) {
+        flush_rewrite_rules(false);
+        update_option('bntm_crm_rewrites_flushed', 1);
+    }
+}
+
+function bntm_crm_query_vars($vars) {
+    $vars[] = 'crm_contact';
+    return $vars;
+}
+
+function bntm_crm_template_redirect() {
+    $rand = get_query_var('crm_contact');
+    if (!$rand) return;
+    // Render contact page and exit
+    echo bntm_render_contact_page($rand);
+    exit;
+}
+
+function bntm_render_contact_page($rand_id) {
+    global $wpdb;
+    $rand_id = sanitize_text_field($rand_id);
+    $contact = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}crm_contacts WHERE rand_id = %s", $rand_id), ARRAY_A);
+    if (!$contact) {
+        status_header(404);
+        return '<h2>Contact not found</h2>';
+    }
+
+    // Simple permission: ensure current user owns the business record
+    if (!is_user_logged_in() || get_current_user_id() != intval($contact['business_id'])) {
+        status_header(403);
+        return '<h2>Not authorized</h2>';
+    }
+
+    $leads = $wpdb->get_results($wpdb->prepare("SELECT * FROM {$wpdb->prefix}crm_leads WHERE contact_id = %d AND business_id = %d ORDER BY created_at DESC", $contact['id'], $contact['business_id']));
+    $interactions = $wpdb->get_results($wpdb->prepare("SELECT * FROM {$wpdb->prefix}crm_interactions WHERE contact_id = %d AND business_id = %d AND status = 'active' ORDER BY interaction_date DESC", $contact['id'], $contact['business_id']));
+
+    ob_start();
+    ?>
+    <div class="bntm-crm-contact-page" style="padding:24px;max-width:1200px;margin:0 auto;">
+        <style>
+        .bntm-contact-grid { display:grid; grid-template-columns:260px 1fr 300px; gap:18px; align-items:start; }
+        .bntm-contact-panel { background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:16px; }
+        .contact-avatar { width:64px;height:64px;border-radius:12px;background:var(--bntm-primary,#6366f1);display:inline-flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:20px;margin-right:12px; }
+        .contact-meta { display:flex;align-items:center;margin-bottom:12px; }
+        .contact-detail { font-size:13px;color:#374151;margin-bottom:8px; }
+        .contact-label { font-size:11px;color:#9ca3af;text-transform:uppercase;font-weight:700;margin-bottom:6px; }
+        .feed-item { border-bottom:1px solid #f3f4f6;padding:12px 0; }
+        .feed-item:last-child { border-bottom:none; }
+        </style>
+
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;">
+            <div style="display:flex;align-items:center;gap:12px;">
+                <div class="contact-avatar"><?php echo esc_html(substr($contact['first_name'],0,1) . substr($contact['last_name'],0,1)); ?></div>
+                <div>
+                    <div style="font-size:20px;font-weight:700;color:#111827;"><?php echo esc_html($contact['first_name'] . ' ' . $contact['last_name']); ?></div>
+                    <div style="color:#6b7280;font-size:13px;"><?php echo esc_html($contact['company']); ?></div>
+                </div>
+            </div>
+            <div>
+                <a class="bntm-btn-secondary" href="<?php echo esc_url(admin_url('admin.php?page=bntm-crm&tab=contacts')); ?>">Back to contacts</a>
+            </div>
+        </div>
+
+        <div class="bntm-contact-grid">
+            <!-- Left: Contact details -->
+            <div class="bntm-contact-panel">
+                <div class="contact-label">Contact Details</div>
+                <div class="contact-detail"><strong>Email:</strong> <?php echo esc_html($contact['email'] ?: '—'); ?></div>
+                <div class="contact-detail"><strong>Phone:</strong> <?php echo esc_html($contact['phone'] ?: '—'); ?></div>
+                <div class="contact-detail"><strong>Lead Status:</strong> <span class="crm-badge crm-badge-<?php echo esc_attr($contact['status']); ?>"><?php echo esc_html($contact['status']); ?></span></div>
+                <div class="contact-detail"><strong>Lead Owner:</strong> <?php $owner = get_userdata(intval($contact['business_id'])); echo $owner ? esc_html($owner->display_name) : esc_html('—'); ?></div>
+                <?php if ($contact['notes']): ?><div style="margin-top:12px;"><div class="contact-label">Notes</div><div style="font-size:13px;color:#374151;"><?php echo nl2br(esc_html($contact['notes'])); ?></div></div><?php endif; ?>
+            </div>
+
+            <!-- Middle: Main feed -->
+            <div class="bntm-contact-panel">
+                <div class="contact-label">Activity Feed</div>
+                <div style="margin-bottom:12px;display:flex;gap:8px;flex-wrap:wrap;">
+                    <button class="bntm-btn-primary">Add Note</button>
+                    <button class="bntm-btn-secondary">Log Interaction</button>
+                    <button class="bntm-btn-secondary">Upload File</button>
+                </div>
+                <div>
+                    <?php if (empty($interactions)): ?>
+                        <p style="color:#9ca3af">No activity yet.</p>
+                    <?php else: ?>
+                        <?php foreach ($interactions as $it): ?>
+                        <div class="feed-item">
+                            <div style="font-weight:600;color:#111827;"><?php echo esc_html($it->subject); ?></div>
+                            <div style="font-size:12px;color:#9ca3af;margin-top:6px;"><?php echo esc_html(ucfirst($it->type)); ?> &middot; <?php echo date('M j, Y g:i A', strtotime($it->interaction_date)); ?></div>
+                            <?php if ($it->details): ?><div style="margin-top:8px;color:#374151;font-size:13px;"><?php echo nl2br(esc_html($it->details)); ?></div><?php endif; ?>
+                        </div>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </div>
+            </div>
+
+            <!-- Right: Active deals & pinned notes -->
+            <div class="bntm-contact-panel">
+                <div class="contact-label">Active Deals</div>
+                <?php if (empty($leads)): ?>
+                    <p style="color:#9ca3af">No active deals.</p>
+                <?php else: ?>
+                    <?php foreach ($leads as $l): if ($l->status !== 'open') continue; ?>
+                        <div style="padding:10px;border-radius:8px;border:1px solid #f3f4f6;margin-bottom:8px;">
+                            <div style="font-weight:600;color:#111827"><?php echo esc_html($l->title); ?></div>
+                            <div style="font-size:13px;color:#6b7280;margin-top:6px;"><?php echo crm_format_price($l->value); ?> &middot; <span class="crm-badge crm-badge-<?php echo esc_attr($l->stage); ?>"><?php echo esc_html($l->stage); ?></span></div>
+                        </div>
+                    <?php endforeach; ?>
+                <?php endif; ?>
+
+                <div style="margin-top:18px;"><div class="contact-label">Pinned Notes</div>
+                    <?php // show up to 3 recent notes as pinned
+                    $pinned = array_filter($interactions, function($x){ return $x->type === 'note'; });
+                    $pinned = array_slice($pinned, 0, 3);
+                    if (empty($pinned)): ?><p style="color:#9ca3af">No pinned notes.</p><?php else: ?>
+                        <?php foreach ($pinned as $pn): ?>
+                            <div style="padding:8px;border-radius:8px;border:1px solid #f3f4f6;margin-bottom:8px;font-size:13px;color:#374151;"><?php echo nl2br(esc_html($pn->details ?: $pn->subject)); ?></div>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </div>
+            </div>
+        </div>
+    </div>
     <?php
     return ob_get_clean();
 }
