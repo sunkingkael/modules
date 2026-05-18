@@ -3007,6 +3007,17 @@ function bntm_ajax_crm_get_contact() {
     wp_send_json_success(['contact' => $contact, 'leads' => $leads, 'interactions' => $interactions]);
 }
 
+// Resolve rand_id → id if passed from the contacts drawer
+if (!empty($_POST['contact_rand_id'])) {
+    $resolved = $wpdb->get_var($wpdb->prepare(
+        "SELECT id FROM {$wpdb->prefix}crm_contacts 
+         WHERE rand_id = %s AND business_id = %d",
+        sanitize_text_field($_POST['contact_rand_id']),
+        get_current_user_id()
+    ));
+    if ($resolved) $_POST['contact_id'] = $resolved;
+}
+
 function bntm_ajax_crm_add_lead() {
     check_ajax_referer('crm_nonce', 'nonce');
     if (!is_user_logged_in()) { wp_send_json_error(['message' => 'Unauthorized']); }
