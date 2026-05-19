@@ -434,8 +434,25 @@ function crm_overview_tab($business_id) {
     global $wpdb;
     $stats = crm_get_stats($business_id);
 
+    $overview_graph_metrics = [
+        ['label' => 'Total Leads', 'value' => $stats['total_leads'], 'sub' => number_format($stats['active_contacts']) . ' contacts', 'color' => '#6366f1', 'display_value' => number_format($stats['total_leads'])],
+        ['label' => 'Active Opportunities', 'value' => $stats['active_opportunities'], 'sub' => crm_format_price($stats['pipeline_value']) . ' open pipeline', 'color' => '#10b981', 'display_value' => number_format($stats['active_opportunities'])],
+        ['label' => 'Won / Closed Clients', 'value' => $stats['won_leads'], 'sub' => crm_format_price($stats['won_value']) . ' value', 'color' => '#f59e0b', 'display_value' => number_format($stats['won_leads'])],
+        ['label' => 'Lost / Ended Deals', 'value' => $stats['lost_deals'], 'sub' => 'Closed or ended', 'color' => '#ef4444', 'display_value' => number_format($stats['lost_deals'])],
+        ['label' => 'MOTM Completion', 'value' => $stats['motm_completion'], 'sub' => 'Leads with MOTM uploaded', 'color' => '#6366f1', 'display_value' => number_format($stats['motm_completion']) . '%'],
+    ];
+    $overview_graph_max = max(array_column($overview_graph_metrics, 'value')) ?: 1;
+
     ob_start();
     ?>
+    <div style="display:flex;align-items:center;justify-content:flex-end;gap:12px;margin-bottom:18px;">
+        <label for="overview-display-mode" style="margin:0;font-size:14px;color:#374151;">Overview view</label>
+        <select id="overview-display-mode" class="crm-select" style="width:auto;min-width:180px;" onchange="crmSwitchOverviewDisplay(this.value)">
+            <option value="cards">Stat Cards</option>
+            <option value="graph">Bar Graph</option>
+        </select>
+    </div>
+    <div id="overview-stat-cards">
     <!-- Stat Cards -->
     <div class="bntm-stats-row">
         <div class="bntm-stat-card">
@@ -534,6 +551,43 @@ function crm_overview_tab($business_id) {
             </div>
         </div>
     </div>
+
+    <div id="overview-bar-graph" style="display:none;">
+        <div class="crm-overview-graph">
+            <?php foreach ($overview_graph_metrics as $metric):
+                $bar_width = $overview_graph_max ? round(($metric['value'] / $overview_graph_max) * 100) : 0;
+                ?>
+            <div class="crm-overview-graph-row">
+                <div class="crm-overview-graph-header">
+                    <span><?php echo esc_html($metric['label']); ?></span>
+                    <span><?php echo esc_html($metric['display_value']); ?></span>
+                </div>
+                <div class="crm-overview-graph-bar">
+                    <div class="crm-overview-graph-bar-fill" style="width:<?php echo esc_attr($bar_width); ?>%;background:<?php echo esc_attr($metric['color']); ?>;"></div>
+                </div>
+                <div class="crm-overview-graph-meta"><?php echo esc_html($metric['sub']); ?></div>
+            </div>
+            <?php endforeach; ?>
+        </div>
+    </div>
+
+    <style>
+    .crm-overview-graph { display:grid; gap:18px; margin-bottom:24px; }
+    .crm-overview-graph-row { background:#fff; border:1px solid #e5e7eb; border-radius:14px; padding:16px; }
+    .crm-overview-graph-header { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:10px; font-weight:600; color:#111827; }
+    .crm-overview-graph-bar { height:12px; background:#f3f4f6; border-radius:999px; overflow:hidden; }
+    .crm-overview-graph-bar-fill { height:100%; border-radius:999px; }
+    .crm-overview-graph-meta { font-size:13px; color:#6b7280; }
+    </style>
+    <script>
+    function crmSwitchOverviewDisplay(displayMode) {
+        var cards = document.getElementById('overview-stat-cards');
+        var graph = document.getElementById('overview-bar-graph');
+        if (!cards || !graph) return;
+        cards.style.display = displayMode === 'cards' ? '' : 'none';
+        graph.style.display = displayMode === 'graph' ? '' : 'none';
+    }
+    </script>
 
     <!-- Recent Interactions -->
     <div class="bntm-form-section">
