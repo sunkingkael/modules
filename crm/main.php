@@ -2015,6 +2015,8 @@ function crm_leads_tab($business_id) {
         $business_id
     ));
 
+    $max_stage_count = max(array_map('count', $leads_by_stage)) ?: 1;
+
     ob_start();
     ?>
     <div class="crm-filter-bar" style="margin-bottom:16px;">
@@ -2049,6 +2051,13 @@ function crm_leads_tab($business_id) {
                 <option value="pipeline">Pipeline View</option>
                 <option value="list">List View</option>
             </select>
+            <div id="pipeline-display-wrap" style="display:flex;align-items:center;gap:8px;">
+                <label for="lead-pipeline-display-mode" style="margin:0;font-size:14px;color:#374151;">Display</label>
+                <select id="lead-pipeline-display-mode" class="crm-select" style="width:auto;min-width:170px;" onchange="crmSwitchPipelineDisplay(this.value)">
+                    <option value="graph">Bar Graph</option>
+                    <option value="cards">Stat Cards</option>
+                </select>
+            </div>
         </div>
         <button class="bntm-btn-primary" onclick="crmOpenModal('add-lead-modal')">
             <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="vertical-align:-3px;margin-right:4px;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
@@ -2058,34 +2067,76 @@ function crm_leads_tab($business_id) {
 
     <!-- Pipeline view -->
     <div id="lead-view-pipeline">
-        <div class="crm-pipeline">
-            <?php foreach ($stages as $stage):
-                $stage_leads = $leads_by_stage[$stage] ?? [];
-                $stage_value = array_sum(array_column($stage_leads, 'value'));
-                ?>
-            <div class="crm-pipeline-col">
-                <div class="crm-pipeline-col-header">
-                    <h4><?php echo esc_html($stage); ?></h4>
-                    <span class="crm-pipeline-count"><?php echo count($stage_leads); ?></span>
-                </div>
-                <div style="font-size:11px;color:#9ca3af;margin-bottom:10px;"><?php echo crm_format_price($stage_value); ?></div>
-                <?php foreach ($stage_leads as $l): ?>
-                <div class="crm-lead-card" data-pipeline-type="<?php echo esc_attr($l->pipeline_type); ?>" data-stage="<?php echo esc_attr($l->stage); ?>" data-status="<?php echo esc_attr($l->status); ?>" data-product-type="<?php echo esc_attr($l->product_type); ?>" data-service-type="<?php echo esc_attr($l->service_type); ?>" data-source="<?php echo esc_attr($l->lead_source); ?>" onclick="crmEditLead(<?php echo esc_attr(json_encode(['rand_id'=>$l->rand_id,'title'=>$l->title,'contact_id'=>$l->contact_id,'value'=>$l->value,'pipeline_type'=>$l->pipeline_type,'product_type'=>$l->product_type,'service_type'=>$l->service_type,'lead_source'=>$l->lead_source,'motm_uploaded'=>$l->motm_uploaded,'ended_reason'=>$l->ended_reason,'stage'=>$l->stage,'priority'=>$l->priority,'expected_close'=>$l->expected_close,'notes'=>$l->notes,'status'=>$l->status])); ?>)">
-                    <h5><?php echo esc_html($l->title); ?></h5>
-                    <div class="lead-value"><?php echo crm_format_price($l->value); ?></div>
-                    <div class="lead-contact"><?php echo esc_html($l->first_name . ' ' . $l->last_name); ?></div>
-                    <div style="margin-top:8px;">
-                        <span class="crm-badge crm-badge-<?php echo esc_attr($l->priority); ?>" style="font-size:10px;"><?php echo esc_html($l->priority); ?></span>
+        <div id="lead-view-pipeline-graph">
+            <div class="crm-pipeline">
+                <?php foreach ($stages as $stage):
+                    $stage_leads = $leads_by_stage[$stage] ?? [];
+                    $stage_value = array_sum(array_column($stage_leads, 'value'));
+                    $bar_pct     = $max_stage_count ? round(min(100, (count($stage_leads) / $max_stage_count) * 100)) : 0;
+                    ?>
+                <div class="crm-pipeline-col">
+                    <div class="crm-pipeline-col-header">
+                        <h4><?php echo esc_html($stage); ?></h4>
+                        <span class="crm-pipeline-count"><?php echo count($stage_leads); ?></span>
                     </div>
+                    <div class="crm-pipeline-bar" title="<?php echo esc_attr(count($stage_leads)); ?> leads">
+                        <div class="crm-pipeline-bar-fill" style="width:<?php echo esc_attr($bar_pct); ?>%;"></div>
+                    </div>
+                    <div style="font-size:11px;color:#9ca3af;margin-bottom:10px;"><?php echo crm_format_price($stage_value); ?></div>
+                    <?php foreach ($stage_leads as $l): ?>
+                    <div class="crm-lead-card" data-pipeline-type="<?php echo esc_attr($l->pipeline_type); ?>" data-stage="<?php echo esc_attr($l->stage); ?>" data-status="<?php echo esc_attr($l->status); ?>" data-product-type="<?php echo esc_attr($l->product_type); ?>" data-service-type="<?php echo esc_attr($l->service_type); ?>" data-source="<?php echo esc_attr($l->lead_source); ?>" onclick="crmEditLead(<?php echo esc_attr(json_encode(['rand_id'=>$l->rand_id,'title'=>$l->title,'contact_id'=>$l->contact_id,'value'=>$l->value,'pipeline_type'=>$l->pipeline_type,'product_type'=>$l->product_type,'service_type'=>$l->service_type,'lead_source'=>$l->lead_source,'motm_uploaded'=>$l->motm_uploaded,'ended_reason'=>$l->ended_reason,'stage'=>$l->stage,'priority'=>$l->priority,'expected_close'=>$l->expected_close,'notes'=>$l->notes,'status'=>$l->status])); ?>)">
+                        <h5><?php echo esc_html($l->title); ?></h5>
+                        <div class="lead-value"><?php echo crm_format_price($l->value); ?></div>
+                        <div class="lead-contact"><?php echo esc_html($l->first_name . ' ' . $l->last_name); ?></div>
+                        <div style="margin-top:8px;">
+                            <span class="crm-badge crm-badge-<?php echo esc_attr($l->priority); ?>" style="font-size:10px;"><?php echo esc_html($l->priority); ?></span>
+                        </div>
+                    </div>
+                    <?php endforeach; ?>
+                    <?php if (empty($stage_leads)): ?>
+                    <div style="text-align:center;color:#d1d5db;font-size:12px;padding:16px 0;">Empty</div>
+                    <?php endif; ?>
                 </div>
                 <?php endforeach; ?>
-                <?php if (empty($stage_leads)): ?>
-                <div style="text-align:center;color:#d1d5db;font-size:12px;padding:16px 0;">Empty</div>
-                <?php endif; ?>
             </div>
-            <?php endforeach; ?>
+        </div>
+
+        <div id="lead-view-pipeline-cards" style="display:none;">
+            <div class="crm-stage-cards">
+                <?php foreach ($stages as $stage):
+                    $stage_leads = $leads_by_stage[$stage] ?? [];
+                    $stage_value = array_sum(array_column($stage_leads, 'value'));
+                    $card_pct    = $max_stage_count ? round(min(100, (count($stage_leads) / $max_stage_count) * 100)) : 0;
+                    ?>
+                <div class="crm-stage-card" data-stage="<?php echo esc_attr($stage); ?>">
+                    <div class="crm-stage-card-header">
+                        <h4><?php echo esc_html($stage); ?></h4>
+                        <span class="crm-stage-count"><?php echo count($stage_leads); ?></span>
+                    </div>
+                    <div class="crm-stage-card-value"><?php echo crm_format_price($stage_value); ?></div>
+                    <div class="crm-stage-card-bar">
+                        <div class="crm-stage-card-bar-fill" style="width:<?php echo esc_attr($card_pct); ?>%;"></div>
+                    </div>
+                    <div class="crm-stage-card-meta"><?php echo number_format(count($stage_leads)); ?> open lead<?php echo count($stage_leads) === 1 ? '' : 's'; ?></div>
+                </div>
+                <?php endforeach; ?>
+            </div>
         </div>
     </div>
+
+    <style>
+    .crm-stage-cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:16px; margin-bottom:20px; }
+    .crm-stage-card { background:#fff; border:1px solid #e5e7eb; border-radius:14px; padding:18px; box-shadow:0 1px 4px rgba(15,23,42,.06); }
+    .crm-stage-card-header { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:12px; }
+    .crm-stage-card-header h4 { margin:0; font-size:14px; font-weight:700; color:#111827; }
+    .crm-stage-count, .crm-stage-card-value, .crm-stage-card-meta { margin:0; color:#374151; }
+    .crm-stage-card-value { font-size:22px; font-weight:700; margin-bottom:10px; color:var(--bntm-primary,#6366f1); }
+    .crm-stage-card-bar { height:10px; background:#f3f4f6; border-radius:999px; overflow:hidden; margin-bottom:10px; }
+    .crm-stage-card-bar-fill { height:100%; background:linear-gradient(90deg,#6366f1,#4f46e5); border-radius:999px; }
+    .crm-stage-card-meta { font-size:12px; color:#6b7280; }
+    .crm-pipeline-bar { height:10px; background:#f3f4f6; border-radius:999px; overflow:hidden; margin-bottom:10px; }
+    .crm-pipeline-bar-fill { height:100%; background:linear-gradient(90deg,#6366f1,#4f46e5); border-radius:999px; }
+    </style>
 
     <!-- List view -->
     <div id="lead-view-list" style="display:none;">
@@ -2364,27 +2415,42 @@ function crm_leads_tab($business_id) {
             var statusValue = statusFilter ? statusFilter.value.toLowerCase() : '';
             var sourceValue = sourceFilter ? sourceFilter.value.toLowerCase() : '';
 
-            document.querySelectorAll('.crm-lead-card, #lead-view-list tbody tr').forEach(function(item) {
+            document.querySelectorAll('.crm-lead-card, .crm-stage-card, #lead-view-list tbody tr').forEach(function(item) {
                 var match = true;
                 var itemStage = (item.getAttribute('data-stage') || '').toLowerCase();
                 var itemStatus = (item.getAttribute('data-status') || '').toLowerCase();
                 var itemSource = (item.getAttribute('data-source') || '').toLowerCase();
 
-                if (stageValue && itemStage !== stageValue) {
-                    match = false;
-                }
-                if (statusValue && itemStatus !== statusValue) {
-                    match = false;
-                }
-                if (sourceValue && itemSource !== sourceValue) {
-                    match = false;
+                if (item.classList.contains('crm-stage-card')) {
+                    if (stageValue && itemStage !== stageValue) {
+                        match = false;
+                    }
+                } else {
+                    if (stageValue && itemStage !== stageValue) {
+                        match = false;
+                    }
+                    if (statusValue && itemStatus !== statusValue) {
+                        match = false;
+                    }
+                    if (sourceValue && itemSource !== sourceValue) {
+                        match = false;
+                    }
                 }
 
                 item.style.display = match ? '' : 'none';
             });
         }
 
+        window.crmSwitchPipelineDisplay = function(v) {
+            document.getElementById('lead-view-pipeline-graph').style.display = v === 'graph' ? '' : 'none';
+            document.getElementById('lead-view-pipeline-cards').style.display = v === 'cards' ? '' : 'none';
+        };
+
         window.crmSwitchLeadView = function(v) {
+            var displayWrap = document.getElementById('pipeline-display-wrap');
+            if (displayWrap) {
+                displayWrap.style.display = v === 'pipeline' ? '' : 'none';
+            }
             document.getElementById('lead-view-pipeline').style.display = v === 'pipeline' ? '' : 'none';
             document.getElementById('lead-view-list').style.display      = v === 'list' ? '' : 'none';
         };
