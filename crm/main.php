@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 /**
  * Module Name: CRM
  * Module Slug: crm
@@ -19,6 +19,10 @@ define('BNTM_CRM_URL', plugin_dir_url(__FILE__));
 // MODULE CONFIGURATION FUNCTIONS
 // ============================================================
 
+/**
+ * Return pages data for the CRM module.
+ * @return array
+ */
 function bntm_crm_get_pages() {
     return [
         'CRM Dashboard'  => '[crm_dashboard]',
@@ -26,6 +30,10 @@ function bntm_crm_get_pages() {
     ];
 }
 
+/**
+ * Return tables data for the CRM module.
+ * @return array
+ */
 function bntm_crm_get_tables() {
     global $wpdb;
     $charset = $wpdb->get_charset_collate();
@@ -98,6 +106,10 @@ function bntm_crm_get_tables() {
     ];
 }
 
+/**
+ * Return shortcodes data for the CRM module.
+ * @return array
+ */
 function bntm_crm_get_shortcodes() {
     return [
         'crm_dashboard'    => 'bntm_shortcode_crm',
@@ -105,6 +117,10 @@ function bntm_crm_get_shortcodes() {
     ];
 }
 
+/**
+ * Create or update CRM database tables.
+ * @return int
+ */
 function bntm_crm_create_tables() {
     require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
     $tables = bntm_crm_get_tables();
@@ -145,6 +161,10 @@ add_action('wp_ajax_nopriv_crm_submit_contact_form', 'bntm_ajax_crm_submit_conta
 // MAIN DASHBOARD SHORTCODE
 // ============================================================
 
+/**
+ * Render the CRM shortcode output.
+ * @return string
+ */
 function bntm_shortcode_crm() {
     if (!is_user_logged_in()) {
         return '<div class="bntm-notice">Please log in to access the CRM.</div>';
@@ -405,6 +425,11 @@ function bntm_shortcode_crm() {
 // TAB: OVERVIEW
 // ============================================================
 
+/**
+ * Render the overview tab content for the CRM dashboard.
+ * @param int $business_id Business ID to scope the CRM data.
+ * @return array
+ */
 function crm_overview_tab($business_id) {
     global $wpdb;
     $stats = crm_get_stats($business_id);
@@ -598,6 +623,11 @@ function crm_overview_tab($business_id) {
 // TAB: CONTACTS  —  Revamped (Apple HIG, new lead fields)
 // ============================================================
  
+/**
+ * Render the contacts tab content for the CRM dashboard.
+ * @param int $business_id Business ID to scope the CRM data.
+ * @return array
+ */
 function crm_contacts_tab($business_id) {
     global $wpdb;
     $contacts = $wpdb->get_results($wpdb->prepare(
@@ -1955,6 +1985,11 @@ function crm_contacts_tab($business_id) {
 // TAB: LEADS
 // ============================================================
 
+/**
+ * Render the leads tab content for the CRM dashboard.
+ * @param int $business_id Business ID to scope the CRM data.
+ * @return array
+ */
 function crm_leads_tab($business_id) {
     global $wpdb;
 
@@ -2463,6 +2498,11 @@ function crm_leads_tab($business_id) {
 // TAB: INTERACTIONS
 // ============================================================
 
+/**
+ * Render the interactions tab content for the CRM dashboard.
+ * @param int $business_id Business ID to scope the CRM data.
+ * @return array
+ */
 function crm_interactions_tab($business_id) {
     global $wpdb;
 
@@ -2627,6 +2667,11 @@ function crm_interactions_tab($business_id) {
 // TAB: SETTINGS
 // ============================================================
 
+/**
+ * Render the settings tab content for the CRM dashboard.
+ * @param int $business_id Business ID to scope the CRM data.
+ * @return array
+ */
 function crm_settings_tab($business_id) {
     $currency = bntm_get_setting('crm_currency', 'USD');
     $pipeline_types = crm_get_pipeline_types();
@@ -2739,6 +2784,10 @@ add_action('init', 'bntm_crm_register_contact_route');
 add_filter('query_vars', 'bntm_crm_query_vars');
 add_action('template_redirect', 'bntm_crm_template_redirect');
 
+/**
+ * Register the CRM contact page rewrite route.
+ * @return void
+ */
 function bntm_crm_register_contact_route() {
     add_rewrite_tag('%crm_contact%', '([^&]+)');
     add_rewrite_rule('^crm/contact/([^/]+)/?$', 'index.php?crm_contact=$matches[1]', 'top');
@@ -2750,11 +2799,20 @@ function bntm_crm_register_contact_route() {
     }
 }
 
+/**
+ * Add CRM-specific query vars to WordPress.
+ * @param array $vars Query vars passed by WordPress.
+ * @return void
+ */
 function bntm_crm_query_vars($vars) {
     $vars[] = 'crm_contact';
     return $vars;
 }
 
+/**
+ * Intercept requests and render CRM contact pages when appropriate.
+ * @return void
+ */
 function bntm_crm_template_redirect() {
     $rand = get_query_var('crm_contact');
     if (!$rand) return;
@@ -2763,6 +2821,11 @@ function bntm_crm_template_redirect() {
     exit;
 }
 
+/**
+ * Render the public contact page from the CRM route.
+ * @param string $rand_id Random identifier for the selected contact or lead.
+ * @return string
+ */
 function bntm_render_contact_page($rand_id) {
     global $wpdb;
     $rand_id = sanitize_text_field($rand_id);
@@ -2877,6 +2940,10 @@ function bntm_render_contact_page($rand_id) {
 // AJAX HANDLERS
 // ============================================================
 
+/**
+ * Handle AJAX requests for crm add contact.
+ * @return void
+ */
 function bntm_ajax_crm_add_contact() {
     check_ajax_referer('crm_nonce', 'nonce');
     if (!is_user_logged_in()) { wp_send_json_error(['message' => 'Unauthorized']); }
@@ -2917,6 +2984,10 @@ function bntm_ajax_crm_add_contact() {
     }
 }
 
+/**
+ * Handle AJAX requests for crm edit contact.
+ * @return void
+ */
 function bntm_ajax_crm_edit_contact() {
     check_ajax_referer('crm_nonce', 'nonce');
     if (!is_user_logged_in()) { wp_send_json_error(['message' => 'Unauthorized']); }
@@ -2951,6 +3022,10 @@ function bntm_ajax_crm_edit_contact() {
     }
 }
 
+/**
+ * Handle AJAX requests for crm delete contact.
+ * @return void
+ */
 function bntm_ajax_crm_delete_contact() {
     check_ajax_referer('crm_nonce', 'nonce');
     if (!is_user_logged_in()) { wp_send_json_error(['message' => 'Unauthorized']); }
@@ -2979,6 +3054,10 @@ function bntm_ajax_crm_delete_contact() {
     }
 }
 
+/**
+ * Handle AJAX requests for crm get contact.
+ * @return void
+ */
 function bntm_ajax_crm_get_contact() {
     check_ajax_referer('crm_nonce', 'nonce');
     if (!is_user_logged_in()) { wp_send_json_error(['message' => 'Unauthorized']); }
@@ -3018,6 +3097,10 @@ if (!empty($_POST['contact_rand_id'])) {
     if ($resolved) $_POST['contact_id'] = $resolved;
 }
 
+/**
+ * Handle AJAX requests for crm add lead.
+ * @return void
+ */
 function bntm_ajax_crm_add_lead() {
     check_ajax_referer('crm_nonce', 'nonce');
     if (!is_user_logged_in()) { wp_send_json_error(['message' => 'Unauthorized']); }
@@ -3075,6 +3158,10 @@ function bntm_ajax_crm_add_lead() {
     }
 }
 
+/**
+ * Handle AJAX requests for crm edit lead.
+ * @return void
+ */
 function bntm_ajax_crm_edit_lead() {
     check_ajax_referer('crm_nonce', 'nonce');
     if (!is_user_logged_in()) { wp_send_json_error(['message' => 'Unauthorized']); }
@@ -3134,6 +3221,10 @@ function bntm_ajax_crm_edit_lead() {
     }
 }
 
+/**
+ * Handle AJAX requests for crm delete lead.
+ * @return void
+ */
 function bntm_ajax_crm_delete_lead() {
     check_ajax_referer('crm_nonce', 'nonce');
     if (!is_user_logged_in()) { wp_send_json_error(['message' => 'Unauthorized']); }
@@ -3155,6 +3246,10 @@ function bntm_ajax_crm_delete_lead() {
     }
 }
 
+/**
+ * Handle AJAX requests for crm update lead stage.
+ * @return void
+ */
 function bntm_ajax_crm_update_lead_stage() {
     check_ajax_referer('crm_nonce', 'nonce');
     if (!is_user_logged_in()) { wp_send_json_error(['message' => 'Unauthorized']); }
@@ -3181,6 +3276,10 @@ function bntm_ajax_crm_update_lead_stage() {
     }
 }
 
+/**
+ * Handle AJAX requests for crm add interaction.
+ * @return void
+ */
 function bntm_ajax_crm_add_interaction() {
     check_ajax_referer('crm_nonce', 'nonce');
     if (!is_user_logged_in()) { wp_send_json_error(['message' => 'Unauthorized']); }
@@ -3226,6 +3325,10 @@ function bntm_ajax_crm_add_interaction() {
     }
 }
 
+/**
+ * Handle AJAX requests for crm delete interaction.
+ * @return void
+ */
 function bntm_ajax_crm_delete_interaction() {
     check_ajax_referer('crm_nonce', 'nonce');
     if (!is_user_logged_in()) { wp_send_json_error(['message' => 'Unauthorized']); }
@@ -3247,6 +3350,10 @@ function bntm_ajax_crm_delete_interaction() {
     }
 }
 
+/**
+ * Handle AJAX requests for crm save settings.
+ * @return void
+ */
 function bntm_ajax_crm_save_settings() {
     check_ajax_referer('crm_nonce', 'nonce');
     if (!is_user_logged_in()) { wp_send_json_error(['message' => 'Unauthorized']); }
@@ -3272,6 +3379,10 @@ function bntm_ajax_crm_save_settings() {
 // FRONTEND SHORTCODE: CONTACT FORM
 // ============================================================
 
+/**
+ * Render the CRM shortcode output.
+ * @return string
+ */
 function bntm_shortcode_crm_contact_form() {
     ob_start();
     ?>
@@ -3528,6 +3639,10 @@ function bntm_shortcode_crm_contact_form() {
 // AJAX: PUBLIC CONTACT FORM SUBMISSION
 // ============================================================
 
+/**
+ * Handle AJAX requests for crm submit contact form.
+ * @return void
+ */
 function bntm_ajax_crm_submit_contact_form() {
     check_ajax_referer('crm_nonce', 'nonce');
 
@@ -3600,6 +3715,11 @@ function bntm_ajax_crm_submit_contact_form() {
 // HELPER FUNCTIONS
 // ============================================================
 
+/**
+ * Format a numeric amount as a CRM currency string.
+ * @param float $amount Numeric amount to format.
+ * @return string
+ */
 function crm_format_price($amount) {
     $currency = bntm_get_setting('crm_currency', 'USD');
     $symbols  = [
@@ -3614,6 +3734,10 @@ function crm_format_price($amount) {
     return $symbol . number_format((float)$amount, 2);
 }
 
+/**
+ * Execute the crm get pipeline types routine.
+ * @return array
+ */
 function crm_get_pipeline_types() {
     return [
         'subscription' => 'Subscription',
@@ -3621,11 +3745,21 @@ function crm_get_pipeline_types() {
     ];
 }
 
+/**
+ * Return the human-readable label for a pipeline type.
+ * @param string $type Type key to describe or label.
+ * @return string
+ */
 function crm_pipeline_type_label($type) {
     $types = crm_get_pipeline_types();
     return $types[$type] ?? ucfirst($type);
 }
 
+/**
+ * Execute the crm get default pipeline stages routine.
+ * @param mixed $pipeline_type = 'subscription' Parameter for pipeline_type = 'subscription'.
+ * @return array
+ */
 function crm_get_default_pipeline_stages($pipeline_type = 'subscription') {
     if ($pipeline_type !== 'enterprise') {
         $pipeline_type = 'subscription';
@@ -3661,6 +3795,12 @@ function crm_get_default_pipeline_stages($pipeline_type = 'subscription') {
     return $defaults[$pipeline_type];
 }
 
+/**
+ * Execute the crm get pipeline stages routine.
+ * @param int $business_id Business ID to scope the CRM data.
+ * @param mixed $pipeline_type = 'subscription' Parameter for pipeline_type = 'subscription'.
+ * @return array
+ */
 function crm_get_pipeline_stages($business_id, $pipeline_type = 'subscription') {
     $pipeline_type = in_array($pipeline_type, ['subscription', 'enterprise']) ? $pipeline_type : 'subscription';
     $setting_key = 'crm_pipeline_stages_' . $business_id . '_' . $pipeline_type;
@@ -3683,6 +3823,10 @@ function crm_get_pipeline_stages($business_id, $pipeline_type = 'subscription') 
     return crm_get_default_pipeline_stages($pipeline_type);
 }
 
+/**
+ * Execute the crm get lead sources routine.
+ * @return array
+ */
 function crm_get_lead_sources() {
     return [
         'Website'       => 'Website',
@@ -3695,6 +3839,10 @@ function crm_get_lead_sources() {
     ];
 }
 
+/**
+ * Execute the crm get product types routine.
+ * @return array
+ */
 function crm_get_product_types() {
     return [
         'Hub'   => 'Hub',
@@ -3702,6 +3850,10 @@ function crm_get_product_types() {
     ];
 }
 
+/**
+ * Execute the crm get ended reasons routine.
+ * @return array
+ */
 function crm_get_ended_reasons() {
     return [
         'Cancelled'    => 'Cancelled',
@@ -3713,6 +3865,11 @@ function crm_get_ended_reasons() {
     ];
 }
 
+/**
+ * Return aggregated CRM statistics for the given business.
+ * @param int $business_id Business ID to scope the CRM data.
+ * @return array
+ */
 function crm_get_stats($business_id) {
     global $wpdb;
 
@@ -3760,3 +3917,4 @@ function crm_get_stats($business_id) {
         'monthly_interactions'    => $monthly_interactions,
     ];
 }
+
