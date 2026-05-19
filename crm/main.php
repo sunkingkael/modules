@@ -1,126 +1,287 @@
 ﻿<?php
 /**
- * Module Name: CRM
+ * Module Name: Customer Relationship Management
  * Module Slug: crm
- * Description: Allows businesses to manage their customer relationships. Business owners can track contacts, manage leads through a pipeline, log interactions, and follow up on deals. All activity is managed from an internal dashboard.
+ * Description: Manage, track, and analyze current and potential customers — including contact profiles, interaction history, pipeline stages, tasks, and reporting — all from within the WordPress admin.
  * Version: 1.0.0
  * Author: BNTM
- * Icon: <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+ * Icon: M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z
  */
 
-// Prevent direct access
 if (!defined('ABSPATH')) exit;
 
-// Module constants
 define('BNTM_CRM_PATH', dirname(__FILE__) . '/');
 define('BNTM_CRM_URL', plugin_dir_url(__FILE__));
 
-// ============================================================
-// MODULE CONFIGURATION FUNCTIONS
-// ============================================================
+// =============================================================================
+// MODULE CONFIGURATION
+// =============================================================================
 
-/**
- * Return pages data for the CRM module.
- * @return array
- */
 function bntm_crm_get_pages() {
     return [
-        'CRM Dashboard'  => '[crm_dashboard]',
-        'Contact Form'   => '[crm_contact_form]',
+        'CRM Contact Form'    => '[bntm_crm_contact_form]',
+        'CRM Customer Portal' => '[bntm_crm_customer_portal]',
+        'CRM Deal View'       => '[bntm_crm_deal_view]',
+        'CRM Unsubscribe'     => '[bntm_crm_unsubscribe]',
     ];
 }
 
-/**
- * Return tables data for the CRM module.
- * @return array
- */
 function bntm_crm_get_tables() {
     global $wpdb;
     $charset = $wpdb->get_charset_collate();
     $prefix  = $wpdb->prefix;
 
     return [
-        'crm_contacts' => "CREATE TABLE {$prefix}crm_contacts (
-            id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
-            rand_id VARCHAR(20) UNIQUE NOT NULL,
-            business_id BIGINT UNSIGNED NOT NULL DEFAULT 0,
-            first_name VARCHAR(100) NOT NULL DEFAULT '',
-            last_name VARCHAR(100) NOT NULL DEFAULT '',
-            email VARCHAR(255) NOT NULL DEFAULT '',
-            phone VARCHAR(50) NOT NULL DEFAULT '',
-            company VARCHAR(255) NOT NULL DEFAULT '',
-            notes TEXT,
-            status VARCHAR(50) NOT NULL DEFAULT 'active',
+        'bntm_crm_contacts' => "CREATE TABLE {$prefix}bntm_crm_contacts (
+            id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+            type ENUM('person','organisation') DEFAULT 'person',
+            first_name VARCHAR(100),
+            last_name VARCHAR(100),
+            email VARCHAR(191),
+            phone VARCHAR(50),
+            mobile VARCHAR(50),
+            company VARCHAR(191),
+            job_title VARCHAR(100),
+            address_line_1 VARCHAR(191),
+            address_line_2 VARCHAR(191),
+            city VARCHAR(100),
+            state VARCHAR(100),
+            postcode VARCHAR(20),
+            country VARCHAR(100),
+            website VARCHAR(191),
+            source VARCHAR(100),
+            status ENUM('lead','active','churned','archived') DEFAULT 'lead',
+            assigned_user_id BIGINT(20) UNSIGNED,
+            email_opt_out TINYINT(1) DEFAULT 0,
+            unsubscribe_token VARCHAR(64),
+            wp_user_id BIGINT(20) UNSIGNED DEFAULT NULL,
+            created_by BIGINT(20) UNSIGNED,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-            INDEX idx_business (business_id),
-            INDEX idx_status (status)
+            deleted_at DATETIME DEFAULT NULL,
+            PRIMARY KEY (id),
+            UNIQUE KEY unique_email (email),
+            INDEX idx_status (status),
+            INDEX idx_assigned (assigned_user_id),
+            INDEX idx_wp_user (wp_user_id)
         ) {$charset};",
 
-        'crm_leads' => "CREATE TABLE {$prefix}crm_leads (
-            id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
-            rand_id VARCHAR(20) UNIQUE NOT NULL,
-            business_id BIGINT UNSIGNED NOT NULL DEFAULT 0,
-            contact_id BIGINT UNSIGNED NOT NULL DEFAULT 0,
-            title VARCHAR(255) NOT NULL DEFAULT '',
-            value DECIMAL(15,2) NOT NULL DEFAULT 0.00,
-            pipeline_type VARCHAR(50) NOT NULL DEFAULT 'subscription',
-            product_type VARCHAR(50) NOT NULL DEFAULT '',
-            service_type VARCHAR(100) NOT NULL DEFAULT '',
-            lead_source VARCHAR(100) NOT NULL DEFAULT '',
-            sales_owner BIGINT UNSIGNED NOT NULL DEFAULT 0,
-            motm_uploaded TINYINT(1) NOT NULL DEFAULT 0,
-            ended_reason VARCHAR(50) NOT NULL DEFAULT '',
-            stage VARCHAR(100) NOT NULL DEFAULT 'new',
-            priority VARCHAR(20) NOT NULL DEFAULT 'medium',
-            expected_close DATE NULL,
-            notes TEXT,
-            status VARCHAR(50) NOT NULL DEFAULT 'open',
+        'bntm_crm_contact_meta' => "CREATE TABLE {$prefix}bntm_crm_contact_meta (
+            id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+            contact_id BIGINT(20) UNSIGNED NOT NULL,
+            meta_key VARCHAR(191) NOT NULL,
+            meta_value LONGTEXT,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-            INDEX idx_business (business_id),
-            INDEX idx_contact (contact_id),
-            INDEX idx_stage (stage),
-            INDEX idx_pipeline_type (pipeline_type),
-            INDEX idx_product_type (product_type),
-            INDEX idx_service_type (service_type),
-            INDEX idx_lead_source (lead_source),
-            INDEX idx_sales_owner (sales_owner)
+            PRIMARY KEY (id),
+            INDEX idx_contact_id (contact_id),
+            INDEX idx_meta_key (meta_key)
         ) {$charset};",
 
-        'crm_interactions' => "CREATE TABLE {$prefix}crm_interactions (
-            id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
-            rand_id VARCHAR(20) UNIQUE NOT NULL,
-            business_id BIGINT UNSIGNED NOT NULL DEFAULT 0,
-            contact_id BIGINT UNSIGNED NOT NULL DEFAULT 0,
-            type VARCHAR(50) NOT NULL DEFAULT 'note',
-            subject VARCHAR(255) NOT NULL DEFAULT '',
-            details TEXT,
-            interaction_date DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            status VARCHAR(50) NOT NULL DEFAULT 'active',
+        'bntm_crm_tags' => "CREATE TABLE {$prefix}bntm_crm_tags (
+            id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+            name VARCHAR(100) NOT NULL,
+            colour VARCHAR(7) DEFAULT '#6c757d',
+            created_by BIGINT(20) UNSIGNED,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            UNIQUE KEY unique_name (name)
+        ) {$charset};",
+
+        'bntm_crm_contact_tags' => "CREATE TABLE {$prefix}bntm_crm_contact_tags (
+            id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+            contact_id BIGINT(20) UNSIGNED NOT NULL,
+            tag_id BIGINT(20) UNSIGNED NOT NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            UNIQUE KEY unique_contact_tag (contact_id, tag_id),
+            INDEX idx_contact_id (contact_id),
+            INDEX idx_tag_id (tag_id)
+        ) {$charset};",
+
+        'bntm_crm_pipelines' => "CREATE TABLE {$prefix}bntm_crm_pipelines (
+            id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+            name VARCHAR(191) NOT NULL,
+            description TEXT,
+            is_default TINYINT(1) DEFAULT 0,
+            sort_order INT(11) DEFAULT 0,
+            created_by BIGINT(20) UNSIGNED,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-            INDEX idx_business (business_id),
-            INDEX idx_contact (contact_id)
+            PRIMARY KEY (id)
+        ) {$charset};",
+
+        'bntm_crm_pipeline_stages' => "CREATE TABLE {$prefix}bntm_crm_pipeline_stages (
+            id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+            pipeline_id BIGINT(20) UNSIGNED NOT NULL,
+            name VARCHAR(191) NOT NULL,
+            colour VARCHAR(7) DEFAULT '#0d6efd',
+            sort_order INT(11) DEFAULT 0,
+            probability TINYINT(3) DEFAULT 0,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            INDEX idx_pipeline_id (pipeline_id)
+        ) {$charset};",
+
+        'bntm_crm_deals' => "CREATE TABLE {$prefix}bntm_crm_deals (
+            id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+            title VARCHAR(191) NOT NULL,
+            contact_id BIGINT(20) UNSIGNED NOT NULL,
+            pipeline_id BIGINT(20) UNSIGNED NOT NULL,
+            stage_id BIGINT(20) UNSIGNED NOT NULL,
+            value DECIMAL(15,2) DEFAULT 0.00,
+            currency VARCHAR(10) DEFAULT 'USD',
+            probability TINYINT(3) DEFAULT 0,
+            source VARCHAR(100),
+            status ENUM('open','won','lost','archived') DEFAULT 'open',
+            close_date DATE DEFAULT NULL,
+            lost_reason VARCHAR(191) DEFAULT NULL,
+            access_token VARCHAR(64) DEFAULT NULL,
+            token_expires_at DATETIME DEFAULT NULL,
+            assigned_user_id BIGINT(20) UNSIGNED,
+            created_by BIGINT(20) UNSIGNED,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            deleted_at DATETIME DEFAULT NULL,
+            PRIMARY KEY (id),
+            INDEX idx_contact_id (contact_id),
+            INDEX idx_stage_id (stage_id),
+            INDEX idx_pipeline_id (pipeline_id),
+            INDEX idx_status (status),
+            INDEX idx_token (access_token)
+        ) {$charset};",
+
+        'bntm_crm_deal_line_items' => "CREATE TABLE {$prefix}bntm_crm_deal_line_items (
+            id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+            deal_id BIGINT(20) UNSIGNED NOT NULL,
+            description VARCHAR(191) NOT NULL,
+            quantity DECIMAL(10,2) DEFAULT 1.00,
+            unit_price DECIMAL(15,2) DEFAULT 0.00,
+            sort_order INT(11) DEFAULT 0,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            INDEX idx_deal_id (deal_id)
+        ) {$charset};",
+
+        'bntm_crm_activities' => "CREATE TABLE {$prefix}bntm_crm_activities (
+            id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+            type ENUM('call','email','meeting','note','task_completion','callback_request','deal_view','stage_change','unsubscribe') NOT NULL,
+            contact_id BIGINT(20) UNSIGNED DEFAULT NULL,
+            deal_id BIGINT(20) UNSIGNED DEFAULT NULL,
+            subject VARCHAR(191),
+            body LONGTEXT,
+            outcome VARCHAR(191),
+            duration_minutes INT(11) DEFAULT NULL,
+            scheduled_at DATETIME DEFAULT NULL,
+            logged_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            visible_to_customer TINYINT(1) DEFAULT 0,
+            logged_by BIGINT(20) UNSIGNED,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            INDEX idx_contact_id (contact_id),
+            INDEX idx_deal_id (deal_id),
+            INDEX idx_type (type),
+            INDEX idx_logged_at (logged_at)
+        ) {$charset};",
+
+        'bntm_crm_tasks' => "CREATE TABLE {$prefix}bntm_crm_tasks (
+            id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+            title VARCHAR(191) NOT NULL,
+            description TEXT,
+            contact_id BIGINT(20) UNSIGNED DEFAULT NULL,
+            deal_id BIGINT(20) UNSIGNED DEFAULT NULL,
+            assigned_user_id BIGINT(20) UNSIGNED,
+            priority ENUM('low','medium','high','urgent') DEFAULT 'medium',
+            status ENUM('open','in_progress','done') DEFAULT 'open',
+            due_date DATETIME DEFAULT NULL,
+            completed_at DATETIME DEFAULT NULL,
+            completed_by BIGINT(20) UNSIGNED DEFAULT NULL,
+            created_by BIGINT(20) UNSIGNED,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            INDEX idx_contact_id (contact_id),
+            INDEX idx_deal_id (deal_id),
+            INDEX idx_assigned (assigned_user_id),
+            INDEX idx_status (status),
+            INDEX idx_due_date (due_date)
+        ) {$charset};",
+
+        'bntm_crm_files' => "CREATE TABLE {$prefix}bntm_crm_files (
+            id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+            contact_id BIGINT(20) UNSIGNED DEFAULT NULL,
+            deal_id BIGINT(20) UNSIGNED DEFAULT NULL,
+            file_name VARCHAR(191) NOT NULL,
+            file_path VARCHAR(500) NOT NULL,
+            file_type VARCHAR(100),
+            file_size BIGINT(20) DEFAULT 0,
+            uploaded_by BIGINT(20) UNSIGNED,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            INDEX idx_contact_id (contact_id),
+            INDEX idx_deal_id (deal_id)
+        ) {$charset};",
+
+        'bntm_crm_custom_fields' => "CREATE TABLE {$prefix}bntm_crm_custom_fields (
+            id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+            object_type ENUM('contact','deal','activity') NOT NULL,
+            field_key VARCHAR(100) NOT NULL,
+            field_label VARCHAR(191) NOT NULL,
+            field_type ENUM('text','textarea','number','select','checkbox','date','url','email') NOT NULL,
+            field_options LONGTEXT DEFAULT NULL,
+            is_required TINYINT(1) DEFAULT 0,
+            sort_order INT(11) DEFAULT 0,
+            created_by BIGINT(20) UNSIGNED,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            UNIQUE KEY unique_object_key (object_type, field_key),
+            INDEX idx_object_type (object_type)
+        ) {$charset};",
+
+        'bntm_crm_audit_log' => "CREATE TABLE {$prefix}bntm_crm_audit_log (
+            id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+            object_type VARCHAR(100) NOT NULL,
+            object_id BIGINT(20) UNSIGNED NOT NULL,
+            action ENUM('created','updated','deleted','imported','exported','merged','stage_changed','status_changed') NOT NULL,
+            changed_by BIGINT(20) UNSIGNED,
+            changed_fields LONGTEXT DEFAULT NULL,
+            old_values LONGTEXT DEFAULT NULL,
+            new_values LONGTEXT DEFAULT NULL,
+            ip_address VARCHAR(45),
+            user_agent VARCHAR(500),
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            INDEX idx_object (object_type, object_id),
+            INDEX idx_changed_by (changed_by),
+            INDEX idx_created_at (created_at)
+        ) {$charset};",
+
+        'bntm_crm_settings' => "CREATE TABLE {$prefix}bntm_crm_settings (
+            id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+            setting_key VARCHAR(191) NOT NULL,
+            setting_value LONGTEXT,
+            autoload TINYINT(1) DEFAULT 1,
+            updated_by BIGINT(20) UNSIGNED,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            UNIQUE KEY unique_setting_key (setting_key)
         ) {$charset};",
     ];
 }
 
-/**
- * Return shortcodes data for the CRM module.
- * @return array
- */
 function bntm_crm_get_shortcodes() {
     return [
-        'crm_dashboard'    => 'bntm_shortcode_crm',
-        'crm_contact_form' => 'bntm_shortcode_crm_contact_form',
+        'bntm_crm_contact_form'    => 'bntm_shortcode_crm_contact_form',
+        'bntm_crm_customer_portal' => 'bntm_shortcode_crm_customer_portal',
+        'bntm_crm_deal_view'       => 'bntm_shortcode_crm_deal_view',
+        'bntm_crm_unsubscribe'     => 'bntm_shortcode_crm_unsubscribe',
     ];
 }
 
-/**
- * Create or update CRM database tables.
- * @return int
- */
 function bntm_crm_create_tables() {
     require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
     $tables = bntm_crm_get_tables();
@@ -130,92 +291,167 @@ function bntm_crm_create_tables() {
     return count($tables);
 }
 
-// ============================================================
+// =============================================================================
 // AJAX ACTION HOOKS
-// ============================================================
+// =============================================================================
 
-// Contacts
-add_action('wp_ajax_crm_add_contact',        'bntm_ajax_crm_add_contact');
-add_action('wp_ajax_crm_edit_contact',       'bntm_ajax_crm_edit_contact');
-add_action('wp_ajax_crm_delete_contact',     'bntm_ajax_crm_delete_contact');
-add_action('wp_ajax_crm_get_contact',        'bntm_ajax_crm_get_contact');
+// --- Dashboard ---
+add_action('wp_ajax_bntm_crm_get_summary_cards',   'bntm_ajax_crm_get_summary_cards');
+add_action('wp_ajax_bntm_crm_get_activity_feed',   'bntm_ajax_crm_get_activity_feed');
+add_action('wp_ajax_bntm_crm_get_pipeline_chart',  'bntm_ajax_crm_get_pipeline_chart');
+add_action('wp_ajax_bntm_crm_get_upcoming_tasks',  'bntm_ajax_crm_get_upcoming_tasks');
+add_action('wp_ajax_bntm_crm_get_bar_graph_data',  'bntm_ajax_crm_get_bar_graph_data');
 
-// Leads
-add_action('wp_ajax_crm_add_lead',           'bntm_ajax_crm_add_lead');
-add_action('wp_ajax_crm_edit_lead',          'bntm_ajax_crm_edit_lead');
-add_action('wp_ajax_crm_delete_lead',        'bntm_ajax_crm_delete_lead');
-add_action('wp_ajax_crm_update_lead_stage',  'bntm_ajax_crm_update_lead_stage');
+// --- Contacts ---
+add_action('wp_ajax_bntm_crm_get_contacts',          'bntm_ajax_crm_get_contacts');
+add_action('wp_ajax_bntm_crm_save_contact',          'bntm_ajax_crm_save_contact');
+add_action('wp_ajax_bntm_crm_delete_contact',        'bntm_ajax_crm_delete_contact');
+add_action('wp_ajax_bntm_crm_bulk_action_contacts',  'bntm_ajax_crm_bulk_action_contacts');
+add_action('wp_ajax_bntm_crm_import_contacts',       'bntm_ajax_crm_import_contacts');
+add_action('wp_ajax_bntm_crm_export_contacts',       'bntm_ajax_crm_export_contacts');
+add_action('wp_ajax_bntm_crm_get_contact_detail',    'bntm_ajax_crm_get_contact_detail');
+add_action('wp_ajax_bntm_crm_save_tags',             'bntm_ajax_crm_save_tags');
+add_action('wp_ajax_bntm_crm_get_contact_profile',   'bntm_ajax_crm_get_contact_profile');
+add_action('wp_ajax_bntm_crm_get_contact_timeline',  'bntm_ajax_crm_get_contact_timeline');
+add_action('wp_ajax_bntm_crm_get_contact_tasks',     'bntm_ajax_crm_get_contact_tasks');
+add_action('wp_ajax_bntm_crm_get_contact_files',     'bntm_ajax_crm_get_contact_files');
+add_action('wp_ajax_bntm_crm_upload_contact_file',   'bntm_ajax_crm_upload_contact_file');
+add_action('wp_ajax_bntm_crm_delete_contact_file',   'bntm_ajax_crm_delete_contact_file');
 
-// Interactions
-add_action('wp_ajax_crm_add_interaction',    'bntm_ajax_crm_add_interaction');
-add_action('wp_ajax_crm_delete_interaction', 'bntm_ajax_crm_delete_interaction');
+// --- Pipeline ---
+add_action('wp_ajax_bntm_crm_get_pipeline_board', 'bntm_ajax_crm_get_pipeline_board');
+add_action('wp_ajax_bntm_crm_move_deal_stage',    'bntm_ajax_crm_move_deal_stage');
+add_action('wp_ajax_bntm_crm_save_deal',          'bntm_ajax_crm_save_deal');
+add_action('wp_ajax_bntm_crm_delete_deal',        'bntm_ajax_crm_delete_deal');
+add_action('wp_ajax_bntm_crm_close_deal',         'bntm_ajax_crm_close_deal');
+add_action('wp_ajax_bntm_crm_get_deal_detail',    'bntm_ajax_crm_get_deal_detail');
+add_action('wp_ajax_bntm_crm_get_pipelines',      'bntm_ajax_crm_get_pipelines');
+add_action('wp_ajax_bntm_crm_save_pipeline',      'bntm_ajax_crm_save_pipeline');
 
-// Settings
-add_action('wp_ajax_crm_save_settings',      'bntm_ajax_crm_save_settings');
+// --- Activities ---
+add_action('wp_ajax_bntm_crm_get_activities',     'bntm_ajax_crm_get_activities');
+add_action('wp_ajax_bntm_crm_save_activity',      'bntm_ajax_crm_save_activity');
+add_action('wp_ajax_bntm_crm_delete_activity',    'bntm_ajax_crm_delete_activity');
+add_action('wp_ajax_bntm_crm_get_activity_types', 'bntm_ajax_crm_get_activity_types');
 
-// Public: contact form submission
-add_action('wp_ajax_crm_submit_contact_form',        'bntm_ajax_crm_submit_contact_form');
-add_action('wp_ajax_nopriv_crm_submit_contact_form', 'bntm_ajax_crm_submit_contact_form');
+// --- Tasks ---
+add_action('wp_ajax_bntm_crm_get_tasks',          'bntm_ajax_crm_get_tasks');
+add_action('wp_ajax_bntm_crm_save_task',          'bntm_ajax_crm_save_task');
+add_action('wp_ajax_bntm_crm_delete_task',        'bntm_ajax_crm_delete_task');
+add_action('wp_ajax_bntm_crm_complete_task',      'bntm_ajax_crm_complete_task');
+add_action('wp_ajax_bntm_crm_bulk_action_tasks',  'bntm_ajax_crm_bulk_action_tasks');
 
-// ============================================================
+// --- Settings ---
+add_action('wp_ajax_bntm_crm_get_settings',         'bntm_ajax_crm_get_settings');
+add_action('wp_ajax_bntm_crm_save_settings',         'bntm_ajax_crm_save_settings');
+add_action('wp_ajax_bntm_crm_save_pipeline_config',  'bntm_ajax_crm_save_pipeline_config');
+add_action('wp_ajax_bntm_crm_save_custom_fields',    'bntm_ajax_crm_save_custom_fields');
+add_action('wp_ajax_bntm_crm_detect_duplicates',     'bntm_ajax_crm_detect_duplicates');
+add_action('wp_ajax_bntm_crm_merge_contacts',        'bntm_ajax_crm_merge_contacts');
+add_action('wp_ajax_bntm_crm_export_all_data',       'bntm_ajax_crm_export_all_data');
+add_action('wp_ajax_bntm_crm_get_audit_log',         'bntm_ajax_crm_get_audit_log');
+
+// --- Frontend / Public AJAX ---
+add_action('wp_ajax_bntm_crm_submit_contact_form',        'bntm_ajax_crm_submit_contact_form');
+add_action('wp_ajax_nopriv_bntm_crm_submit_contact_form', 'bntm_ajax_crm_submit_contact_form');
+
+add_action('wp_ajax_bntm_crm_deal_action',        'bntm_ajax_crm_deal_action');
+add_action('wp_ajax_nopriv_bntm_crm_deal_action', 'bntm_ajax_crm_deal_action');
+
+add_action('wp_ajax_bntm_crm_unsubscribe_action',        'bntm_ajax_crm_unsubscribe_action');
+add_action('wp_ajax_nopriv_bntm_crm_unsubscribe_action', 'bntm_ajax_crm_unsubscribe_action');
+
+add_action('wp_ajax_bntm_crm_resubscribe_action',        'bntm_ajax_crm_resubscribe_action');
+add_action('wp_ajax_nopriv_bntm_crm_resubscribe_action', 'bntm_ajax_crm_resubscribe_action');
+
+add_action('wp_ajax_bntm_crm_portal_callback_request',        'bntm_ajax_crm_portal_callback_request');
+add_action('wp_ajax_nopriv_bntm_crm_portal_callback_request', 'bntm_ajax_crm_portal_callback_request');
+
+add_action('wp_ajax_bntm_crm_portal_update_details',        'bntm_ajax_crm_portal_update_details');
+add_action('wp_ajax_nopriv_bntm_crm_portal_update_details', 'bntm_ajax_crm_portal_update_details');
+
+add_action('wp_ajax_bntm_crm_log_deal_view',        'bntm_ajax_crm_log_deal_view');
+add_action('wp_ajax_nopriv_bntm_crm_log_deal_view', 'bntm_ajax_crm_log_deal_view');
+
+// =============================================================================
 // MAIN DASHBOARD SHORTCODE
-// ============================================================
+// =============================================================================
 
-/**
- * Render the CRM shortcode output.
- * @return string
- */
 function bntm_shortcode_crm() {
     if (!is_user_logged_in()) {
-        return '<div class="bntm-notice">Please log in to access the CRM.</div>';
+        return '<div class="bntm-notice">Please log in.</div>';
     }
 
     $current_user = wp_get_current_user();
     $business_id  = $current_user->ID;
-    $active_tab   = isset($_GET['tab']) ? sanitize_text_field($_GET['tab']) : 'overview';
+    $active_tab   = isset($_GET['tab']) ? sanitize_text_field($_GET['tab']) : 'dashboard';
 
     ob_start();
     ?>
     <script>
-    var ajaxurl = '<?php echo admin_url('admin-ajax.php'); ?>';
-    var crm_nonce = '<?php echo wp_create_nonce('crm_nonce'); ?>';
+    var ajaxurl = '<?php echo esc_url(admin_url('admin-ajax.php')); ?>';
+    var bntm_crm_nonce = '<?php echo wp_create_nonce('crm_nonce'); ?>';
     </script>
 
     <div class="bntm-crm-container">
-        <!-- Tab Navigation -->
         <div class="bntm-tabs">
-            <a href="?tab=overview" class="bntm-tab <?php echo $active_tab === 'overview' ? 'active' : ''; ?>">
-                <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><rect x="14" y="3" width="7" height="7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><rect x="3" y="14" width="7" height="7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><rect x="14" y="14" width="7" height="7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                Overview
+            <a href="?tab=dashboard" class="bntm-tab <?php echo $active_tab === 'dashboard' ? 'active' : ''; ?>">
+                <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="margin-right:6px;vertical-align:middle;">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/>
+                </svg>
+                Dashboard
             </a>
             <a href="?tab=contacts" class="bntm-tab <?php echo $active_tab === 'contacts' ? 'active' : ''; ?>">
-                <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4" stroke-width="2"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>
+                <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="margin-right:6px;vertical-align:middle;">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/>
+                </svg>
                 Contacts
             </a>
-            <a href="?tab=leads" class="bntm-tab <?php echo $active_tab === 'leads' ? 'active' : ''; ?>">
-                <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>
-                Leads
+            <a href="?tab=pipeline" class="bntm-tab <?php echo $active_tab === 'pipeline' ? 'active' : ''; ?>">
+                <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="margin-right:6px;vertical-align:middle;">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+                </svg>
+                Pipeline
             </a>
-            <a href="?tab=interactions" class="bntm-tab <?php echo $active_tab === 'interactions' ? 'active' : ''; ?>">
-                <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
-                Interactions
+            <a href="?tab=activities" class="bntm-tab <?php echo $active_tab === 'activities' ? 'active' : ''; ?>">
+                <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="margin-right:6px;vertical-align:middle;">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
+                </svg>
+                Activities
+            </a>
+            <a href="?tab=tasks" class="bntm-tab <?php echo $active_tab === 'tasks' ? 'active' : ''; ?>">
+                <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="margin-right:6px;vertical-align:middle;">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/>
+                </svg>
+                Tasks
             </a>
             <a href="?tab=settings" class="bntm-tab <?php echo $active_tab === 'settings' ? 'active' : ''; ?>">
-                <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><circle cx="12" cy="12" r="3" stroke-width="2"/></svg>
+                <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="margin-right:6px;vertical-align:middle;">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                </svg>
                 Settings
             </a>
         </div>
 
-        <!-- Tab Content -->
         <div class="bntm-tab-content">
-            <?php if ($active_tab === 'overview'): ?>
-                <?php echo crm_overview_tab($business_id); ?>
+            <?php if ($active_tab === 'dashboard'): ?>
+                <?php echo crm_dashboard_tab($business_id); ?>
             <?php elseif ($active_tab === 'contacts'): ?>
-                <?php echo crm_contacts_tab($business_id); ?>
-            <?php elseif ($active_tab === 'leads'): ?>
-                <?php echo crm_leads_tab($business_id); ?>
-            <?php elseif ($active_tab === 'interactions'): ?>
-                <?php echo crm_interactions_tab($business_id); ?>
+                <?php
+                $contact_id = isset($_GET['contact_id']) ? intval($_GET['contact_id']) : 0;
+                if ($contact_id > 0) {
+                    echo crm_contact_profile_page($contact_id, $business_id);
+                } else {
+                    echo crm_contacts_tab($business_id);
+                }
+                ?>
+            <?php elseif ($active_tab === 'pipeline'): ?>
+                <?php echo crm_pipeline_tab($business_id); ?>
+            <?php elseif ($active_tab === 'activities'): ?>
+                <?php echo crm_activities_tab($business_id); ?>
+            <?php elseif ($active_tab === 'tasks'): ?>
+                <?php echo crm_tasks_tab($business_id); ?>
             <?php elseif ($active_tab === 'settings'): ?>
                 <?php echo crm_settings_tab($business_id); ?>
             <?php endif; ?>
@@ -223,3818 +459,3821 @@ function bntm_shortcode_crm() {
     </div>
 
     <style>
-    /* ── Shared CRM styles ── */
-    .bntm-crm-container { font-family: inherit; }
-    .bntm-tabs { display:flex; flex-wrap:wrap; gap:4px; margin-bottom:24px; border-bottom:2px solid #e5e7eb; padding-bottom:0; }
-    .bntm-tab { display:inline-flex; align-items:center; gap:6px; padding:10px 18px; font-size:14px; font-weight:500; color:#6b7280; text-decoration:none; border-radius:6px 6px 0 0; border:none; background:transparent; cursor:pointer; transition:color .15s,background .15s; margin-bottom:-2px; border-bottom:2px solid transparent; }
-    .bntm-tab:hover { color:#111827; background:#f3f4f6; }
-    .bntm-tab.active { color:var(--bntm-primary,#6366f1); border-bottom:2px solid var(--bntm-primary,#6366f1); background:#fff; }
-    .bntm-tab-content { min-height:300px; }
+    .bntm-crm-container { width: 100%; }
 
-    /* Stats row */
-    .bntm-stats-row { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:16px; margin-bottom:24px; }
-    .bntm-stat-card { background:#fff; border:1px solid #e5e7eb; border-radius:12px; padding:20px; display:flex; align-items:center; gap:16px; box-shadow:0 1px 3px rgba(0,0,0,.06); }
-    .bntm-stat-card .stat-icon { width:48px; height:48px; border-radius:10px; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
-    .bntm-stat-card .stat-content h3 { margin:0 0 4px; font-size:12px; font-weight:500; color:#6b7280; text-transform:uppercase; letter-spacing:.05em; }
-    .bntm-stat-card .stat-number { margin:0 0 2px; font-size:26px; font-weight:700; color:#111827; line-height:1; }
-    .bntm-stat-card .stat-label { font-size:11px; color:#9ca3af; }
-
-    /* Form section */
-    .bntm-form-section { background:#fff; border:1px solid #e5e7eb; border-radius:12px; padding:20px 24px; margin-bottom:20px; }
-    .bntm-form-section h3 { margin:0 0 16px; font-size:16px; font-weight:600; color:#111827; }
-
-    /* Inputs/selects/buttons */
-    .crm-input, .crm-select, .crm-textarea {
-        width:100%; padding:9px 12px; border:1px solid #d1d5db; border-radius:8px;
-        font-size:14px; color:#111827; background:#fff; box-sizing:border-box;
-        transition:border-color .15s,box-shadow .15s;
+    /* --- Form Elements --- */
+    .bntm-crm-container input[type="text"],
+    .bntm-crm-container input[type="email"],
+    .bntm-crm-container input[type="number"],
+    .bntm-crm-container input[type="date"],
+    .bntm-crm-container input[type="datetime-local"],
+    .bntm-crm-container input[type="url"],
+    .bntm-crm-container input[type="tel"],
+    .bntm-crm-container select,
+    .bntm-crm-container textarea {
+        width: 100%;
+        padding: 9px 12px;
+        border: 1px solid #e5e7eb;
+        border-radius: 6px;
+        font-size: 14px;
+        color: #111827;
+        background: #fff;
+        box-sizing: border-box;
+        transition: border-color 0.2s;
     }
-    .crm-input:focus, .crm-select:focus, .crm-textarea:focus {
-        outline:none; border-color:var(--bntm-primary,#6366f1);
-        box-shadow:0 0 0 3px rgba(99,102,241,.12);
+    .bntm-crm-container input:focus,
+    .bntm-crm-container select:focus,
+    .bntm-crm-container textarea:focus {
+        outline: none;
+        border-color: var(--bntm-primary);
+        box-shadow: 0 0 0 3px rgba(99,102,241,0.08);
     }
-    .crm-textarea { resize:vertical; min-height:80px; }
-    .crm-form-row { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px; }
-    .crm-form-row.single { grid-template-columns:1fr; }
-    .crm-form-row.triple { grid-template-columns:1fr 1fr 1fr; }
-    .crm-form-group { display:flex; flex-direction:column; gap:4px; }
-    .crm-form-group label { font-size:12px; font-weight:500; color:#374151; }
+    .bntm-crm-container label {
+        display: block;
+        font-size: 13px;
+        font-weight: 500;
+        color: #374151;
+        margin-bottom: 5px;
+    }
+    .bntm-crm-container .form-row {
+        margin-bottom: 14px;
+    }
+    .bntm-crm-container .form-grid-2 {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 14px;
+    }
+    .bntm-crm-container .form-grid-3 {
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr;
+        gap: 14px;
+    }
 
-    /* Table */
-    .bntm-table-wrapper { overflow-x:auto; border-radius:10px; border:1px solid #e5e7eb; }
-    .bntm-table { width:100%; border-collapse:collapse; font-size:14px; }
-    .bntm-table thead tr { background:#f9fafb; }
-    .bntm-table th { padding:11px 14px; text-align:left; font-size:11px; font-weight:600; color:#6b7280; text-transform:uppercase; letter-spacing:.05em; white-space:nowrap; }
-    .bntm-table td { padding:12px 14px; border-top:1px solid #f3f4f6; color:#374151; vertical-align:middle; }
-    .bntm-table tbody tr:hover { background:#fafafa; }
+    /* --- Stat Cards --- */
+    .bntm-stats-row {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 18px;
+        margin-bottom: 24px;
+    }
+    .bntm-stat-card {
+        background: #fff;
+        border-radius: 12px;
+        padding: 20px;
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.07);
+        border: 1px solid #f3f4f6;
+    }
+    .bntm-stat-card .stat-icon {
+        width: 52px;
+        height: 52px;
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+    }
+    .bntm-stat-card .stat-content h3 {
+        font-size: 13px;
+        color: #6b7280;
+        margin: 0 0 4px;
+        font-weight: 500;
+    }
+    .bntm-stat-card .stat-number {
+        font-size: 26px;
+        font-weight: 700;
+        color: #111827;
+        margin: 0 0 2px;
+        line-height: 1.1;
+    }
+    .bntm-stat-card .stat-label {
+        font-size: 12px;
+        color: #9ca3af;
+    }
 
-    /* Badges */
-    .crm-badge { display:inline-flex; align-items:center; padding:3px 10px; border-radius:999px; font-size:11px; font-weight:600; text-transform:capitalize; }
-    .crm-badge-new        { background:#eff6ff; color:#2563eb; }
-    .crm-badge-contacted  { background:#fef3c7; color:#b45309; }
-    .crm-badge-qualified  { background:#ecfdf5; color:#059669; }
-    .crm-badge-won        { background:#d1fae5; color:#065f46; }
-    .crm-badge-lost       { background:#fee2e2; color:#991b1b; }
-    .crm-badge-active     { background:#ecfdf5; color:#059669; }
-    .crm-badge-inactive   { background:#f3f4f6; color:#6b7280; }
-    .crm-badge-open       { background:#eff6ff; color:#2563eb; }
-    .crm-badge-closed     { background:#f3f4f6; color:#6b7280; }
-    .crm-badge-call       { background:#faf5ff; color:#7c3aed; }
-    .crm-badge-email      { background:#ecfeff; color:#0891b2; }
-    .crm-badge-meeting    { background:#fff7ed; color:#c2410c; }
-    .crm-badge-note       { background:#f0fdf4; color:#15803d; }
-    .crm-badge-high       { background:#fee2e2; color:#991b1b; }
-    .crm-badge-medium     { background:#fef3c7; color:#b45309; }
-    .crm-badge-low        { background:#f0fdf4; color:#15803d; }
+    /* --- Section --- */
+    .bntm-form-section {
+        background: #fff;
+        border-radius: 12px;
+        padding: 22px 24px;
+        margin-bottom: 20px;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.07);
+        border: 1px solid #f3f4f6;
+    }
+    .bntm-form-section h3 {
+        font-size: 15px;
+        font-weight: 600;
+        color: #111827;
+        margin: 0 0 16px;
+        padding-bottom: 12px;
+        border-bottom: 1px solid #f3f4f6;
+    }
+    .bntm-section-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 16px;
+        padding-bottom: 12px;
+        border-bottom: 1px solid #f3f4f6;
+    }
+    .bntm-section-header h3 { margin: 0; border: none; padding: 0; }
 
-    /* Buttons */
-    .bntm-btn-primary   { background:var(--bntm-primary,#6366f1); color:#fff; border:none; padding:9px 18px; border-radius:8px; font-size:14px; font-weight:500; cursor:pointer; transition:background .15s,opacity .15s; }
-    .bntm-btn-primary:hover { background:var(--bntm-primary-hover,#4f46e5); }
-    .bntm-btn-secondary { background:#fff; color:#374151; border:1px solid #d1d5db; padding:9px 18px; border-radius:8px; font-size:14px; font-weight:500; cursor:pointer; transition:background .15s; }
-    .bntm-btn-secondary:hover { background:#f9fafb; }
-    .bntm-btn-danger    { background:#ef4444; color:#fff; border:none; padding:9px 18px; border-radius:8px; font-size:14px; font-weight:500; cursor:pointer; transition:background .15s; }
-    .bntm-btn-danger:hover { background:#dc2626; }
-    .bntm-btn-small { padding:5px 12px; font-size:12px; }
-    .bntm-btn-icon  { background:transparent; border:none; cursor:pointer; padding:5px; border-radius:6px; color:#6b7280; transition:color .15s,background .15s; }
-    .bntm-btn-icon:hover { background:#f3f4f6; color:#111827; }
-    button:disabled { opacity:.55; cursor:not-allowed; }
+    /* --- Table --- */
+    .bntm-table-wrapper {
+        overflow-x: auto;
+        border-radius: 8px;
+        border: 1px solid #e5e7eb;
+    }
+    .bntm-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 14px;
+    }
+    .bntm-table thead th {
+        background: #f9fafb;
+        padding: 11px 14px;
+        text-align: left;
+        font-size: 12px;
+        font-weight: 600;
+        color: #6b7280;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        border-bottom: 1px solid #e5e7eb;
+        white-space: nowrap;
+    }
+    .bntm-table tbody tr {
+        border-bottom: 1px solid #f3f4f6;
+        transition: background 0.15s;
+    }
+    .bntm-table tbody tr:last-child { border-bottom: none; }
+    .bntm-table tbody tr:hover { background: #fafafa; }
+    .bntm-table tbody td {
+        padding: 11px 14px;
+        color: #374151;
+        vertical-align: middle;
+    }
 
-    /* Notices */
-    .bntm-notice { padding:12px 16px; border-radius:8px; font-size:14px; margin-bottom:12px; }
-    .bntm-notice-success { background:#ecfdf5; color:#065f46; border:1px solid #a7f3d0; }
-    .bntm-notice-error   { background:#fef2f2; color:#991b1b; border:1px solid #fecaca; }
+    /* --- Badges --- */
+    .bntm-badge {
+        display: inline-flex;
+        align-items: center;
+        padding: 3px 9px;
+        border-radius: 20px;
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+    }
+    .bntm-badge-lead      { background: #fef3c7; color: #92400e; }
+    .bntm-badge-active    { background: #d1fae5; color: #065f46; }
+    .bntm-badge-churned   { background: #fee2e2; color: #991b1b; }
+    .bntm-badge-archived  { background: #f3f4f6; color: #6b7280; }
+    .bntm-badge-open      { background: #dbeafe; color: #1e40af; }
+    .bntm-badge-won       { background: #d1fae5; color: #065f46; }
+    .bntm-badge-lost      { background: #fee2e2; color: #991b1b; }
+    .bntm-badge-low       { background: #f0fdf4; color: #166534; }
+    .bntm-badge-medium    { background: #fef9c3; color: #854d0e; }
+    .bntm-badge-high      { background: #fff7ed; color: #9a3412; }
+    .bntm-badge-urgent    { background: #fee2e2; color: #991b1b; }
+    .bntm-badge-done      { background: #d1fae5; color: #065f46; }
+    .bntm-badge-in_progress { background: #dbeafe; color: #1e40af; }
+    .bntm-badge-public    { background: #ede9fe; color: #5b21b6; }
+    .bntm-badge-loggedin  { background: #dbeafe; color: #1e40af; }
 
-    /* Modal */
-    .crm-modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:9999; align-items:center; justify-content:center; padding:16px; }
-    .crm-modal-overlay.open { display:flex; }
-    .crm-modal { background:#fff; border-radius:16px; width:100%; max-width:520px; max-height:90vh; overflow-y:auto; box-shadow:0 20px 60px rgba(0,0,0,.2); }
-    .crm-modal-header { display:flex; align-items:center; justify-content:space-between; padding:20px 24px 0; }
-    .crm-modal-header h3 { margin:0; font-size:18px; font-weight:700; color:#111827; }
-    .crm-modal-body { padding:20px 24px 24px; }
-    .crm-modal-footer { display:flex; gap:10px; justify-content:flex-end; padding:0 24px 24px; }
+    /* --- Modals --- */
+    .crm-modal-overlay {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,0.45);
+        z-index: 99998;
+        align-items: center;
+        justify-content: center;
+    }
+    .crm-modal-overlay.active { display: flex; }
+    .crm-modal {
+        background: #fff;
+        border-radius: 14px;
+        width: 100%;
+        max-width: 600px;
+        max-height: 90vh;
+        overflow-y: auto;
+        box-shadow: 0 20px 60px rgba(0,0,0,0.18);
+        position: relative;
+    }
+    .crm-modal-lg { max-width: 820px; }
+    .crm-modal-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 18px 24px;
+        border-bottom: 1px solid #e5e7eb;
+        position: sticky;
+        top: 0;
+        background: #fff;
+        z-index: 1;
+        border-radius: 14px 14px 0 0;
+    }
+    .crm-modal-header h3 { margin: 0; font-size: 16px; font-weight: 600; color: #111827; }
+    .crm-modal-close {
+        background: none;
+        border: none;
+        cursor: pointer;
+        color: #9ca3af;
+        padding: 4px;
+        border-radius: 6px;
+        transition: color 0.2s;
+    }
+    .crm-modal-close:hover { color: #374151; }
+    .crm-modal-body { padding: 24px; }
+    .crm-modal-footer {
+        padding: 16px 24px;
+        border-top: 1px solid #e5e7eb;
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+        background: #f9fafb;
+        border-radius: 0 0 14px 14px;
+    }
 
-    /* Filter bar */
-    .crm-filter-bar { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-bottom:16px; }
-    .crm-search-input { flex:1; min-width:180px; padding:8px 12px; border:1px solid #d1d5db; border-radius:8px; font-size:14px; color:#111827; }
-    .crm-search-input:focus { outline:none; border-color:var(--bntm-primary,#6366f1); }
+    /* --- Filters bar --- */
+    .crm-filters-bar {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        flex-wrap: wrap;
+        margin-bottom: 16px;
+    }
+    .crm-filters-bar input,
+    .crm-filters-bar select {
+        width: auto;
+        min-width: 160px;
+        flex: 1;
+    }
+    .crm-filters-bar .filter-actions { margin-left: auto; display: flex; gap: 8px; }
 
-    /* Frontend pages grid */
-    .bntm-frontend-pages-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:16px; }
-    .bntm-page-card { border:1px solid #e5e7eb; border-radius:12px; overflow:hidden; background:#fff; }
-    .bntm-page-card-header { display:flex; align-items:center; justify-content:space-between; padding:14px 16px; background:#f9fafb; border-bottom:1px solid #e5e7eb; }
-    .bntm-page-card-icon { width:32px; height:32px; border-radius:8px; background:var(--bntm-primary,#6366f1); display:flex; align-items:center; justify-content:center; color:#fff; }
-    .bntm-page-audience-badge { font-size:11px; font-weight:600; padding:3px 8px; border-radius:999px; }
-    .bntm-badge-public   { background:#dbeafe; color:#1d4ed8; }
-    .bntm-badge-loggedin { background:#fef3c7; color:#b45309; }
-    .bntm-page-card-body { padding:14px 16px; }
-    .bntm-page-card-body h4 { margin:0 0 6px; font-size:14px; font-weight:600; color:#111827; }
-    .bntm-page-card-body p  { margin:0; font-size:13px; color:#6b7280; }
-    .bntm-page-card-footer { padding:12px 16px; display:flex; gap:8px; border-top:1px solid #f3f4f6; }
+    /* --- Activity feed --- */
+    .crm-activity-feed { list-style: none; margin: 0; padding: 0; }
+    .crm-activity-item {
+        display: flex;
+        gap: 14px;
+        padding: 12px 0;
+        border-bottom: 1px solid #f3f4f6;
+    }
+    .crm-activity-item:last-child { border-bottom: none; }
+    .crm-activity-icon {
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+    }
+    .crm-activity-icon.type-call     { background: #dbeafe; color: #1d4ed8; }
+    .crm-activity-icon.type-email    { background: #fce7f3; color: #9d174d; }
+    .crm-activity-icon.type-meeting  { background: #d1fae5; color: #065f46; }
+    .crm-activity-icon.type-note     { background: #fef9c3; color: #854d0e; }
+    .crm-activity-icon.type-task_completion { background: #ede9fe; color: #5b21b6; }
+    .crm-activity-icon.type-stage_change    { background: #f0fdf4; color: #166534; }
+    .crm-activity-icon.type-deal_view       { background: #f3f4f6; color: #374151; }
+    .crm-activity-icon.type-unsubscribe     { background: #fee2e2; color: #991b1b; }
+    .crm-activity-icon.type-callback_request { background: #fff7ed; color: #9a3412; }
+    .crm-activity-body { flex: 1; }
+    .crm-activity-body strong { font-size: 14px; color: #111827; }
+    .crm-activity-body p { margin: 3px 0 0; font-size: 13px; color: #6b7280; }
+    .crm-activity-meta { font-size: 12px; color: #9ca3af; white-space: nowrap; }
 
-    /* Pipeline kanban */
-    .crm-pipeline { display:flex; gap:14px; overflow-x:auto; padding-bottom:8px; }
-    .crm-pipeline-col { flex:0 0 220px; background:#f9fafb; border:1px solid #e5e7eb; border-radius:12px; padding:14px; }
-    .crm-pipeline-col-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
-    .crm-pipeline-col-header h4 { margin:0; font-size:13px; font-weight:600; color:#374151; text-transform:capitalize; }
-    .crm-pipeline-count { font-size:11px; font-weight:700; background:#e5e7eb; color:#6b7280; border-radius:999px; padding:2px 8px; }
-    .crm-lead-card { background:#fff; border:1px solid #e5e7eb; border-radius:8px; padding:12px; margin-bottom:8px; cursor:pointer; transition:box-shadow .15s; }
-    .crm-lead-card:hover { box-shadow:0 4px 12px rgba(0,0,0,.08); }
-    .crm-lead-card h5 { margin:0 0 4px; font-size:13px; font-weight:600; color:#111827; }
-    .crm-lead-card .lead-value { font-size:12px; font-weight:700; color:var(--bntm-primary,#6366f1); }
-    .crm-lead-card .lead-contact { font-size:11px; color:#9ca3af; margin-top:4px; }
+    /* --- Kanban board --- */
+    .crm-kanban-board {
+        display: flex;
+        gap: 16px;
+        overflow-x: auto;
+        padding-bottom: 12px;
+        min-height: 520px;
+    }
+    .crm-kanban-column {
+        min-width: 260px;
+        width: 260px;
+        background: #f9fafb;
+        border-radius: 10px;
+        border: 1px solid #e5e7eb;
+        display: flex;
+        flex-direction: column;
+        flex-shrink: 0;
+    }
+    .crm-kanban-col-header {
+        padding: 12px 14px;
+        border-bottom: 1px solid #e5e7eb;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        border-radius: 10px 10px 0 0;
+    }
+    .crm-kanban-col-title {
+        font-size: 13px;
+        font-weight: 600;
+        color: #374151;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    .crm-kanban-col-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        display: inline-block;
+    }
+    .crm-kanban-col-meta { font-size: 12px; color: #9ca3af; }
+    .crm-kanban-cards {
+        padding: 10px;
+        flex: 1;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        min-height: 60px;
+    }
+    .crm-kanban-cards.drag-over { background: #eff6ff; }
+    .crm-deal-card {
+        background: #fff;
+        border-radius: 8px;
+        border: 1px solid #e5e7eb;
+        padding: 12px;
+        cursor: grab;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+        transition: box-shadow 0.2s, transform 0.15s;
+    }
+    .crm-deal-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+    .crm-deal-card.dragging { opacity: 0.5; transform: scale(0.97); }
+    .crm-deal-card-title { font-size: 14px; font-weight: 600; color: #111827; margin-bottom: 6px; }
+    .crm-deal-card-contact { font-size: 12px; color: #6b7280; margin-bottom: 8px; }
+    .crm-deal-card-meta {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 12px;
+        color: #9ca3af;
+    }
+    .crm-deal-card-value { font-weight: 700; color: #059669; font-size: 13px; }
 
-    /* Action buttons in table */
-    .crm-actions { display:flex; gap:4px; }
+    /* --- Task list --- */
+    .crm-task-item {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        padding: 12px 0;
+        border-bottom: 1px solid #f3f4f6;
+    }
+    .crm-task-item:last-child { border-bottom: none; }
+    .crm-task-checkbox { margin-top: 2px; width: 16px; height: 16px; cursor: pointer; flex-shrink: 0; }
+    .crm-task-body { flex: 1; }
+    .crm-task-title { font-size: 14px; font-weight: 500; color: #111827; }
+    .crm-task-title.done { text-decoration: line-through; color: #9ca3af; }
+    .crm-task-meta { font-size: 12px; color: #9ca3af; margin-top: 3px; display: flex; gap: 12px; flex-wrap: wrap; }
+    .crm-task-overdue { color: #dc2626; font-weight: 600; }
 
-    /* Interaction list */
-    .crm-interaction-item { display:flex; gap:14px; padding:14px 0; border-bottom:1px solid #f3f4f6; }
-    .crm-interaction-item:last-child { border-bottom:none; }
-    .crm-interaction-icon { width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
-    .crm-interaction-meta { font-size:11px; color:#9ca3af; margin-top:2px; }
+    /* --- Toast --- */
+    #crm-toast-container {
+        position: fixed;
+        bottom: 24px;
+        right: 24px;
+        z-index: 999999;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+    .crm-toast {
+        padding: 12px 18px;
+        border-radius: 8px;
+        font-size: 14px;
+        font-weight: 500;
+        color: #fff;
+        box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+        animation: crm-toast-in 0.3s ease;
+        max-width: 340px;
+    }
+    .crm-toast-success { background: #059669; }
+    .crm-toast-error   { background: #dc2626; }
+    .crm-toast-info    { background: #2563eb; }
+    @keyframes crm-toast-in {
+        from { opacity: 0; transform: translateY(12px); }
+        to   { opacity: 1; transform: translateY(0); }
+    }
 
-    /* Responsive */
-    @media(max-width:640px) {
-        .crm-form-row { grid-template-columns:1fr; }
-        .crm-form-row.triple { grid-template-columns:1fr; }
-        .bntm-stats-row { grid-template-columns:1fr 1fr; }
-        .crm-pipeline { flex-direction:column; }
-        .crm-pipeline-col { flex:unset; }
+    /* --- Frontend pages grid --- */
+    .bntm-frontend-pages-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+        gap: 16px;
+    }
+    .bntm-page-card {
+        border: 1px solid #e5e7eb;
+        border-radius: 10px;
+        overflow: hidden;
+        background: #fff;
+        transition: box-shadow 0.2s;
+    }
+    .bntm-page-card:hover { box-shadow: 0 4px 14px rgba(0,0,0,0.09); }
+    .bntm-page-card-header {
+        padding: 14px 16px 10px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        border-bottom: 1px solid #f3f4f6;
+    }
+    .bntm-page-card-icon {
+        width: 36px;
+        height: 36px;
+        border-radius: 8px;
+        background: #f3f4f6;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #6b7280;
+    }
+    .bntm-page-card-body { padding: 12px 16px; }
+    .bntm-page-card-body h4 { margin: 0 0 6px; font-size: 14px; font-weight: 600; color: #111827; }
+    .bntm-page-card-body p  { margin: 0; font-size: 12px; color: #6b7280; line-height: 1.5; }
+    .bntm-page-card-footer {
+        padding: 10px 16px 14px;
+        display: flex;
+        gap: 8px;
+    }
+
+    /* --- Misc --- */
+    .crm-empty-state {
+        text-align: center;
+        padding: 40px 20px;
+        color: #9ca3af;
+    }
+    .crm-empty-state svg { margin-bottom: 12px; opacity: 0.4; }
+    .crm-empty-state p { font-size: 14px; margin: 0; }
+    .crm-pagination {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 12px 0 0;
+        font-size: 13px;
+        color: #6b7280;
+    }
+    .crm-pagination-btns { display: flex; gap: 6px; }
+    .crm-pagination-btns button {
+        padding: 5px 10px;
+        border: 1px solid #e5e7eb;
+        background: #fff;
+        border-radius: 5px;
+        cursor: pointer;
+        font-size: 13px;
+        color: #374151;
+        transition: background 0.15s;
+    }
+    .crm-pagination-btns button:hover { background: #f3f4f6; }
+    .crm-pagination-btns button.active {
+        background: var(--bntm-primary);
+        color: #fff;
+        border-color: var(--bntm-primary);
+    }
+    .crm-pagination-btns button:disabled { opacity: 0.4; cursor: not-allowed; }
+    .crm-contact-link {
+        color: var(--bntm-primary);
+        text-decoration: none;
+        font-weight: 500;
+    }
+    .crm-contact-link:hover { text-decoration: underline; }
+    .crm-bulk-bar {
+        display: none;
+        align-items: center;
+        gap: 12px;
+        padding: 10px 14px;
+        background: #eff6ff;
+        border: 1px solid #bfdbfe;
+        border-radius: 8px;
+        margin-bottom: 12px;
+        font-size: 13px;
+        color: #1e40af;
+    }
+    .crm-bulk-bar.visible { display: flex; }
+    .crm-bulk-bar span { font-weight: 600; }
+    .crm-tag-chip {
+        display: inline-flex;
+        align-items: center;
+        padding: 2px 8px;
+        border-radius: 12px;
+        font-size: 11px;
+        font-weight: 500;
+        margin: 2px;
+        color: #fff;
+    }
+    .crm-avatar {
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        background: var(--bntm-primary);
+        color: #fff;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 12px;
+        font-weight: 700;
+        flex-shrink: 0;
+    }
+    .crm-detail-panel {
+        position: fixed;
+        top: 0;
+        right: -520px;
+        width: 500px;
+        height: 100vh;
+        background: #fff;
+        box-shadow: -4px 0 24px rgba(0,0,0,0.12);
+        z-index: 99997;
+        transition: right 0.3s ease;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+    }
+    .crm-detail-panel.open { right: 0; }
+    .crm-detail-panel-overlay {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,0.3);
+        z-index: 99996;
+    }
+    .crm-detail-panel-overlay.active { display: block; }
+    .crm-detail-panel-header {
+        padding: 18px 20px;
+        border-bottom: 1px solid #e5e7eb;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        position: sticky;
+        top: 0;
+        background: #fff;
+        z-index: 1;
+    }
+    .crm-detail-panel-header h3 { margin: 0; font-size: 16px; font-weight: 600; }
+    .crm-detail-panel-body { padding: 20px; flex: 1; }
+    .crm-detail-field { margin-bottom: 14px; }
+    .crm-detail-field label { font-size: 12px; color: #6b7280; font-weight: 500; display: block; margin-bottom: 4px; }
+    .crm-detail-field span  { font-size: 14px; color: #111827; font-weight: 500; }
+    @media (max-width: 768px) {
+        .form-grid-2, .form-grid-3 { grid-template-columns: 1fr; }
+        .bntm-stats-row { grid-template-columns: 1fr 1fr; }
+        .crm-filters-bar { flex-direction: column; align-items: stretch; }
+        .crm-filters-bar input, .crm-filters-bar select { min-width: unset; }
+        .crm-detail-panel { width: 100%; right: -100%; }
+        .crm-kanban-board { gap: 10px; }
+        .crm-kanban-column { min-width: 230px; width: 230px; }
     }
     </style>
 
+    <div id="crm-toast-container"></div>
+    <div class="crm-detail-panel-overlay" id="crm-panel-overlay"></div>
+
     <script>
-    // ── Shared utilities ──
-    function crmShowToast(msg, type) {
-        var el = document.getElementById('crm-toast');
-        if (!el) {
-            el = document.createElement('div');
-            el.id = 'crm-toast';
-            el.style.cssText = 'position:fixed;bottom:24px;right:24px;z-index:99999;display:flex;flex-direction:column;gap:8px;';
-            document.body.appendChild(el);
-        }
-        var t = document.createElement('div');
-        t.style.cssText = 'padding:12px 18px;border-radius:10px;font-size:14px;font-weight:500;box-shadow:0 4px 20px rgba(0,0,0,.15);transition:opacity .3s;max-width:320px;';
-        t.style.background = type === 'success' ? '#065f46' : '#991b1b';
-        t.style.color = '#fff';
-        t.textContent = msg;
-        el.appendChild(t);
-        setTimeout(function(){ t.style.opacity='0'; setTimeout(function(){ t.remove(); },300); }, 3000);
-    }
+    (function() {
+        // --- Toast ---
+        window.crmToast = function(message, type) {
+            type = type || 'success';
+            var container = document.getElementById('crm-toast-container');
+            var toast = document.createElement('div');
+            toast.className = 'crm-toast crm-toast-' + type;
+            toast.textContent = message;
+            container.appendChild(toast);
+            setTimeout(function() {
+                toast.style.opacity = '0';
+                toast.style.transition = 'opacity 0.3s';
+                setTimeout(function() { toast.remove(); }, 300);
+            }, 3500);
+        };
 
-    function crmOpenModal(id) {
-        var m = document.getElementById(id);
-        if (m) { m.classList.add('open'); document.body.style.overflow='hidden'; }
-    }
-    function crmCloseModal(id) {
-        var m = document.getElementById(id);
-        if (m) { m.classList.remove('open'); document.body.style.overflow=''; }
-    }
-
-    // Close modal on overlay click
-    document.addEventListener('click', function(e) {
-        if (e.target.classList.contains('crm-modal-overlay')) {
-            e.target.classList.remove('open');
-            document.body.style.overflow = '';
-        }
-    });
-
-    // Copy URL helper
-    document.addEventListener('click', function(e) {
-        if (e.target.classList.contains('copy-page-url')) {
-            var url = e.target.getAttribute('data-url');
-            if (navigator.clipboard) {
-                navigator.clipboard.writeText(url).then(function(){ crmShowToast('URL copied!','success'); });
-            } else {
-                var ta = document.createElement('textarea');
-                ta.value = url;
-                document.body.appendChild(ta);
-                ta.select();
-                document.execCommand('copy');
-                ta.remove();
-                crmShowToast('URL copied!','success');
+        // --- Modal open/close ---
+        window.crmOpenModal = function(id) {
+            var el = document.getElementById(id);
+            if (el) el.classList.add('active');
+        };
+        window.crmCloseModal = function(id) {
+            var el = document.getElementById(id);
+            if (el) el.classList.remove('active');
+        };
+        document.addEventListener('click', function(e) {
+            if (e.target.classList.contains('crm-modal-overlay')) {
+                e.target.classList.remove('active');
             }
-        }
-    });
+            if (e.target.classList.contains('crm-modal-close')) {
+                var overlay = e.target.closest('.crm-modal-overlay');
+                if (overlay) overlay.classList.remove('active');
+            }
+        });
+
+        // --- Slide panel ---
+        window.crmOpenPanel = function(id) {
+            var panel   = document.getElementById(id);
+            var overlay = document.getElementById('crm-panel-overlay');
+            if (panel)   panel.classList.add('open');
+            if (overlay) overlay.classList.add('active');
+        };
+        window.crmClosePanel = function(id) {
+            var panel   = document.getElementById(id);
+            var overlay = document.getElementById('crm-panel-overlay');
+            if (panel)   panel.classList.remove('open');
+            if (overlay) overlay.classList.remove('active');
+        };
+        document.getElementById('crm-panel-overlay').addEventListener('click', function() {
+            document.querySelectorAll('.crm-detail-panel.open').forEach(function(p) {
+                p.classList.remove('open');
+            });
+            this.classList.remove('active');
+        });
+
+        // --- AJAX helper ---
+        window.crmAjax = function(action, data, callback) {
+            data.action = action;
+            data.nonce  = bntm_crm_nonce;
+            var body = new FormData();
+            Object.keys(data).forEach(function(k) {
+                if (Array.isArray(data[k])) {
+                    data[k].forEach(function(v) { body.append(k + '[]', v); });
+                } else {
+                    body.append(k, data[k]);
+                }
+            });
+            fetch(ajaxurl, { method: 'POST', body: body })
+                .then(function(r) { return r.json(); })
+                .then(function(r) { callback(null, r); })
+                .catch(function(e) { callback(e, null); });
+        };
+
+        // --- Copy URL utility ---
+        document.addEventListener('click', function(e) {
+            if (e.target.classList.contains('copy-page-url')) {
+                var url = e.target.getAttribute('data-url');
+                if (navigator.clipboard) {
+                    navigator.clipboard.writeText(url).then(function() {
+                        crmToast('URL copied to clipboard', 'success');
+                    });
+                } else {
+                    var t = document.createElement('textarea');
+                    t.value = url;
+                    document.body.appendChild(t);
+                    t.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(t);
+                    crmToast('URL copied to clipboard', 'success');
+                }
+            }
+        });
+    })();
     </script>
     <?php
     $content = ob_get_clean();
-    return bntm_universal_container('CRM', $content);
+    return bntm_universal_container('Customer Relationship Management', $content);
 }
 
-// ============================================================
-// TAB: OVERVIEW
-// ============================================================
+// =============================================================================
+// TAB 1 — DASHBOARD TAB
+// =============================================================================
 
-/**
- * Render the overview tab content for the CRM dashboard.
- * @param int $business_id Business ID to scope the CRM data.
- * @return array
- */
-function crm_overview_tab($business_id) {
+function crm_dashboard_tab($business_id) {
     global $wpdb;
-    $stats = crm_get_stats($business_id);
 
-    $overview_graph_metrics = [
-        ['label' => 'Total Leads', 'value' => $stats['total_leads'], 'sub' => number_format($stats['active_contacts']) . ' contacts', 'color' => '#6366f1', 'display_value' => number_format($stats['total_leads'])],
-        ['label' => 'Active Opportunities', 'value' => $stats['active_opportunities'], 'sub' => crm_format_price($stats['pipeline_value']) . ' open pipeline', 'color' => '#10b981', 'display_value' => number_format($stats['active_opportunities'])],
-        ['label' => 'Won / Closed Clients', 'value' => $stats['won_leads'], 'sub' => crm_format_price($stats['won_value']) . ' value', 'color' => '#f59e0b', 'display_value' => number_format($stats['won_leads'])],
-        ['label' => 'Lost / Ended Deals', 'value' => $stats['lost_deals'], 'sub' => 'Closed or ended', 'color' => '#ef4444', 'display_value' => number_format($stats['lost_deals'])],
-        ['label' => 'MOTM Completion', 'value' => $stats['motm_completion'], 'sub' => 'Leads with MOTM uploaded', 'color' => '#6366f1', 'display_value' => number_format($stats['motm_completion']) . '%'],
-    ];
-    $overview_graph_max = max(array_column($overview_graph_metrics, 'value')) ?: 1;
+    $contacts_table  = $wpdb->prefix . 'bntm_crm_contacts';
+    $deals_table     = $wpdb->prefix . 'bntm_crm_deals';
+    $tasks_table     = $wpdb->prefix . 'bntm_crm_tasks';
+    $activities_table = $wpdb->prefix . 'bntm_crm_activities';
+    $stages_table    = $wpdb->prefix . 'bntm_crm_pipeline_stages';
+
+    $total_contacts = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$contacts_table} WHERE deleted_at IS NULL");
+    $open_deals     = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$deals_table} WHERE status = 'open' AND deleted_at IS NULL");
+    $tasks_due      = (int) $wpdb->get_var($wpdb->prepare(
+        "SELECT COUNT(*) FROM {$tasks_table} WHERE status != 'done' AND due_date <= %s",
+        date('Y-m-d 23:59:59', strtotime('+7 days'))
+    ));
+    $month_start    = date('Y-m-01 00:00:00');
+    $month_end      = date('Y-m-t 23:59:59');
+    $won_this_month = (int) $wpdb->get_var($wpdb->prepare(
+        "SELECT COUNT(*) FROM {$deals_table} WHERE status = 'won' AND updated_at BETWEEN %s AND %s",
+        $month_start, $month_end
+    ));
+    $lost_this_month = (int) $wpdb->get_var($wpdb->prepare(
+        "SELECT COUNT(*) FROM {$deals_table} WHERE status = 'lost' AND updated_at BETWEEN %s AND %s",
+        $month_start, $month_end
+    ));
+    $pipeline_value = (float) $wpdb->get_var("SELECT SUM(value) FROM {$deals_table} WHERE status = 'open' AND deleted_at IS NULL");
+
+    $recent_activities = $wpdb->get_results(
+        "SELECT a.*, CONCAT(c.first_name, ' ', c.last_name) AS contact_name, c.id AS cid
+         FROM {$activities_table} a
+         LEFT JOIN {$contacts_table} c ON a.contact_id = c.id
+         ORDER BY a.logged_at DESC LIMIT 8"
+    );
+
+    $upcoming_tasks = $wpdb->get_results($wpdb->prepare(
+        "SELECT t.*, CONCAT(c.first_name, ' ', c.last_name) AS contact_name
+         FROM {$tasks_table} t
+         LEFT JOIN {$contacts_table} c ON t.contact_id = c.id
+         WHERE t.status != 'done' AND t.due_date >= %s
+         ORDER BY t.due_date ASC LIMIT 6",
+        current_time('mysql')
+    ));
+
+    $pipeline_stages = $wpdb->get_results(
+        "SELECT ps.name, COUNT(d.id) AS deal_count, COALESCE(SUM(d.value),0) AS stage_value
+         FROM {$stages_table} ps
+         LEFT JOIN {$deals_table} d ON d.stage_id = ps.id AND d.status = 'open' AND d.deleted_at IS NULL
+         GROUP BY ps.id, ps.name ORDER BY ps.sort_order ASC LIMIT 8"
+    );
+
+    $top_contacts = $wpdb->get_results(
+        "SELECT c.id, CONCAT(c.first_name, ' ', c.last_name) AS contact_name,
+                c.company, c.status, COALESCE(SUM(d.value),0) AS total_value
+         FROM {$contacts_table} c
+         LEFT JOIN {$deals_table} d ON d.contact_id = c.id AND d.status = 'open' AND d.deleted_at IS NULL
+         WHERE c.deleted_at IS NULL
+         GROUP BY c.id ORDER BY total_value DESC LIMIT 5"
+    );
 
     ob_start();
     ?>
-    <div style="display:flex;align-items:center;justify-content:flex-end;gap:12px;margin-bottom:18px;">
-        <label for="overview-display-mode" style="margin:0;font-size:14px;color:#374151;">Overview view</label>
-        <select id="overview-display-mode" class="crm-select" style="width:auto;min-width:180px;" onchange="crmSwitchOverviewDisplay(this.value)">
-            <option value="cards">Stat Cards</option>
-            <option value="graph">Bar Graph</option>
-        </select>
+    <div class="crm-dashboard-toolbar" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px;">
+        <div style="display:flex;gap:8px;">
+            <button class="bntm-btn-primary bntm-btn-small" onclick="crmOpenModal('crm-quick-add-modal')">
+                <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="margin-right:5px;vertical-align:middle;">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+                </svg>
+                Quick Add
+            </button>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;">
+            <label style="font-size:13px;color:#6b7280;margin:0;">View:</label>
+            <select id="crm-dashboard-view-mode" style="width:auto;min-width:160px;">
+                <option value="cards">Summary Cards</option>
+                <option value="graphs">Bar Graphs</option>
+            </select>
+        </div>
     </div>
-    <div id="overview-stat-cards">
-    <!-- Stat Cards -->
-    <div class="bntm-stats-row">
-        <div class="bntm-stat-card">
-            <div class="stat-icon" style="background:var(--bntm-primary,#6366f1);">
-                <svg width="24" height="24" fill="none" stroke="white" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+
+    <!-- KPI Cards View -->
+    <div id="crm-view-cards">
+        <div class="bntm-stats-row">
+            <div class="bntm-stat-card">
+                <div class="stat-icon" style="background:linear-gradient(135deg,var(--bntm-primary),var(--bntm-primary-hover));">
+                    <svg width="24" height="24" fill="none" stroke="white" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/>
+                    </svg>
+                </div>
+                <div class="stat-content">
+                    <h3>Total Contacts</h3>
+                    <p class="stat-number"><?php echo number_format($total_contacts); ?></p>
+                    <span class="stat-label">All records</span>
+                </div>
             </div>
-            <div class="stat-content">
-                <h3>Total Leads</h3>
-                <p class="stat-number"><?php echo number_format($stats['total_leads']); ?></p>
-                <span class="stat-label"><?php echo number_format($stats['active_contacts']); ?> contacts</span>
+            <div class="bntm-stat-card">
+                <div class="stat-icon" style="background:linear-gradient(135deg,#059669,#34d399);">
+                    <svg width="24" height="24" fill="none" stroke="white" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+                    </svg>
+                </div>
+                <div class="stat-content">
+                    <h3>Open Deals</h3>
+                    <p class="stat-number"><?php echo number_format($open_deals); ?></p>
+                    <span class="stat-label"><?php echo crm_format_price($pipeline_value); ?> pipeline</span>
+                </div>
             </div>
-        </div>
-        <div class="bntm-stat-card">
-            <div class="stat-icon" style="background:#10b981;">
-                <svg width="24" height="24" fill="none" stroke="white" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>
+            <div class="bntm-stat-card">
+                <div class="stat-icon" style="background:linear-gradient(135deg,#f59e0b,#fbbf24);">
+                    <svg width="24" height="24" fill="none" stroke="white" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/>
+                    </svg>
+                </div>
+                <div class="stat-content">
+                    <h3>Tasks Due</h3>
+                    <p class="stat-number"><?php echo number_format($tasks_due); ?></p>
+                    <span class="stat-label">Next 7 days</span>
+                </div>
             </div>
-            <div class="stat-content">
-                <h3>Active Opportunities</h3>
-                <p class="stat-number"><?php echo number_format($stats['active_opportunities']); ?></p>
-                <span class="stat-label"><?php echo crm_format_price($stats['pipeline_value']); ?> open pipeline</span>
-            </div>
-        </div>
-        <div class="bntm-stat-card">
-            <div class="stat-icon" style="background:#f59e0b;">
-                <svg width="24" height="24" fill="none" stroke="white" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-            </div>
-            <div class="stat-content">
-                <h3>Won / Closed Clients</h3>
-                <p class="stat-number"><?php echo number_format($stats['won_leads']); ?></p>
-                <span class="stat-label"><?php echo crm_format_price($stats['won_value']); ?> value</span>
-            </div>
-        </div>
-        <div class="bntm-stat-card">
-            <div class="stat-icon" style="background:#ef4444;">
-                <svg width="24" height="24" fill="none" stroke="white" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 6L6 18M6 6l12 12"/></svg>
-            </div>
-            <div class="stat-content">
-                <h3>Lost / Ended Deals</h3>
-                <p class="stat-number"><?php echo number_format($stats['lost_deals']); ?></p>
-                <span class="stat-label">Closed or ended</span>
+            <div class="bntm-stat-card">
+                <div class="stat-icon" style="background:linear-gradient(135deg,#10b981,#6ee7b7);">
+                    <svg width="24" height="24" fill="none" stroke="white" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z"/>
+                    </svg>
+                </div>
+                <div class="stat-content">
+                    <h3>Won This Month</h3>
+                    <p class="stat-number"><?php echo number_format($won_this_month); ?></p>
+                    <span class="stat-label"><?php echo number_format($lost_this_month); ?> lost</span>
+                </div>
             </div>
         </div>
     </div>
 
-    <div class="bntm-stats-row">
-        <div class="bntm-stat-card">
-            <div class="stat-icon" style="background:#6366f1;">
-                <svg width="24" height="24" fill="none" stroke="white" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+    <!-- Bar Graphs View -->
+    <div id="crm-view-graphs" style="display:none;">
+        <div class="bntm-form-section">
+            <div class="bntm-section-header">
+                <h3>Period-over-Period Comparison</h3>
+                <select id="crm-graph-period" style="width:auto;">
+                    <option value="monthly">Monthly</option>
+                    <option value="weekly">Weekly</option>
+                </select>
             </div>
-            <div class="stat-content">
-                <h3>MOTM Completion</h3>
-                <p class="stat-number"><?php echo number_format($stats['motm_completion']); ?>%</p>
-                <span class="stat-label">Leads with MOTM uploaded</span>
-            </div>
-        </div>
-        <div class="bntm-stat-card">
-            <div class="stat-icon" style="background:#0ea5e9;">
-                <svg width="24" height="24" fill="none" stroke="white" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
-            </div>
-            <div class="stat-content">
-                <h3>Pipeline Type Breakdown</h3>
-                <p class="stat-number" style="font-size:18px;line-height:1.2;">&nbsp;</p>
-                <span class="stat-label">
-                    <?php foreach ($stats['pipeline_type_breakdown'] as $row): ?>
-                        <?php echo esc_html(crm_pipeline_type_label($row['pipeline_type'])); ?>: <?php echo number_format($row['total']); ?><br>
-                    <?php endforeach; ?>
-                </span>
-            </div>
-        </div>
-        <div class="bntm-stat-card">
-            <div class="stat-icon" style="background:#14b8a6;">
-                <svg width="24" height="24" fill="none" stroke="white" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 6h18M3 12h18M3 18h18"/></svg>
-            </div>
-            <div class="stat-content">
-                <h3>Leads by Source</h3>
-                <p class="stat-number" style="font-size:18px;line-height:1.2;">&nbsp;</p>
-                <span class="stat-label">
-                    <?php foreach ($stats['lead_source_breakdown'] as $row): ?>
-                        <?php echo esc_html($row['lead_source'] ?: 'Unspecified'); ?>: <?php echo number_format($row['total']); ?><br>
-                    <?php endforeach; ?>
-                </span>
-            </div>
-        </div>
-        <div class="bntm-stat-card">
-            <div class="stat-icon" style="background:#f59e0b;">
-                <svg width="24" height="24" fill="none" stroke="white" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
-            </div>
-            <div class="stat-content">
-                <h3>Deals by Product / Service</h3>
-                <p class="stat-number" style="font-size:18px;line-height:1.2;">&nbsp;</p>
-                <span class="stat-label">
-                    <?php foreach ($stats['product_service_breakdown'] as $row): ?>
-                        <?php echo esc_html($row['item']); ?>: <?php echo number_format($row['total']); ?><br>
-                    <?php endforeach; ?>
-                </span>
+            <div style="position:relative;height:280px;">
+                <canvas id="crm-bar-chart" style="width:100%;height:100%;"></canvas>
             </div>
         </div>
     </div>
 
-    <div id="overview-bar-graph" style="display:none;">
-        <div class="crm-overview-graph">
-            <?php foreach ($overview_graph_metrics as $metric):
-                $bar_width = $overview_graph_max ? round(($metric['value'] / $overview_graph_max) * 100) : 0;
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px;" class="crm-dashboard-grid">
+
+        <!-- Recent Activity Feed -->
+        <div class="bntm-form-section" style="margin-bottom:0;">
+            <div class="bntm-section-header">
+                <h3>Recent Activity</h3>
+                <a href="?tab=activities" style="font-size:13px;color:var(--bntm-primary);text-decoration:none;">View all</a>
+            </div>
+            <?php if (!empty($recent_activities)): ?>
+            <ul class="crm-activity-feed">
+                <?php foreach ($recent_activities as $act): ?>
+                <li class="crm-activity-item">
+                    <div class="crm-activity-icon type-<?php echo esc_attr($act->type); ?>">
+                        <?php echo crm_get_activity_icon($act->type); ?>
+                    </div>
+                    <div class="crm-activity-body">
+                        <strong><?php echo esc_html(ucfirst(str_replace('_', ' ', $act->type))); ?></strong>
+                        <?php if ($act->contact_name): ?>
+                        <p>
+                            <a href="?tab=contacts&contact_id=<?php echo intval($act->cid); ?>" class="crm-contact-link">
+                                <?php echo esc_html(trim($act->contact_name)); ?>
+                            </a>
+                            <?php if ($act->subject): ?> &mdash; <?php echo esc_html($act->subject); ?><?php endif; ?>
+                        </p>
+                        <?php endif; ?>
+                    </div>
+                    <div class="crm-activity-meta">
+                        <?php echo esc_html(human_time_diff(strtotime($act->logged_at), current_time('timestamp'))); ?> ago
+                    </div>
+                </li>
+                <?php endforeach; ?>
+            </ul>
+            <?php else: ?>
+            <div class="crm-empty-state">
+                <svg width="40" height="40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
+                </svg>
+                <p>No activity logged yet.</p>
+            </div>
+            <?php endif; ?>
+        </div>
+
+        <!-- Upcoming Tasks -->
+        <div class="bntm-form-section" style="margin-bottom:0;">
+            <div class="bntm-section-header">
+                <h3>Upcoming Tasks</h3>
+                <a href="?tab=tasks" style="font-size:13px;color:var(--bntm-primary);text-decoration:none;">View all</a>
+            </div>
+            <?php if (!empty($upcoming_tasks)): ?>
+            <div>
+                <?php foreach ($upcoming_tasks as $task):
+                    $is_overdue = strtotime($task->due_date) < current_time('timestamp') && $task->status !== 'done';
                 ?>
-            <div class="crm-overview-graph-row">
-                <div class="crm-overview-graph-header">
-                    <span><?php echo esc_html($metric['label']); ?></span>
-                    <span><?php echo esc_html($metric['display_value']); ?></span>
-                </div>
-                <div class="crm-overview-graph-bar">
-                    <div class="crm-overview-graph-bar-fill" style="width:<?php echo esc_attr($bar_width); ?>%;background:<?php echo esc_attr($metric['color']); ?>;"></div>
-                </div>
-                <div class="crm-overview-graph-meta"><?php echo esc_html($metric['sub']); ?></div>
-            </div>
-            <?php endforeach; ?>
-        </div>
-    </div>
-
-    <style>
-    .crm-overview-graph { display:grid; gap:18px; margin-bottom:24px; }
-    .crm-overview-graph-row { background:#fff; border:1px solid #e5e7eb; border-radius:14px; padding:16px; }
-    .crm-overview-graph-header { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:10px; font-weight:600; color:#111827; }
-    .crm-overview-graph-bar { height:12px; background:#f3f4f6; border-radius:999px; overflow:hidden; }
-    .crm-overview-graph-bar-fill { height:100%; border-radius:999px; }
-    .crm-overview-graph-meta { font-size:13px; color:#6b7280; }
-    </style>
-    <script>
-    function crmSwitchOverviewDisplay(displayMode) {
-        var cards = document.getElementById('overview-stat-cards');
-        var graph = document.getElementById('overview-bar-graph');
-        if (!cards || !graph) return;
-        cards.style.display = displayMode === 'cards' ? '' : 'none';
-        graph.style.display = displayMode === 'graph' ? '' : 'none';
-    }
-    </script>
-
-    <!-- Recent Interactions -->
-    <div class="bntm-form-section">
-        <h3>Recent Interactions</h3>
-        <?php
-        $recent = $wpdb->get_results($wpdb->prepare(
-            "SELECT i.*, c.first_name, c.last_name
-             FROM {$wpdb->prefix}crm_interactions i
-             LEFT JOIN {$wpdb->prefix}crm_contacts c ON c.id = i.contact_id
-             WHERE i.business_id = %d AND i.status = 'active'
-             ORDER BY i.interaction_date DESC LIMIT 5",
-            $business_id
-        ));
-        $type_colors = ['call'=>'#7c3aed','email'=>'#0891b2','meeting'=>'#c2410c','note'=>'#15803d'];
-        $type_icons  = [
-            'call'    => '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"/>',
-            'email'   => '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>',
-            'meeting' => '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>',
-            'note'    => '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>',
-        ];
-        if (empty($recent)): ?>
-        <p style="color:#9ca3af;font-size:14px;margin:0;">No interactions yet. Log your first interaction from the Interactions tab.</p>
-        <?php else: ?>
-        <div>
-            <?php foreach ($recent as $item):
-                $col   = $type_colors[$item->type] ?? '#6b7280';
-                $ipath = $type_icons[$item->type] ?? $type_icons['note'];
-                ?>
-            <div class="crm-interaction-item">
-                <div class="crm-interaction-icon" style="background:<?php echo esc_attr($col); ?>22;">
-                    <svg width="18" height="18" fill="none" stroke="<?php echo esc_attr($col); ?>" viewBox="0 0 24 24"><?php echo $ipath; ?></svg>
-                </div>
-                <div style="flex:1;">
-                    <div style="font-size:14px;font-weight:500;color:#111827;"><?php echo esc_html($item->subject); ?></div>
-                    <div class="crm-interaction-meta">
-                        <?php echo esc_html($item->first_name . ' ' . $item->last_name); ?> &middot; <?php echo date('M j, Y g:i A', strtotime($item->interaction_date)); ?>
+                <div class="crm-task-item">
+                    <div style="flex:1;">
+                        <div class="crm-task-title"><?php echo esc_html($task->title); ?></div>
+                        <div class="crm-task-meta">
+                            <span class="bntm-badge bntm-badge-<?php echo esc_attr($task->priority); ?>"><?php echo esc_html(ucfirst($task->priority)); ?></span>
+                            <?php if ($task->contact_name): ?>
+                            <span><?php echo esc_html(trim($task->contact_name)); ?></span>
+                            <?php endif; ?>
+                            <span class="<?php echo $is_overdue ? 'crm-task-overdue' : ''; ?>">
+                                <?php echo $is_overdue ? 'Overdue: ' : ''; ?>
+                                <?php echo esc_html(date('M j', strtotime($task->due_date))); ?>
+                            </span>
+                        </div>
                     </div>
                 </div>
-                <span class="crm-badge crm-badge-<?php echo esc_attr($item->type); ?>"><?php echo esc_html($item->type); ?></span>
+                <?php endforeach; ?>
             </div>
-            <?php endforeach; ?>
+            <?php else: ?>
+            <div class="crm-empty-state">
+                <svg width="40" height="40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+                </svg>
+                <p>No upcoming tasks.</p>
+            </div>
+            <?php endif; ?>
         </div>
-        <?php endif; ?>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px;" class="crm-dashboard-grid">
+
+        <!-- Pipeline Funnel -->
+        <div class="bntm-form-section" style="margin-bottom:0;">
+            <div class="bntm-section-header">
+                <h3>Pipeline by Stage</h3>
+                <a href="?tab=pipeline" style="font-size:13px;color:var(--bntm-primary);text-decoration:none;">Open board</a>
+            </div>
+            <?php if (!empty($pipeline_stages)): ?>
+            <div>
+                <?php
+                $max_deals = max(array_column($pipeline_stages, 'deal_count'));
+                $max_deals = $max_deals > 0 ? $max_deals : 1;
+                foreach ($pipeline_stages as $stage):
+                    $pct = round(($stage->deal_count / $max_deals) * 100);
+                ?>
+                <div style="margin-bottom:12px;">
+                    <div style="display:flex;justify-content:space-between;font-size:13px;color:#374151;margin-bottom:4px;">
+                        <span style="font-weight:500;"><?php echo esc_html($stage->name); ?></span>
+                        <span style="color:#6b7280;"><?php echo intval($stage->deal_count); ?> deal<?php echo $stage->deal_count != 1 ? 's' : ''; ?> &mdash; <?php echo crm_format_price($stage->stage_value); ?></span>
+                    </div>
+                    <div style="height:8px;background:#f3f4f6;border-radius:4px;overflow:hidden;">
+                        <div style="height:100%;width:<?php echo intval($pct); ?>%;background:var(--bntm-primary);border-radius:4px;transition:width 0.4s;"></div>
+                    </div>
+                </div>
+                <?php endforeach; ?>
+            </div>
+            <?php else: ?>
+            <div class="crm-empty-state">
+                <svg width="40" height="40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+                </svg>
+                <p>No pipeline stages configured.</p>
+            </div>
+            <?php endif; ?>
+        </div>
+
+        <!-- Top Contacts -->
+        <div class="bntm-form-section" style="margin-bottom:0;">
+            <div class="bntm-section-header">
+                <h3>Top Contacts by Deal Value</h3>
+                <a href="?tab=contacts" style="font-size:13px;color:var(--bntm-primary);text-decoration:none;">All contacts</a>
+            </div>
+            <?php if (!empty($top_contacts)): ?>
+            <div>
+                <?php foreach ($top_contacts as $i => $contact): ?>
+                <div style="display:flex;align-items:center;gap:12px;padding:9px 0;border-bottom:1px solid #f3f4f6;">
+                    <div class="crm-avatar" style="font-size:11px;">
+                        <?php
+                        $parts = explode(' ', trim($contact->contact_name));
+                        echo esc_html(strtoupper(substr($parts[0], 0, 1) . (isset($parts[1]) ? substr($parts[1], 0, 1) : '')));
+                        ?>
+                    </div>
+                    <div style="flex:1;">
+                        <a href="?tab=contacts&contact_id=<?php echo intval($contact->id); ?>" class="crm-contact-link" style="font-size:14px;">
+                            <?php echo esc_html(trim($contact->contact_name)); ?>
+                        </a>
+                        <?php if ($contact->company): ?>
+                        <div style="font-size:12px;color:#9ca3af;"><?php echo esc_html($contact->company); ?></div>
+                        <?php endif; ?>
+                    </div>
+                    <div style="font-weight:700;color:#059669;font-size:14px;">
+                        <?php echo crm_format_price($contact->total_value); ?>
+                    </div>
+                </div>
+                <?php endforeach; ?>
+            </div>
+            <?php else: ?>
+            <div class="crm-empty-state">
+                <svg width="40" height="40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/>
+                </svg>
+                <p>No contacts with deals yet.</p>
+            </div>
+            <?php endif; ?>
+        </div>
     </div>
 
     <!-- Frontend Pages -->
     <div class="bntm-form-section">
         <h3>Frontend Pages</h3>
-        <p style="color:#6b7280;margin-bottom:16px;font-size:14px;">Public-facing pages for this module. Share these links with your customers.</p>
+        <p style="color:#6b7280;margin-bottom:16px;font-size:13px;">
+            Public-facing pages for this module. Share these links with your customers.
+        </p>
         <div class="bntm-frontend-pages-grid">
+
             <div class="bntm-page-card">
                 <div class="bntm-page-card-header">
                     <div class="bntm-page-card-icon">
-                        <svg width="18" height="18" fill="none" stroke="white" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                        <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                        </svg>
                     </div>
-                    <span class="bntm-page-audience-badge bntm-badge-public">Public</span>
+                    <span class="bntm-badge bntm-badge-public">Public</span>
                 </div>
                 <div class="bntm-page-card-body">
                     <h4>Contact Form</h4>
-                    <p>Public lead capture form — visitors can submit their details and a lead is automatically created.</p>
+                    <p>Lead capture form for website visitors to submit their details into the CRM.</p>
                 </div>
                 <div class="bntm-page-card-footer">
                     <?php
-                    $page = get_page_by_path('contact-form');
+                    $page = get_page_by_path('crm-contact-form');
                     $url  = $page ? get_permalink($page->ID) : '#';
                     ?>
                     <a href="<?php echo esc_url($url); ?>" target="_blank" class="bntm-btn-primary bntm-btn-small">Open Page</a>
                     <button class="bntm-btn-secondary bntm-btn-small copy-page-url" data-url="<?php echo esc_url($url); ?>">Copy URL</button>
                 </div>
             </div>
+
+            <div class="bntm-page-card">
+                <div class="bntm-page-card-header">
+                    <div class="bntm-page-card-icon">
+                        <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+                        </svg>
+                    </div>
+                    <span class="bntm-badge bntm-badge-loggedin">Logged In</span>
+                </div>
+                <div class="bntm-page-card-body">
+                    <h4>Customer Portal</h4>
+                    <p>Self-service portal where customers can view their deals, activity, and documents.</p>
+                </div>
+                <div class="bntm-page-card-footer">
+                    <?php
+                    $page = get_page_by_path('crm-customer-portal');
+                    $url  = $page ? get_permalink($page->ID) : '#';
+                    ?>
+                    <a href="<?php echo esc_url($url); ?>" target="_blank" class="bntm-btn-primary bntm-btn-small">Open Page</a>
+                    <button class="bntm-btn-secondary bntm-btn-small copy-page-url" data-url="<?php echo esc_url($url); ?>">Copy URL</button>
+                </div>
+            </div>
+
+            <div class="bntm-page-card">
+                <div class="bntm-page-card-header">
+                    <div class="bntm-page-card-icon">
+                        <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/>
+                        </svg>
+                    </div>
+                    <span class="bntm-badge bntm-badge-public">Token Access</span>
+                </div>
+                <div class="bntm-page-card-body">
+                    <h4>Deal / Proposal View</h4>
+                    <p>Shareable branded deal page where contacts can accept or decline a proposal.</p>
+                </div>
+                <div class="bntm-page-card-footer">
+                    <?php
+                    $page = get_page_by_path('crm-deal-view');
+                    $url  = $page ? get_permalink($page->ID) : '#';
+                    ?>
+                    <a href="<?php echo esc_url($url); ?>" target="_blank" class="bntm-btn-primary bntm-btn-small">Open Page</a>
+                    <button class="bntm-btn-secondary bntm-btn-small copy-page-url" data-url="<?php echo esc_url($url); ?>">Copy URL</button>
+                </div>
+            </div>
+
+            <div class="bntm-page-card">
+                <div class="bntm-page-card-header">
+                    <div class="bntm-page-card-icon">
+                        <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/>
+                        </svg>
+                    </div>
+                    <span class="bntm-badge bntm-badge-public">Public</span>
+                </div>
+                <div class="bntm-page-card-body">
+                    <h4>Unsubscribe Page</h4>
+                    <p>GDPR-compliant opt-out page for contacts to unsubscribe from communications.</p>
+                </div>
+                <div class="bntm-page-card-footer">
+                    <?php
+                    $page = get_page_by_path('crm-unsubscribe');
+                    $url  = $page ? get_permalink($page->ID) : '#';
+                    ?>
+                    <a href="<?php echo esc_url($url); ?>" target="_blank" class="bntm-btn-primary bntm-btn-small">Open Page</a>
+                    <button class="bntm-btn-secondary bntm-btn-small copy-page-url" data-url="<?php echo esc_url($url); ?>">Copy URL</button>
+                </div>
+            </div>
+
+        </div>
+        <div id="copy-url-message"></div>
+    </div>
+
+    <!-- Quick Add Modal -->
+    <div class="crm-modal-overlay" id="crm-quick-add-modal">
+        <div class="crm-modal">
+            <div class="crm-modal-header">
+                <h3>Quick Add</h3>
+                <button class="crm-modal-close" type="button">
+                    <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="crm-modal-body">
+                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;">
+                    <a href="?tab=contacts" style="text-decoration:none;">
+                        <div style="border:1px solid #e5e7eb;border-radius:10px;padding:20px;text-align:center;transition:box-shadow 0.2s;cursor:pointer;" onmouseover="this.style.boxShadow='0 4px 14px rgba(0,0,0,0.1)'" onmouseout="this.style.boxShadow='none'">
+                            <div style="width:44px;height:44px;border-radius:10px;background:var(--bntm-primary);display:flex;align-items:center;justify-content:center;margin:0 auto 10px;">
+                                <svg width="22" height="22" fill="none" stroke="white" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+                                </svg>
+                            </div>
+                            <div style="font-size:14px;font-weight:600;color:#111827;">New Contact</div>
+                        </div>
+                    </a>
+                    <a href="?tab=pipeline" style="text-decoration:none;">
+                        <div style="border:1px solid #e5e7eb;border-radius:10px;padding:20px;text-align:center;transition:box-shadow 0.2s;cursor:pointer;" onmouseover="this.style.boxShadow='0 4px 14px rgba(0,0,0,0.1)'" onmouseout="this.style.boxShadow='none'">
+                            <div style="width:44px;height:44px;border-radius:10px;background:#059669;display:flex;align-items:center;justify-content:center;margin:0 auto 10px;">
+                                <svg width="22" height="22" fill="none" stroke="white" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                </svg>
+                            </div>
+                            <div style="font-size:14px;font-weight:600;color:#111827;">New Deal</div>
+                        </div>
+                    </a>
+                    <a href="?tab=tasks" style="text-decoration:none;">
+                        <div style="border:1px solid #e5e7eb;border-radius:10px;padding:20px;text-align:center;transition:box-shadow 0.2s;cursor:pointer;" onmouseover="this.style.boxShadow='0 4px 14px rgba(0,0,0,0.1)'" onmouseout="this.style.boxShadow='none'">
+                            <div style="width:44px;height:44px;border-radius:10px;background:#f59e0b;display:flex;align-items:center;justify-content:center;margin:0 auto 10px;">
+                                <svg width="22" height="22" fill="none" stroke="white" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/>
+                                </svg>
+                            </div>
+                            <div style="font-size:14px;font-weight:600;color:#111827;">New Task</div>
+                        </div>
+                    </a>
+                </div>
+            </div>
         </div>
     </div>
 
     <style>
-    /* Overview tab specific — none needed beyond shared styles */
+    @media (max-width: 768px) {
+        .crm-dashboard-grid { grid-template-columns: 1fr !important; }
+        .crm-dashboard-toolbar { flex-direction: column; align-items: flex-start; }
+    }
     </style>
+
     <script>
     (function() {
-        // Overview tab JS — no actions needed
+        var viewMode = document.getElementById('crm-dashboard-view-mode');
+        var cardsEl  = document.getElementById('crm-view-cards');
+        var graphsEl = document.getElementById('crm-view-graphs');
+        var chartInstance = null;
+
+        viewMode.addEventListener('change', function() {
+            if (this.value === 'cards') {
+                cardsEl.style.display  = '';
+                graphsEl.style.display = 'none';
+            } else {
+                cardsEl.style.display  = 'none';
+                graphsEl.style.display = '';
+                loadBarChart(document.getElementById('crm-graph-period').value);
+            }
+        });
+
+        document.getElementById('crm-graph-period').addEventListener('change', function() {
+            loadBarChart(this.value);
+        });
+
+        function loadBarChart(period) {
+            crmAjax('bntm_crm_get_bar_graph_data', { period: period }, function(err, res) {
+                if (err || !res.success) return;
+                renderBarChart(res.data);
+            });
+        }
+
+        function renderBarChart(data) {
+            var canvas = document.getElementById('crm-bar-chart');
+            if (!canvas) return;
+            var ctx = canvas.getContext('2d');
+            if (chartInstance) chartInstance = null;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            var labels   = data.labels   || [];
+            var contacts = data.contacts || [];
+            var deals    = data.deals    || [];
+            var won      = data.won      || [];
+
+            var barW    = 18;
+            var groupW  = 70;
+            var padding = 40;
+            var maxVal  = Math.max.apply(null, contacts.concat(deals, won, [1]));
+            var h       = canvas.offsetHeight || 260;
+            var w       = canvas.offsetWidth  || 600;
+            canvas.width  = w;
+            canvas.height = h;
+            var chartH = h - padding - 30;
+
+            ctx.clearRect(0, 0, w, h);
+
+            var colors = ['#6366f1', '#059669', '#f59e0b'];
+            var series = [contacts, deals, won];
+            var seriesLabels = ['Contacts', 'Deals', 'Won'];
+
+            labels.forEach(function(label, gi) {
+                var x = padding + gi * groupW;
+                series.forEach(function(s, si) {
+                    var val   = s[gi] || 0;
+                    var barH  = (val / maxVal) * chartH;
+                    var bx    = x + si * (barW + 3);
+                    ctx.fillStyle = colors[si];
+                    ctx.beginPath();
+                    ctx.roundRect(bx, h - 30 - barH, barW, barH, [3, 3, 0, 0]);
+                    ctx.fill();
+                });
+                ctx.fillStyle = '#9ca3af';
+                ctx.font = '11px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText(label, x + (barW + 3) * 1, h - 12);
+            });
+
+            var legendX = padding;
+            seriesLabels.forEach(function(sl, si) {
+                ctx.fillStyle = colors[si];
+                ctx.fillRect(legendX, 6, 12, 12);
+                ctx.fillStyle = '#374151';
+                ctx.font = '11px sans-serif';
+                ctx.textAlign = 'left';
+                ctx.fillText(sl, legendX + 16, 17);
+                legendX += 80;
+            });
+        }
     })();
     </script>
     <?php
     return ob_get_clean();
 }
 
-// ============================================================
-// TAB: CONTACTS  —  Revamped (Apple HIG, new lead fields)
-// ============================================================
- 
-/**
- * Render the contacts tab content for the CRM dashboard.
- * @param int $business_id Business ID to scope the CRM data.
- * @return array
- */
+// =============================================================================
+// TAB 2 — CONTACTS TAB
+// =============================================================================
+
 function crm_contacts_tab($business_id) {
     global $wpdb;
-    $contacts = $wpdb->get_results($wpdb->prepare(
-        "SELECT * FROM {$wpdb->prefix}crm_contacts WHERE business_id = %d ORDER BY created_at DESC",
-        $business_id
-    ));
- 
-    // Pipeline stages for the Add/Edit Lead modal inside the contact detail drawer
-    $pipeline_stages = crm_get_pipeline_stages($business_id);
- 
+
+    $users = get_users(['fields' => ['ID', 'display_name']]);
+    $tags  = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}bntm_crm_tags ORDER BY name ASC");
+
     ob_start();
     ?>
- 
-    <!-- ══════════════════════════════════════════════════
-         CONTACTS TAB — Apple HIG Styles
-    ══════════════════════════════════════════════════ -->
-    <style>
-    /* ── Reset & base ── */
-    .crm-c *,
-    .crm-c *::before,
-    .crm-c *::after { box-sizing: border-box; }
- 
-    .crm-c {
-        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Helvetica Neue", sans-serif;
-        -webkit-font-smoothing: antialiased;
-        color: #1c1c1e;
-    }
- 
-    /* ── Toolbar ── */
-    .crm-c-toolbar {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 12px;
-        flex-wrap: wrap;
-        margin-bottom: 16px;
-    }
- 
-    .crm-c-search-wrap {
-        position: relative;
-        flex: 1;
-        min-width: 200px;
-        max-width: 360px;
-    }
-    .crm-c-search-wrap svg.search-icon {
-        position: absolute;
-        left: 10px;
-        top: 50%;
-        transform: translateY(-50%);
-        color: #8e8e93;
-        pointer-events: none;
-    }
-    .crm-c-search {
-        width: 100%;
-        padding: 8px 12px 8px 34px;
-        background: #f2f2f7;
-        border: none;
-        border-radius: 10px;
-        font-size: 14px;
-        color: #1c1c1e;
-        outline: none;
-        transition: box-shadow .15s;
-    }
-    .crm-c-search:focus {
-        box-shadow: 0 0 0 3px rgba(0, 122, 255, .25);
-        background: #fff;
-        border: 1px solid #007aff;
-    }
-    .crm-c-search::placeholder { color: #8e8e93; }
- 
-    .crm-c-toolbar-right {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        flex-wrap: wrap;
-    }
- 
-    .crm-c-filter-pill {
-        padding: 7px 14px;
-        border-radius: 20px;
-        font-size: 13px;
-        font-weight: 500;
-        border: 1px solid #d1d1d6;
-        background: #fff;
-        color: #3c3c43;
-        cursor: pointer;
-        transition: background .12s, border-color .12s;
-        white-space: nowrap;
-    }
-    .crm-c-filter-pill.active,
-    .crm-c-filter-pill:hover { background: #007aff; border-color: #007aff; color: #fff; }
- 
-    .crm-c-add-btn {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        padding: 8px 16px;
-        background: #007aff;
-        color: #fff;
-        border: none;
-        border-radius: 10px;
-        font-size: 14px;
-        font-weight: 600;
-        cursor: pointer;
-        transition: background .12s, transform .1s;
-        white-space: nowrap;
-    }
-    .crm-c-add-btn:hover  { background: #0062cc; }
-    .crm-c-add-btn:active { transform: scale(0.97); }
- 
-    /* ── Contact List ── */
-    .crm-c-list {
-        background: #fff;
-        border-radius: 14px;
-        border: 1px solid #e5e5ea;
-        overflow: hidden;
-    }
- 
-    .crm-c-list-header {
-        display: grid;
-        grid-template-columns: 2fr 1.5fr 1fr 1fr 90px 80px;
-        padding: 9px 16px;
-        background: #f9f9fb;
-        border-bottom: 1px solid #e5e5ea;
-    }
-    .crm-c-list-header span {
-        font-size: 11px;
-        font-weight: 600;
-        letter-spacing: .04em;
-        text-transform: uppercase;
-        color: #8e8e93;
-    }
- 
-    .crm-c-row {
-        display: grid;
-        grid-template-columns: 2fr 1.5fr 1fr 1fr 90px 80px;
-        align-items: center;
-        padding: 13px 16px;
-        border-bottom: 1px solid #f2f2f7;
-        cursor: pointer;
-        transition: background .1s;
-    }
-    .crm-c-row:last-child { border-bottom: none; }
-    .crm-c-row:hover { background: #f9f9fb; }
- 
-    /* avatar + name cell */
-    .crm-c-name-cell {
-        display: flex;
-        align-items: center;
-        gap: 11px;
-        min-width: 0;
-    }
-    .crm-c-avatar {
-        width: 36px;
-        height: 36px;
-        border-radius: 50%;
-        background: #e3eeff;
-        color: #007aff;
-        font-size: 13px;
-        font-weight: 700;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        flex-shrink: 0;
-        letter-spacing: -.02em;
-    }
-    /* Avatar color variety */
-    .crm-c-avatar.av-green  { background: #e3f9e9; color: #25a244; }
-    .crm-c-avatar.av-orange { background: #fff0e1; color: #bf6400; }
-    .crm-c-avatar.av-purple { background: #f0eaff; color: #7a43c2; }
-    .crm-c-avatar.av-pink   { background: #ffe6f0; color: #c0297e; }
-    .crm-c-avatar.av-teal   { background: #e0f9f4; color: #0f766e; }
- 
-    .crm-c-name { font-size: 14px; font-weight: 600; color: #1c1c1e; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .crm-c-company { font-size: 12px; color: #8e8e93; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
- 
-    .crm-c-cell {
-        font-size: 13px;
-        color: #3c3c43;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        padding-right: 8px;
-    }
-    .crm-c-cell.muted { color: #aeaeb2; }
- 
-    /* Status badge */
-    .crm-c-badge {
-        display: inline-flex;
-        align-items: center;
-        gap: 4px;
-        padding: 3px 9px;
-        border-radius: 20px;
-        font-size: 11px;
-        font-weight: 600;
-    }
-    .crm-c-badge::before {
-        content: '';
-        display: inline-block;
-        width: 6px; height: 6px;
-        border-radius: 50%;
-    }
-    .crm-c-badge-active  { background: #e6f9ee; color: #1a7f3c; }
-    .crm-c-badge-active::before  { background: #25a244; }
-    .crm-c-badge-inactive{ background: #f2f2f7; color: #6e6e73; }
-    .crm-c-badge-inactive::before{ background: #aeaeb2; }
- 
-    /* Row actions */
-    .crm-c-actions {
-        display: flex;
-        align-items: center;
-        gap: 2px;
-        justify-content: flex-end;
-        opacity: 0;
-        transition: opacity .1s;
-    }
-    .crm-c-row:hover .crm-c-actions { opacity: 1; }
- 
-    .crm-c-icon-btn {
-        width: 30px; height: 30px;
-        border-radius: 8px;
-        border: none;
-        background: transparent;
-        display: flex; align-items: center; justify-content: center;
-        cursor: pointer;
-        color: #8e8e93;
-        transition: background .1s, color .1s;
-    }
-    .crm-c-icon-btn:hover { background: #f2f2f7; color: #1c1c1e; }
-    .crm-c-icon-btn.danger:hover { background: #fff0f0; color: #ff3b30; }
- 
-    /* Empty state */
-    .crm-c-empty {
-        padding: 56px 24px;
-        text-align: center;
-        color: #8e8e93;
-    }
-    .crm-c-empty svg { margin-bottom: 14px; opacity: .4; }
-    .crm-c-empty h3 { margin: 0 0 6px; font-size: 16px; font-weight: 600; color: #3c3c43; }
-    .crm-c-empty p  { margin: 0; font-size: 14px; }
- 
-    /* ══════════════════════════════════════════════════
-       SLIDE-OVER DETAIL DRAWER
-    ══════════════════════════════════════════════════ */
-    .crm-drawer-overlay {
-        display: none;
-        position: fixed;
-        inset: 0;
-        z-index: 9998;
-        background: rgba(0,0,0,.35);
-        backdrop-filter: blur(2px);
-    }
-    .crm-drawer-overlay.open { display: block; }
- 
-    .crm-drawer {
-        position: fixed;
-        top: 0; right: 0; bottom: 0;
-        width: 420px;
-        max-width: 100vw;
-        background: #f2f2f7;
-        z-index: 9999;
-        display: flex;
-        flex-direction: column;
-        transform: translateX(110%);
-        transition: transform .3s cubic-bezier(.4,0,.2,1);
-        box-shadow: -4px 0 32px rgba(0,0,0,.12);
-    }
-    .crm-drawer.open { transform: translateX(0); }
- 
-    .crm-drawer-topbar {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: 16px 20px 12px;
-        background: #f2f2f7;
-        border-bottom: 1px solid #e5e5ea;
-        flex-shrink: 0;
-    }
-    .crm-drawer-topbar h2 { margin: 0; font-size: 17px; font-weight: 700; color: #1c1c1e; }
- 
-    .crm-drawer-close {
-        width: 30px; height: 30px;
-        border-radius: 50%;
-        border: none;
-        background: #e5e5ea;
-        color: #6e6e73;
-        display: flex; align-items: center; justify-content: center;
-        cursor: pointer;
-        font-size: 16px;
-        transition: background .1s;
-    }
-    .crm-drawer-close:hover { background: #d1d1d6; }
- 
-    .crm-drawer-body {
-        flex: 1;
-        overflow-y: auto;
-        padding: 16px;
-    }
- 
-    /* Drawer card sections */
-    .crm-dc {
-        background: #fff;
-        border-radius: 13px;
-        border: 1px solid #e5e5ea;
-        margin-bottom: 16px;
-        overflow: hidden;
-    }
-    .crm-dc-head {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: 12px 16px;
-        border-bottom: 1px solid #f2f2f7;
-    }
-    .crm-dc-head h4 {
-        margin: 0;
-        font-size: 12px;
-        font-weight: 600;
-        letter-spacing: .05em;
-        text-transform: uppercase;
-        color: #8e8e93;
-    }
-    .crm-dc-edit-btn {
-        font-size: 13px;
-        font-weight: 500;
-        color: #007aff;
-        border: none;
-        background: transparent;
-        cursor: pointer;
-        padding: 0;
-    }
-    .crm-dc-edit-btn:hover { opacity: .7; }
- 
-    /* Profile hero */
-    .crm-dc-profile {
-        padding: 20px 16px;
-        display: flex;
-        align-items: center;
-        gap: 14px;
-    }
-    .crm-dc-avatar-lg {
-        width: 60px; height: 60px;
-        border-radius: 50%;
-        display: flex; align-items: center; justify-content: center;
-        font-size: 22px; font-weight: 700;
-        flex-shrink: 0;
-    }
-    .crm-dc-info { flex: 1; min-width: 0; }
-    .crm-dc-info h3 { margin: 0 0 3px; font-size: 20px; font-weight: 700; color: #1c1c1e; }
-    .crm-dc-info p  { margin: 0; font-size: 14px; color: #6e6e73; }
- 
-    /* Info rows */
-    .crm-dc-row {
-        display: flex;
-        align-items: center;
-        padding: 11px 16px;
-        border-bottom: 1px solid #f2f2f7;
-        gap: 12px;
-    }
-    .crm-dc-row:last-child { border-bottom: none; }
-    .crm-dc-row-icon { color: #8e8e93; flex-shrink: 0; }
-    .crm-dc-row-label { font-size: 13px; color: #8e8e93; flex: 0 0 90px; }
-    .crm-dc-row-val   { font-size: 14px; color: #1c1c1e; font-weight: 500; flex: 1; }
-    .crm-dc-row-val.empty { color: #c7c7cc; font-weight: 400; }
- 
-    /* Notes block */
-    .crm-dc-notes {
-        padding: 12px 16px;
-        font-size: 14px;
-        color: #3c3c43;
-        line-height: 1.55;
-    }
-    .crm-dc-notes.empty { color: #c7c7cc; font-style: italic; }
- 
-    /* Mini lead card in drawer */
-    .crm-dc-lead-item {
-        display: flex;
-        align-items: center;
-        padding: 11px 16px;
-        border-bottom: 1px solid #f2f2f7;
-        gap: 10px;
-    }
-    .crm-dc-lead-item:last-child { border-bottom: none; }
-    .crm-dc-lead-dot {
-        width: 8px; height: 8px;
-        border-radius: 50%;
-        flex-shrink: 0;
-        margin-top: 2px;
-    }
-    .crm-dc-lead-name { font-size: 14px; font-weight: 500; color: #1c1c1e; flex: 1; }
-    .crm-dc-lead-val  { font-size: 13px; color: #007aff; font-weight: 600; }
-    .crm-dc-stage-pill {
-        font-size: 11px;
-        font-weight: 600;
-        padding: 2px 8px;
-        border-radius: 12px;
-        text-transform: capitalize;
-    }
- 
-    /* Interaction item in drawer */
-    .crm-dc-int-item {
-        display: flex;
-        gap: 12px;
-        padding: 10px 16px;
-        border-bottom: 1px solid #f2f2f7;
-        align-items: flex-start;
-    }
-    .crm-dc-int-item:last-child { border-bottom: none; }
-    .crm-dc-int-icon {
-        width: 30px; height: 30px;
-        border-radius: 50%;
-        display: flex; align-items: center; justify-content: center;
-        flex-shrink: 0;
-    }
-    .crm-dc-int-subj { font-size: 13px; font-weight: 600; color: #1c1c1e; }
-    .crm-dc-int-meta { font-size: 12px; color: #8e8e93; margin-top: 1px; }
- 
-    /* Drawer footer action row */
-    .crm-drawer-footer {
-        padding: 12px 16px;
-        border-top: 1px solid #e5e5ea;
-        background: #f2f2f7;
-        display: flex;
-        gap: 8px;
-        flex-shrink: 0;
-    }
-    .crm-drawer-btn {
-        flex: 1;
-        padding: 10px;
-        border-radius: 10px;
-        font-size: 14px;
-        font-weight: 600;
-        border: none;
-        cursor: pointer;
-        transition: opacity .12s;
-    }
-    .crm-drawer-btn:active { opacity: .75; }
-    .crm-drawer-btn-primary  { background: #007aff; color: #fff; }
-    .crm-drawer-btn-primary:hover { background: #0062cc; }
-    .crm-drawer-btn-danger   { background: #fff0f0; color: #ff3b30; border: 1px solid #ffc9c7; }
-    .crm-drawer-btn-danger:hover { background: #ffdede; }
- 
-    /* ══════════════════════════════════════════════════
-       SHEET MODAL  (Add / Edit Contact, Add Lead)
-    ══════════════════════════════════════════════════ */
-    .crm-sheet-overlay {
-        display: none;
-        position: fixed;
-        inset: 0;
-        z-index: 10010;
-        background: rgba(0,0,0,.4);
-        align-items: flex-end;
-        justify-content: center;
-        padding: 0;
-    }
-    .crm-sheet-overlay.open { display: flex; }
- 
-    .crm-sheet {
-        background: #fff;
-        border-radius: 20px 20px 0 0;
-        width: 100%;
-        max-width: 600px;
-        max-height: 92vh;
-        display: flex;
-        flex-direction: column;
-        transform: translateY(100%);
-        transition: transform .3s cubic-bezier(.4,0,.2,1);
-        overflow: hidden;
-    }
-    .crm-sheet-overlay.open .crm-sheet { transform: translateY(0); }
- 
-    .crm-sheet-handle {
-        width: 36px; height: 4px;
-        border-radius: 2px;
-        background: #d1d1d6;
-        margin: 10px auto 0;
-        flex-shrink: 0;
-    }
- 
-    .crm-sheet-header {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: 14px 20px 10px;
-        flex-shrink: 0;
-    }
-    .crm-sheet-header h3 { margin: 0; font-size: 17px; font-weight: 700; color: #1c1c1e; }
- 
-    .crm-sheet-cancel {
-        font-size: 16px;
-        font-weight: 400;
-        color: #007aff;
-        border: none;
-        background: transparent;
-        cursor: pointer;
-        padding: 0;
-    }
-    .crm-sheet-save {
-        font-size: 16px;
-        font-weight: 600;
-        color: #007aff;
-        border: none;
-        background: transparent;
-        cursor: pointer;
-        padding: 0;
-    }
-    .crm-sheet-save:disabled { color: #aeaeb2; }
- 
-    .crm-sheet-body {
-        flex: 1;
-        overflow-y: auto;
-        padding: 8px 16px 20px;
-    }
- 
-    /* Grouped form sections (iOS-style) */
-    .crm-form-group-label {
-        font-size: 12px;
-        font-weight: 600;
-        letter-spacing: .04em;
-        text-transform: uppercase;
-        color: #8e8e93;
-        margin: 20px 0 6px 4px;
-    }
-    .crm-form-card {
-        background: #fff;
-        border-radius: 13px;
-        border: 1px solid #e5e5ea;
-        overflow: hidden;
-        margin-bottom: 2px;
-    }
-    .crm-form-field {
-        display: flex;
-        align-items: center;
-        padding: 0 14px;
-        border-bottom: 1px solid #f2f2f7;
-        min-height: 44px;
-        gap: 12px;
-    }
-    .crm-form-field:last-child { border-bottom: none; }
-    .crm-form-field label {
-        font-size: 14px;
-        font-weight: 500;
-        color: #1c1c1e;
-        flex: 0 0 110px;
-        padding: 11px 0;
-    }
-    .crm-form-field input,
-    .crm-form-field select,
-    .crm-form-field textarea {
-        flex: 1;
-        border: none;
-        outline: none;
-        font-size: 14px;
-        color: #1c1c1e;
-        background: transparent;
-        padding: 11px 0;
-        font-family: inherit;
-        -webkit-font-smoothing: antialiased;
-    }
-    .crm-form-field input::placeholder,
-    .crm-form-field textarea::placeholder { color: #c7c7cc; }
-    .crm-form-field select { color: #1c1c1e; cursor: pointer; }
-    .crm-form-field textarea { resize: none; min-height: 80px; padding-top: 11px; align-self: flex-start; }
- 
-    .crm-form-field-msg {
-        padding: 0 16px 10px;
-        font-size: 12px;
-    }
-    .crm-form-field-msg.error { color: #ff3b30; }
- 
-    /* ── Responsive ── */
-    @media (max-width: 640px) {
-        .crm-c-list-header,
-        .crm-c-row { grid-template-columns: 2fr 1fr 80px 64px; }
-        .crm-c-list-header span:nth-child(2),
-        .crm-c-row > .crm-c-cell:nth-child(2) { display: none; }
-        .crm-c-list-header span:nth-child(3),
-        .crm-c-row > .crm-c-cell:nth-child(3) { display: none; }
-        .crm-drawer { width: 100vw; }
-    }
-    </style>
- 
-    <div class="crm-c">
- 
-        <!-- ── Toolbar ── -->
-        <div class="crm-c-toolbar">
-            <div class="crm-c-search-wrap">
-                <svg class="search-icon" width="15" height="15" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8" stroke-width="2"/><path stroke-width="2" stroke-linecap="round" d="M21 21l-4.35-4.35"/></svg>
-                <input type="text" id="crm-c-search" class="crm-c-search" placeholder="Search contacts…" autocomplete="off">
-            </div>
-            <div class="crm-c-toolbar-right">
-                <button class="crm-c-filter-pill active" data-status="">All</button>
-                <button class="crm-c-filter-pill" data-status="active">Active</button>
-                <button class="crm-c-filter-pill" data-status="inactive">Inactive</button>
-                <button class="crm-c-add-btn" onclick="crmCOpenAddSheet()">
-                    <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4"/></svg>
-                    New Contact
+    <div class="bntm-form-section">
+        <div class="bntm-section-header">
+            <h3>Contacts</h3>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                <button class="bntm-btn-secondary bntm-btn-small" id="crm-contacts-import-btn">
+                    <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="margin-right:4px;vertical-align:middle;">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
+                    </svg>
+                    Import CSV
+                </button>
+                <button class="bntm-btn-secondary bntm-btn-small" id="crm-contacts-export-btn">
+                    <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="margin-right:4px;vertical-align:middle;">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                    </svg>
+                    Export CSV
+                </button>
+                <button class="bntm-btn-secondary bntm-btn-small" id="crm-tag-manager-btn">
+                    <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="margin-right:4px;vertical-align:middle;">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A2 2 0 013 12V7a4 4 0 014-4z"/>
+                    </svg>
+                    Tags
+                </button>
+                <button class="bntm-btn-primary bntm-btn-small" id="crm-add-contact-btn">
+                    <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="margin-right:4px;vertical-align:middle;">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+                    </svg>
+                    Add Contact
                 </button>
             </div>
         </div>
- 
-        <!-- ── Contact List ── -->
-        <div class="crm-c-list" id="crm-c-list">
-            <div class="crm-c-list-header" aria-hidden="true">
-                <span>Name</span>
-                <span>Email</span>
-                <span>Phone</span>
-                <span>Company</span>
-                <span>Status</span>
-                <span style="text-align:right;">Actions</span>
-            </div>
- 
-            <?php if (empty($contacts)): ?>
-            <div class="crm-c-empty">
-                <svg width="48" height="48" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4" stroke-width="1.5"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>
-                <h3>No contacts yet</h3>
-                <p>Add your first contact to get started.</p>
-            </div>
-            <?php else:
-                $avatar_colors = ['av-blue','av-green','av-orange','av-purple','av-pink','av-teal'];
-                $i = 0;
-                foreach ($contacts as $c):
-                    $initials = strtoupper(substr($c->first_name,0,1) . substr($c->last_name,0,1));
-                    $av_class = $avatar_colors[$i % count($avatar_colors)];
-                    $i++;
-                    $row_data = json_encode([
-                        'rand_id'    => $c->rand_id,
-                        'first_name' => $c->first_name,
-                        'last_name'  => $c->last_name,
-                        'email'      => $c->email,
-                        'phone'      => $c->phone,
-                        'company'    => $c->company,
-                        'status'     => $c->status,
-                        'notes'      => $c->notes,
-                        'initials'   => $initials,
-                        'av_class'   => $av_class,
-                        'created_at' => $c->created_at,
-                    ]);
-            ?>
-            <div class="crm-c-row"
-                 data-search="<?php echo esc_attr(strtolower($c->first_name . ' ' . $c->last_name . ' ' . $c->email . ' ' . $c->company)); ?>"
-                 data-status="<?php echo esc_attr($c->status); ?>"
-                 onclick="crmCOpenDrawer(<?php echo esc_attr($row_data); ?>)"
-                 role="row" tabindex="0"
-                 onkeydown="if(event.key==='Enter')crmCOpenDrawer(<?php echo esc_attr($row_data); ?>)">
- 
-                <!-- Name + avatar -->
-                <div class="crm-c-name-cell">
-                    <div class="crm-c-avatar <?php echo esc_attr($av_class); ?>" aria-hidden="true"><?php echo esc_html($initials); ?></div>
-                    <div style="min-width:0;">
-                        <div class="crm-c-name"><?php echo esc_html($c->first_name . ' ' . $c->last_name); ?></div>
-                        <?php if ($c->company): ?><div class="crm-c-company"><?php echo esc_html($c->company); ?></div><?php endif; ?>
-                    </div>
-                </div>
- 
-                <!-- Email -->
-                <div class="crm-c-cell <?php echo $c->email ? '' : 'muted'; ?>">
-                    <?php echo esc_html($c->email ?: '—'); ?>
-                </div>
- 
-                <!-- Phone -->
-                <div class="crm-c-cell <?php echo $c->phone ? '' : 'muted'; ?>">
-                    <?php echo esc_html($c->phone ?: '—'); ?>
-                </div>
- 
-                <!-- Company -->
-                <div class="crm-c-cell <?php echo $c->company ? '' : 'muted'; ?>">
-                    <?php echo esc_html($c->company ?: '—'); ?>
-                </div>
- 
-                <!-- Status -->
-                <div>
-                    <span class="crm-c-badge crm-c-badge-<?php echo esc_attr($c->status); ?>"><?php echo esc_html(ucfirst($c->status)); ?></span>
-                </div>
- 
-                <!-- Actions -->
-                <div class="crm-c-actions" onclick="event.stopPropagation()">
-                    <button class="crm-c-icon-btn"
-                            title="Edit contact"
-                            aria-label="Edit <?php echo esc_attr($c->first_name . ' ' . $c->last_name); ?>"
-                            onclick="crmCOpenEditSheet(<?php echo esc_attr($row_data); ?>)">
-                        <svg width="15" height="15" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
-                    </button>
-                    <button class="crm-c-icon-btn danger"
-                            title="Delete contact"
-                            aria-label="Delete <?php echo esc_attr($c->first_name . ' ' . $c->last_name); ?>"
-                            onclick="crmCDelete('<?php echo esc_attr($c->rand_id); ?>', this)">
-                        <svg width="15" height="15" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
-                    </button>
-                </div>
-            </div>
-            <?php endforeach; ?>
-            <?php endif; ?>
-        </div><!-- /.crm-c-list -->
- 
-    </div><!-- /.crm-c -->
- 
- 
-    <!-- ══════════════════════════════════════════════════
-         DETAIL DRAWER
-    ══════════════════════════════════════════════════ -->
-    <div class="crm-drawer-overlay" id="crm-drawer-overlay" onclick="crmCCloseDrawer()"></div>
-    <aside class="crm-drawer" id="crm-drawer" role="dialog" aria-modal="true" aria-label="Contact details">
-        <div class="crm-drawer-topbar">
-            <h2 id="crm-drawer-title">Contact</h2>
-            <button class="crm-drawer-close" onclick="crmCCloseDrawer()" aria-label="Close">✕</button>
-        </div>
-        <div class="crm-drawer-body" id="crm-drawer-body">
-            <p style="color:#8e8e93;font-size:14px;">Loading…</p>
-        </div>
-        <div class="crm-drawer-footer">
-            <button class="crm-drawer-btn crm-drawer-btn-primary" id="crm-drawer-edit-btn">Edit Contact</button>
-            <button class="crm-drawer-btn crm-drawer-btn-danger" id="crm-drawer-del-btn">Delete</button>
-        </div>
-    </aside>
- 
- 
-    <!-- ══════════════════════════════════════════════════
-         ADD CONTACT SHEET
-    ══════════════════════════════════════════════════ -->
-    <div class="crm-sheet-overlay" id="crm-add-sheet" role="dialog" aria-modal="true" aria-label="Add contact">
-        <div class="crm-sheet">
-            <div class="crm-sheet-handle" aria-hidden="true"></div>
-            <div class="crm-sheet-header">
-                <button class="crm-sheet-cancel" onclick="crmCCloseSheet('crm-add-sheet')">Cancel</button>
-                <h3>New Contact</h3>
-                <button class="crm-sheet-save" id="crm-add-save" onclick="crmCSubmitAdd()">Add</button>
-            </div>
-            <div class="crm-sheet-body">
- 
-                <div class="crm-form-group-label">Name</div>
-                <div class="crm-form-card">
-                    <div class="crm-form-field">
-                        <label for="add-fn">First Name</label>
-                        <input id="add-fn" type="text" placeholder="Required" autocomplete="given-name">
-                    </div>
-                    <div class="crm-form-field">
-                        <label for="add-ln">Last Name</label>
-                        <input id="add-ln" type="text" placeholder="Required" autocomplete="family-name">
-                    </div>
-                </div>
- 
-                <div class="crm-form-group-label">Contact Info</div>
-                <div class="crm-form-card">
-                    <div class="crm-form-field">
-                        <label for="add-em">Email</label>
-                        <input id="add-em" type="email" placeholder="Optional" autocomplete="email">
-                    </div>
-                    <div class="crm-form-field">
-                        <label for="add-ph">Phone</label>
-                        <input id="add-ph" type="tel" placeholder="Optional" autocomplete="tel">
-                    </div>
-                    <div class="crm-form-field">
-                        <label for="add-co">Company</label>
-                        <input id="add-co" type="text" placeholder="Optional" autocomplete="organization">
-                    </div>
-                </div>
- 
-                <div class="crm-form-group-label">Notes</div>
-                <div class="crm-form-card">
-                    <div class="crm-form-field" style="align-items:flex-start;">
-                        <textarea id="add-notes" placeholder="Any relevant details…" rows="3"></textarea>
-                    </div>
-                </div>
- 
-                <div id="add-msg" class="crm-form-field-msg error" style="display:none;"></div>
- 
+
+        <!-- Filters -->
+        <div class="crm-filters-bar">
+            <input type="text" id="crm-contact-search" placeholder="Search name, email, company…">
+            <select id="crm-contact-type-filter">
+                <option value="">All Types</option>
+                <option value="person">Person</option>
+                <option value="organisation">Organisation</option>
+            </select>
+            <select id="crm-contact-status-filter">
+                <option value="">All Statuses</option>
+                <option value="lead">Lead</option>
+                <option value="active">Active</option>
+                <option value="churned">Churned</option>
+                <option value="archived">Archived</option>
+            </select>
+            <select id="crm-contact-assigned-filter">
+                <option value="">All Users</option>
+                <?php foreach ($users as $u): ?>
+                <option value="<?php echo intval($u->ID); ?>"><?php echo esc_html($u->display_name); ?></option>
+                <?php endforeach; ?>
+            </select>
+            <select id="crm-contact-tag-filter">
+                <option value="">All Tags</option>
+                <?php foreach ($tags as $tag): ?>
+                <option value="<?php echo intval($tag->id); ?>"><?php echo esc_html($tag->name); ?></option>
+                <?php endforeach; ?>
+            </select>
+            <div class="filter-actions">
+                <button class="bntm-btn-secondary bntm-btn-small" id="crm-contacts-apply-filters">Filter</button>
+                <button class="bntm-btn-secondary bntm-btn-small" id="crm-contacts-reset-filters">Reset</button>
             </div>
         </div>
+
+        <!-- Bulk Action Bar -->
+        <div class="crm-bulk-bar" id="crm-contacts-bulk-bar">
+            <span id="crm-contacts-selected-count">0</span> selected
+            <select id="crm-contacts-bulk-action" style="width:auto;min-width:160px;">
+                <option value="">Bulk Action</option>
+                <option value="assign">Assign to User</option>
+                <option value="tag">Add Tag</option>
+                <option value="delete">Delete</option>
+                <option value="export">Export Selected</option>
+            </select>
+            <select id="crm-contacts-bulk-assign-user" style="width:auto;display:none;">
+                <?php foreach ($users as $u): ?>
+                <option value="<?php echo intval($u->ID); ?>"><?php echo esc_html($u->display_name); ?></option>
+                <?php endforeach; ?>
+            </select>
+            <select id="crm-contacts-bulk-tag" style="width:auto;display:none;">
+                <?php foreach ($tags as $tag): ?>
+                <option value="<?php echo intval($tag->id); ?>"><?php echo esc_html($tag->name); ?></option>
+                <?php endforeach; ?>
+            </select>
+            <button class="bntm-btn-primary bntm-btn-small" id="crm-contacts-bulk-apply">Apply</button>
+            <button class="bntm-btn-secondary bntm-btn-small" id="crm-contacts-bulk-clear">Clear</button>
+        </div>
+
+        <!-- Table -->
+        <div class="bntm-table-wrapper">
+            <table class="bntm-table" id="crm-contacts-table">
+                <thead>
+                    <tr>
+                        <th style="width:36px;"><input type="checkbox" id="crm-contacts-select-all"></th>
+                        <th class="crm-sortable" data-col="first_name" style="cursor:pointer;">Name</th>
+                        <th>Email</th>
+                        <th>Phone</th>
+                        <th class="crm-sortable" data-col="type" style="cursor:pointer;">Type</th>
+                        <th>Company</th>
+                        <th class="crm-sortable" data-col="status" style="cursor:pointer;">Status</th>
+                        <th>Assigned To</th>
+                        <th>Tags</th>
+                        <th class="crm-sortable" data-col="created_at" style="cursor:pointer;">Created</th>
+                        <th style="width:100px;">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="crm-contacts-tbody">
+                    <tr><td colspan="11" style="text-align:center;padding:30px;color:#9ca3af;">Loading contacts…</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <div class="crm-pagination" id="crm-contacts-pagination"></div>
     </div>
- 
-    <!-- ══════════════════════════════════════════════════
-         EDIT CONTACT SHEET
-    ══════════════════════════════════════════════════ -->
-    <div class="crm-sheet-overlay" id="crm-edit-sheet" role="dialog" aria-modal="true" aria-label="Edit contact">
-        <div class="crm-sheet">
-            <div class="crm-sheet-handle" aria-hidden="true"></div>
-            <div class="crm-sheet-header">
-                <button class="crm-sheet-cancel" onclick="crmCCloseSheet('crm-edit-sheet')">Cancel</button>
-                <h3>Edit Contact</h3>
-                <button class="crm-sheet-save" id="crm-edit-save" onclick="crmCSubmitEdit()">Save</button>
+
+    <!-- Add / Edit Contact Modal -->
+    <div class="crm-modal-overlay" id="crm-contact-modal">
+        <div class="crm-modal crm-modal-lg">
+            <div class="crm-modal-header">
+                <h3 id="crm-contact-modal-title">Add Contact</h3>
+                <button class="crm-modal-close" type="button">
+                    <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                </button>
             </div>
-            <div class="crm-sheet-body">
-                <input type="hidden" id="edit-rand-id">
- 
-                <div class="crm-form-group-label">Name</div>
-                <div class="crm-form-card">
-                    <div class="crm-form-field">
-                        <label for="edit-fn">First Name</label>
-                        <input id="edit-fn" type="text" placeholder="Required">
+            <div class="crm-modal-body">
+                <input type="hidden" id="crm-contact-id" value="">
+                <div class="form-row">
+                    <label>Contact Type</label>
+                    <select id="crm-contact-type">
+                        <option value="person">Person</option>
+                        <option value="organisation">Organisation</option>
+                    </select>
+                </div>
+                <div class="form-grid-2">
+                    <div class="form-row">
+                        <label>First Name</label>
+                        <input type="text" id="crm-contact-first-name" placeholder="First name">
                     </div>
-                    <div class="crm-form-field">
-                        <label for="edit-ln">Last Name</label>
-                        <input id="edit-ln" type="text" placeholder="Required">
+                    <div class="form-row">
+                        <label>Last Name</label>
+                        <input type="text" id="crm-contact-last-name" placeholder="Last name">
                     </div>
                 </div>
- 
-                <div class="crm-form-group-label">Contact Info</div>
-                <div class="crm-form-card">
-                    <div class="crm-form-field">
-                        <label for="edit-em">Email</label>
-                        <input id="edit-em" type="email" placeholder="Optional">
+                <div class="form-grid-2">
+                    <div class="form-row">
+                        <label>Email</label>
+                        <input type="email" id="crm-contact-email" placeholder="email@example.com">
                     </div>
-                    <div class="crm-form-field">
-                        <label for="edit-ph">Phone</label>
-                        <input id="edit-ph" type="tel" placeholder="Optional">
-                    </div>
-                    <div class="crm-form-field">
-                        <label for="edit-co">Company</label>
-                        <input id="edit-co" type="text" placeholder="Optional">
+                    <div class="form-row">
+                        <label>Phone</label>
+                        <input type="tel" id="crm-contact-phone" placeholder="+1 000 000 0000">
                     </div>
                 </div>
- 
-                <div class="crm-form-group-label">Status</div>
-                <div class="crm-form-card">
-                    <div class="crm-form-field">
-                        <label for="edit-st">Status</label>
-                        <select id="edit-st">
+                <div class="form-grid-2">
+                    <div class="form-row">
+                        <label>Mobile</label>
+                        <input type="tel" id="crm-contact-mobile" placeholder="+1 000 000 0000">
+                    </div>
+                    <div class="form-row">
+                        <label>Company</label>
+                        <input type="text" id="crm-contact-company" placeholder="Company name">
+                    </div>
+                </div>
+                <div class="form-grid-2">
+                    <div class="form-row">
+                        <label>Job Title</label>
+                        <input type="text" id="crm-contact-job-title" placeholder="Job title">
+                    </div>
+                    <div class="form-row">
+                        <label>Website</label>
+                        <input type="url" id="crm-contact-website" placeholder="https://example.com">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <label>Address Line 1</label>
+                    <input type="text" id="crm-contact-address1" placeholder="Street address">
+                </div>
+                <div class="form-row">
+                    <label>Address Line 2</label>
+                    <input type="text" id="crm-contact-address2" placeholder="Apt, suite, etc.">
+                </div>
+                <div class="form-grid-3">
+                    <div class="form-row">
+                        <label>City</label>
+                        <input type="text" id="crm-contact-city" placeholder="City">
+                    </div>
+                    <div class="form-row">
+                        <label>State</label>
+                        <input type="text" id="crm-contact-state" placeholder="State">
+                    </div>
+                    <div class="form-row">
+                        <label>Postcode</label>
+                        <input type="text" id="crm-contact-postcode" placeholder="Postcode">
+                    </div>
+                </div>
+                <div class="form-grid-2">
+                    <div class="form-row">
+                        <label>Country</label>
+                        <input type="text" id="crm-contact-country" placeholder="Country">
+                    </div>
+                    <div class="form-row">
+                        <label>Source</label>
+                        <input type="text" id="crm-contact-source" placeholder="e.g. Web, Referral">
+                    </div>
+                </div>
+                <div class="form-grid-2">
+                    <div class="form-row">
+                        <label>Status</label>
+                        <select id="crm-contact-status">
+                            <option value="lead">Lead</option>
                             <option value="active">Active</option>
-                            <option value="inactive">Inactive</option>
+                            <option value="churned">Churned</option>
+                            <option value="archived">Archived</option>
                         </select>
                     </div>
-                </div>
- 
-                <div class="crm-form-group-label">Notes</div>
-                <div class="crm-form-card">
-                    <div class="crm-form-field" style="align-items:flex-start;">
-                        <textarea id="edit-notes" rows="3" placeholder="Any relevant details…"></textarea>
-                    </div>
-                </div>
- 
-                <div id="edit-msg" class="crm-form-field-msg error" style="display:none;"></div>
- 
-            </div>
-        </div>
-    </div>
- 
-    <!-- ══════════════════════════════════════════════════
-         ADD LEAD SHEET  (opened from contact drawer)
-    ══════════════════════════════════════════════════ -->
-    <div class="crm-sheet-overlay" id="crm-lead-sheet" role="dialog" aria-modal="true" aria-label="Add lead">
-        <div class="crm-sheet">
-            <div class="crm-sheet-handle" aria-hidden="true"></div>
-            <div class="crm-sheet-header">
-                <button class="crm-sheet-cancel" onclick="crmCCloseSheet('crm-lead-sheet')">Cancel</button>
-                <h3>New Lead</h3>
-                <button class="crm-sheet-save" id="crm-lead-save" onclick="crmCSubmitLead()">Add</button>
-            </div>
-            <div class="crm-sheet-body">
-                <input type="hidden" id="lead-contact-id">
- 
-                <div class="crm-form-group-label">Lead Details</div>
-                <div class="crm-form-card">
-                    <div class="crm-form-field">
-                        <label for="lead-title">Title</label>
-                        <input id="lead-title" type="text" placeholder="e.g. Website Redesign">
-                    </div>
-                    <div class="crm-form-field">
-                        <label for="lead-value">Value</label>
-                        <input id="lead-value" type="number" placeholder="0.00" min="0" step="0.01">
-                    </div>
-                </div>
- 
-                <div class="crm-form-group-label">Pipeline</div>
-                <div class="crm-form-card">
-                    <div class="crm-form-field">
-                        <label for="lead-stage">Stage</label>
-                        <select id="lead-stage">
-                            <?php foreach ($pipeline_stages as $s): ?>
-                            <option value="<?php echo esc_attr($s); ?>"><?php echo esc_html(ucfirst($s)); ?></option>
+                    <div class="form-row">
+                        <label>Assigned To</label>
+                        <select id="crm-contact-assigned">
+                            <option value="">Unassigned</option>
+                            <?php foreach ($users as $u): ?>
+                            <option value="<?php echo intval($u->ID); ?>"><?php echo esc_html($u->display_name); ?></option>
                             <?php endforeach; ?>
                         </select>
                     </div>
-                    <div class="crm-form-field">
-                        <label for="lead-priority">Priority</label>
-                        <select id="lead-priority">
-                            <option value="low">Low</option>
-                            <option value="medium" selected>Medium</option>
-                            <option value="high">High</option>
-                        </select>
-                    </div>
-                    <div class="crm-form-field">
-                        <label for="lead-pipeline-type">Pipeline Type</label>
-                        <select id="lead-pipeline-type">
-                            <option value="sales">Sales</option>
-                            <option value="partnership">Partnership</option>
-                            <option value="renewal">Renewal</option>
-                            <option value="upsell">Upsell</option>
-                            <option value="other">Other</option>
-                        </select>
+                </div>
+                <div class="form-row">
+                    <label>Tags</label>
+                    <div id="crm-contact-tags-picker" style="display:flex;flex-wrap:wrap;gap:6px;padding:8px;border:1px solid #e5e7eb;border-radius:6px;min-height:40px;">
+                        <?php foreach ($tags as $tag): ?>
+                        <label style="display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:400;cursor:pointer;">
+                            <input type="checkbox" class="crm-tag-checkbox" value="<?php echo intval($tag->id); ?>">
+                            <span class="crm-tag-chip" style="background:<?php echo esc_attr($tag->colour); ?>;"><?php echo esc_html($tag->name); ?></span>
+                        </label>
+                        <?php endforeach; ?>
+                        <?php if (empty($tags)): ?>
+                        <span style="font-size:12px;color:#9ca3af;">No tags yet. Create tags in Settings.</span>
+                        <?php endif; ?>
                     </div>
                 </div>
- 
-                <div class="crm-form-group-label">Source &amp; Product</div>
-                <div class="crm-form-card">
-                    <div class="crm-form-field">
-                        <label for="lead-source">Lead Source</label>
-                        <select id="lead-source">
-                            <option value="">— Select —</option>
-                            <option value="website">Website</option>
-                            <option value="referral">Referral</option>
-                            <option value="social">Social Media</option>
-                            <option value="email">Email Campaign</option>
-                            <option value="event">Event / Trade Show</option>
-                            <option value="cold_outreach">Cold Outreach</option>
-                            <option value="partner">Partner</option>
-                            <option value="other">Other</option>
-                        </select>
-                    </div>
-                    <div class="crm-form-field">
-                        <label for="lead-product">Product Type</label>
-                        <select id="lead-product">
-                            <option value="">— Select —</option>
-                            <option value="saas">SaaS / Software</option>
-                            <option value="consulting">Consulting</option>
-                            <option value="hardware">Hardware</option>
-                            <option value="service">Service</option>
-                            <option value="license">License</option>
-                            <option value="support">Support Plan</option>
-                            <option value="other">Other</option>
-                        </select>
-                    </div>
-                </div>
- 
-                <div class="crm-form-group-label">Timeline &amp; Status</div>
-                <div class="crm-form-card">
-                    <div class="crm-form-field">
-                        <label for="lead-close">Expected Close</label>
-                        <input id="lead-close" type="date">
-                    </div>
-                    <div class="crm-form-field">
-                        <label for="lead-status">Status</label>
-                        <select id="lead-status">
-                            <option value="open">Open</option>
-                            <option value="won">Won</option>
-                            <option value="lost">Lost</option>
-                        </select>
-                    </div>
-                </div>
- 
-                <div class="crm-form-group-label">Notes</div>
-                <div class="crm-form-card">
-                    <div class="crm-form-field" style="align-items:flex-start;">
-                        <textarea id="lead-notes" rows="3" placeholder="Deal context, requirements…"></textarea>
-                    </div>
-                </div>
- 
-                <div class="crm-form-group-label">Note Priority</div>
-                <div class="crm-form-card">
-                    <div class="crm-form-field">
-                        <label for="lead-note-priority">Note Priority</label>
-                        <select id="lead-note-priority">
-                            <option value="low">Low — FYI only</option>
-                            <option value="medium" selected>Medium — Review when possible</option>
-                            <option value="high">High — Action required</option>
-                        </select>
-                    </div>
-                </div>
- 
-                <div id="lead-msg" class="crm-form-field-msg error" style="display:none;"></div>
- 
+            </div>
+            <div class="crm-modal-footer">
+                <button class="bntm-btn-secondary" onclick="crmCloseModal('crm-contact-modal')">Cancel</button>
+                <button class="bntm-btn-primary" id="crm-contact-save-btn">Save Contact</button>
             </div>
         </div>
     </div>
- 
- 
-    <!-- ══════════════════════════════════════════════════
-         JAVASCRIPT
-    ══════════════════════════════════════════════════ -->
-    <script>
-    (function() {
- 
-        // ── Search & filter ──────────────────────────────
-        var searchEl = document.getElementById('crm-c-search');
-        var pills    = document.querySelectorAll('.crm-c-filter-pill');
-        var activeStatus = '';
- 
-        function filterList() {
-            var q = searchEl ? searchEl.value.toLowerCase() : '';
-            document.querySelectorAll('#crm-c-list .crm-c-row').forEach(function(r) {
-                var nameMatch   = r.getAttribute('data-search').includes(q);
-                var statusMatch = !activeStatus || r.getAttribute('data-status') === activeStatus;
-                r.style.display = (nameMatch && statusMatch) ? '' : 'none';
-            });
-        }
- 
-        if (searchEl) searchEl.addEventListener('input', filterList);
- 
-        pills.forEach(function(pill) {
-            pill.addEventListener('click', function() {
-                pills.forEach(function(p){ p.classList.remove('active'); });
-                pill.classList.add('active');
-                activeStatus = pill.getAttribute('data-status');
-                filterList();
-            });
-        });
- 
-        // ── Sheet helpers ────────────────────────────────
-        window.crmCOpenSheet  = function(id) {
-            var el = document.getElementById(id);
-            if (el) { el.classList.add('open'); document.body.style.overflow = 'hidden'; }
-        };
-        window.crmCCloseSheet = function(id) {
-            var el = document.getElementById(id);
-            if (el) { el.classList.remove('open'); document.body.style.overflow = ''; }
-        };
- 
-        // ── Drawer helpers ───────────────────────────────
-        window.crmCOpenDrawer  = function(data) {
-            var drawer = document.getElementById('crm-drawer');
-            var overlay = document.getElementById('crm-drawer-overlay');
-            document.getElementById('crm-drawer-title').textContent = data.first_name + ' ' + data.last_name;
-            overlay.classList.add('open');
-            drawer.classList.add('open');
-            document.body.style.overflow = 'hidden';
- 
-            // Wire footer buttons
-            document.getElementById('crm-drawer-edit-btn').onclick = function() {
-                crmCCloseDrawer();
-                crmCOpenEditSheet(data);
-            };
-            document.getElementById('crm-drawer-del-btn').onclick = function() {
-                crmCDelete(data.rand_id, this);
-            };
- 
-            // Render drawer body immediately with local data then fetch more
-            renderDrawerLocal(data);
-            fetchDrawerData(data);
-        };
-        window.crmCCloseDrawer = function() {
-            document.getElementById('crm-drawer').classList.remove('open');
-            document.getElementById('crm-drawer-overlay').classList.remove('open');
-            document.body.style.overflow = '';
-        };
- 
-        function renderDrawerLocal(data) {
-            var stageColors = {
-                new:'#007aff', contacted:'#ff9500', qualified:'#34c759',
-                won:'#30d158', lost:'#ff3b30'
-            };
-            var html = '';
- 
-            // Profile card
-            html += '<div class="crm-dc">'
-                 + '<div class="crm-dc-profile">'
-                 + '<div class="crm-dc-avatar-lg ' + escAttr(data.av_class) + '">' + escHtml(data.initials) + '</div>'
-                 + '<div class="crm-dc-info"><h3>' + escHtml(data.first_name + ' ' + data.last_name) + '</h3>'
-                 + '<p>' + (data.company ? escHtml(data.company) : '<span style="color:#c7c7cc">No company</span>') + '</p>'
-                 + '</div></div>';
- 
-            // Status
-            html += '<div class="crm-dc-row">'
-                 + '<svg class="crm-dc-row-icon" width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" stroke-width="2"/><path stroke-linecap="round" stroke-width="2" d="M9 12l2 2 4-4"/></svg>'
-                 + '<span class="crm-dc-row-label">Status</span>'
-                 + '<span class="crm-dc-row-val"><span class="crm-c-badge crm-c-badge-' + escAttr(data.status) + '">' + escHtml(ucfirst(data.status)) + '</span></span>'
-                 + '</div>';
- 
-            // Email
-            html += drawerRow('M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z','Email', data.email || null);
-            // Phone
-            html += drawerRow('M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z','Phone', data.phone || null);
-            html += '</div>';
- 
-            // Notes card
-            html += '<div class="crm-dc"><div class="crm-dc-head"><h4>Notes</h4></div>'
-                 + '<div class="crm-dc-notes' + (data.notes ? '' : ' empty') + '">' + (data.notes ? escHtml(data.notes) : 'No notes added') + '</div>'
-                 + '</div>';
- 
-            // Leads placeholder
-            html += '<div class="crm-dc" id="crm-drawer-leads">'
-                 + '<div class="crm-dc-head"><h4>Leads</h4>'
-                 + '<button class="crm-dc-edit-btn" onclick="crmCOpenLeadSheet(\'' + escAttr(data.rand_id) + '\')">+ Add Lead</button>'
-                 + '</div>'
-                 + '<div style="padding:12px 16px;color:#8e8e93;font-size:13px;" id="crm-drawer-leads-inner">Loading…</div>'
-                 + '</div>';
- 
-            // Interactions placeholder
-            html += '<div class="crm-dc" id="crm-drawer-ints">'
-                 + '<div class="crm-dc-head"><h4>Recent Interactions</h4></div>'
-                 + '<div style="padding:12px 16px;color:#8e8e93;font-size:13px;" id="crm-drawer-ints-inner">Loading…</div>'
-                 + '</div>';
- 
-            document.getElementById('crm-drawer-body').innerHTML = html;
-        }
- 
-        function fetchDrawerData(data) {
-            var fd = new FormData();
-            fd.append('action', 'crm_get_contact');
-            fd.append('nonce', crm_nonce);
-            fd.append('rand_id', data.rand_id);
-            fetch(ajaxurl, { method:'POST', body:fd })
-                .then(function(r){ return r.json(); })
-                .then(function(d) {
-                    if (!d.success) return;
-                    var leads  = d.data.leads;
-                    var ints   = d.data.interactions;
-                    var stageColors = {
-                        new:'#007aff', contacted:'#ff9500', qualified:'#ff9f0a',
-                        won:'#34c759', lost:'#ff3b30'
-                    };
- 
-                    // Render leads
-                    var leadsEl = document.getElementById('crm-drawer-leads-inner');
-                    if (leadsEl) {
-                        if (!leads.length) {
-                            leadsEl.innerHTML = '<span style="color:#c7c7cc;font-style:italic;">No leads yet</span>';
-                        } else {
-                            var lhtml = '';
-                            leads.forEach(function(l) {
-                                var col = stageColors[l.stage] || '#8e8e93';
-                                lhtml += '<div class="crm-dc-lead-item">'
-                                    + '<div class="crm-dc-lead-dot" style="background:' + col + ';"></div>'
-                                    + '<span class="crm-dc-lead-name">' + escHtml(l.title) + '</span>'
-                                    + '<span class="crm-dc-stage-pill" style="background:' + col + '22;color:' + col + ';">' + escHtml(l.stage) + '</span>'
-                                    + '</div>';
-                            });
-                            leadsEl.outerHTML = lhtml;
-                            // outerHTML replacement: also remove the wrapping div
-                            var wrap = document.getElementById('crm-drawer-leads-inner');
-                            if (wrap) wrap.outerHTML = lhtml;
-                        }
-                    }
- 
-                    // Render interactions
-                    var intsEl = document.getElementById('crm-drawer-ints-inner');
-                    if (intsEl) {
-                        if (!ints.length) {
-                            intsEl.innerHTML = '<span style="color:#c7c7cc;font-style:italic;">No interactions logged</span>';
-                        } else {
-                            var typeConfig = {
-                                call:    { color:'#7c3aed', icon:'M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z' },
-                                email:   { color:'#0891b2', icon:'M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z' },
-                                meeting: { color:'#c2410c', icon:'M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z' },
-                                note:    { color:'#15803d', icon:'M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z' },
-                            };
-                            var ihtml = '';
-                            ints.forEach(function(i) {
-                                var tc = typeConfig[i.type] || typeConfig.note;
-                                ihtml += '<div class="crm-dc-int-item">'
-                                    + '<div class="crm-dc-int-icon" style="background:' + tc.color + '18;">'
-                                    + '<svg width="14" height="14" fill="none" stroke="' + tc.color + '" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="' + tc.icon + '"/></svg>'
-                                    + '</div>'
-                                    + '<div><div class="crm-dc-int-subj">' + escHtml(i.subject) + '</div>'
-                                    + '<div class="crm-dc-int-meta">' + escHtml(ucfirst(i.type)) + ' · ' + escHtml(i.interaction_date) + '</div></div>'
-                                    + '</div>';
-                            });
-                            intsEl.outerHTML = ihtml;
-                            var wrap2 = document.getElementById('crm-drawer-ints-inner');
-                            if (wrap2) wrap2.outerHTML = ihtml;
-                        }
-                    }
-                });
-        }
- 
-        function drawerRow(iconPath, label, val) {
-            return '<div class="crm-dc-row">'
-                 + '<svg class="crm-dc-row-icon" width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="' + iconPath + '"/></svg>'
-                 + '<span class="crm-dc-row-label">' + label + '</span>'
-                 + '<span class="crm-dc-row-val' + (val ? '' : ' empty') + '">' + (val ? escHtml(val) : 'Not set') + '</span>'
-                 + '</div>';
-        }
- 
-        // ── Lead sheet ────────────────────────────────
-        window.crmCOpenLeadSheet = function(rand_id) {
-            // We need the DB contact id — store it on the hidden field via rand_id lookup
-            document.getElementById('lead-contact-id').value = rand_id; // will be resolved server-side via rand_id
-            document.getElementById('lead-title').value   = '';
-            document.getElementById('lead-value').value   = '';
-            document.getElementById('lead-notes').value   = '';
-            document.getElementById('lead-msg').style.display = 'none';
-            crmCOpenSheet('crm-lead-sheet');
-        };
- 
-        window.crmCSubmitLead = function() {
-            var btn       = document.getElementById('crm-lead-save');
-            var title     = document.getElementById('lead-title').value.trim();
-            var contactRandId = document.getElementById('lead-contact-id').value;
-            var msgEl     = document.getElementById('lead-msg');
-            if (!title) { msgEl.textContent = 'Lead title is required.'; msgEl.style.display = 'block'; return; }
-            btn.disabled = true;
-            var fd = new FormData();
-            fd.append('action',          'crm_add_lead');
-            fd.append('nonce',           crm_nonce);
-            fd.append('contact_rand_id', contactRandId);
-            fd.append('title',           title);
-            fd.append('value',           document.getElementById('lead-value').value || 0);
-            fd.append('stage',           document.getElementById('lead-stage').value);
-            fd.append('priority',        document.getElementById('lead-priority').value);
-            fd.append('pipeline_type',   document.getElementById('lead-pipeline-type').value);
-            fd.append('lead_source',     document.getElementById('lead-source').value);
-            fd.append('product_type',    document.getElementById('lead-product').value);
-            fd.append('expected_close',  document.getElementById('lead-close').value);
-            fd.append('status',          document.getElementById('lead-status').value);
-            fd.append('notes',           document.getElementById('lead-notes').value.trim());
-            fd.append('note_priority',   document.getElementById('lead-note-priority').value);
-            fetch(ajaxurl, { method:'POST', body:fd })
-                .then(function(r){ return r.json(); })
-                .then(function(d) {
-                    btn.disabled = false;
-                    if (d.success) { crmShowToast('Lead added!','success'); crmCCloseSheet('crm-lead-sheet'); location.reload(); }
-                    else { msgEl.textContent = d.data.message; msgEl.style.display = 'block'; }
-                })
-                .catch(function() { btn.disabled = false; crmShowToast('Request failed.','error'); });
-        };
- 
-        // ── Add Contact ───────────────────────────────
-        window.crmCOpenAddSheet = function() {
-            ['add-fn','add-ln','add-em','add-ph','add-co','add-notes'].forEach(function(id){
-                var el = document.getElementById(id);
-                if (el) el.value = '';
-            });
-            document.getElementById('add-msg').style.display = 'none';
-            crmCOpenSheet('crm-add-sheet');
-        };
- 
-        window.crmCSubmitAdd = function() {
-            var btn   = document.getElementById('crm-add-save');
-            var fn    = document.getElementById('add-fn').value.trim();
-            var ln    = document.getElementById('add-ln').value.trim();
-            var msgEl = document.getElementById('add-msg');
-            if (!fn || !ln) { msgEl.textContent = 'First and last name are required.'; msgEl.style.display = 'block'; return; }
-            btn.disabled = true;
-            var fd = new FormData();
-            fd.append('action',      'crm_add_contact');
-            fd.append('nonce',       crm_nonce);
-            fd.append('first_name',  fn);
-            fd.append('last_name',   ln);
-            fd.append('email',       document.getElementById('add-em').value.trim());
-            fd.append('phone',       document.getElementById('add-ph').value.trim());
-            fd.append('company',     document.getElementById('add-co').value.trim());
-            fd.append('notes',       document.getElementById('add-notes').value.trim());
-            fetch(ajaxurl, { method:'POST', body:fd })
-                .then(function(r){ return r.json(); })
-                .then(function(d) {
-                    btn.disabled = false;
-                    if (d.success) { crmShowToast('Contact added!','success'); crmCCloseSheet('crm-add-sheet'); location.reload(); }
-                    else { msgEl.textContent = d.data.message; msgEl.style.display = 'block'; }
-                })
-                .catch(function() { btn.disabled = false; crmShowToast('Request failed.','error'); });
-        };
- 
-        // ── Edit Contact ──────────────────────────────
-        window.crmCOpenEditSheet = function(data) {
-            document.getElementById('edit-rand-id').value = data.rand_id;
-            document.getElementById('edit-fn').value    = data.first_name;
-            document.getElementById('edit-ln').value    = data.last_name;
-            document.getElementById('edit-em').value    = data.email;
-            document.getElementById('edit-ph').value    = data.phone;
-            document.getElementById('edit-co').value    = data.company;
-            document.getElementById('edit-st').value    = data.status;
-            document.getElementById('edit-notes').value = data.notes || '';
-            document.getElementById('edit-msg').style.display = 'none';
-            crmCOpenSheet('crm-edit-sheet');
-        };
- 
-        window.crmCSubmitEdit = function() {
-            var btn   = document.getElementById('crm-edit-save');
-            var fn    = document.getElementById('edit-fn').value.trim();
-            var ln    = document.getElementById('edit-ln').value.trim();
-            var msgEl = document.getElementById('edit-msg');
-            if (!fn || !ln) { msgEl.textContent = 'First and last name are required.'; msgEl.style.display = 'block'; return; }
-            btn.disabled = true;
-            var fd = new FormData();
-            fd.append('action',      'crm_edit_contact');
-            fd.append('nonce',       crm_nonce);
-            fd.append('rand_id',     document.getElementById('edit-rand-id').value);
-            fd.append('first_name',  fn);
-            fd.append('last_name',   ln);
-            fd.append('email',       document.getElementById('edit-em').value.trim());
-            fd.append('phone',       document.getElementById('edit-ph').value.trim());
-            fd.append('company',     document.getElementById('edit-co').value.trim());
-            fd.append('status',      document.getElementById('edit-st').value);
-            fd.append('notes',       document.getElementById('edit-notes').value.trim());
-            fetch(ajaxurl, { method:'POST', body:fd })
-                .then(function(r){ return r.json(); })
-                .then(function(d) {
-                    btn.disabled = false;
-                    if (d.success) { crmShowToast('Contact updated!','success'); crmCCloseSheet('crm-edit-sheet'); location.reload(); }
-                    else { msgEl.textContent = d.data.message; msgEl.style.display = 'block'; }
-                })
-                .catch(function() { btn.disabled = false; crmShowToast('Request failed.','error'); });
-        };
- 
-        // ── Delete Contact ────────────────────────────
-        window.crmCDelete = function(rand_id, btnEl) {
-            if (!confirm('Delete this contact? Their leads and interactions will also be removed.')) return;
-            if (btnEl) btnEl.disabled = true;
-            var fd = new FormData();
-            fd.append('action',  'crm_delete_contact');
-            fd.append('nonce',   crm_nonce);
-            fd.append('rand_id', rand_id);
-            fetch(ajaxurl, { method:'POST', body:fd })
-                .then(function(r){ return r.json(); })
-                .then(function(d) {
-                    if (btnEl) btnEl.disabled = false;
-                    if (d.success) { crmShowToast('Contact deleted.','success'); crmCCloseDrawer(); location.reload(); }
-                    else { crmShowToast(d.data.message,'error'); }
-                })
-                .catch(function() { if (btnEl) btnEl.disabled = false; crmShowToast('Request failed.','error'); });
-        };
- 
-        // ── Utilities ─────────────────────────────────
-        function escHtml(str) {
-            var d = document.createElement('div');
-            d.appendChild(document.createTextNode(String(str || '')));
-            return d.innerHTML;
-        }
-        function escAttr(str) {
-            return String(str || '').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-        }
-        function ucfirst(str) {
-            if (!str) return '';
-            return str.charAt(0).toUpperCase() + str.slice(1);
-        }
- 
-        // Close sheets on overlay click
-        document.querySelectorAll('.crm-sheet-overlay').forEach(function(overlay) {
-            overlay.addEventListener('click', function(e) {
-                if (e.target === overlay) {
-                    overlay.classList.remove('open');
-                    document.body.style.overflow = '';
-                }
-            });
-        });
- 
-    })();
-    </script>
- 
-    <?php
-    return ob_get_clean();
-}
- 
-// ============================================================
-// NOTE: The Add Lead AJAX handler (bntm_ajax_crm_add_lead) should
-// be updated to also accept and store these new fields:
-//
-//   contact_rand_id  — resolve to contact_id before insert
-//   pipeline_type    — VARCHAR(50)  e.g. 'sales','partnership'
-//   lead_source      — VARCHAR(50)  e.g. 'website','referral'
-//   product_type     — VARCHAR(50)  e.g. 'saas','consulting'
-//   note_priority    — VARCHAR(20)  e.g. 'low','medium','high'
-//
-// Add those columns to the crm_leads table migration:
-//   pipeline_type VARCHAR(50) NOT NULL DEFAULT 'sales',
-//   lead_source   VARCHAR(100) NOT NULL DEFAULT '',
-//   product_type  VARCHAR(100) NOT NULL DEFAULT '',
-//   note_priority VARCHAR(20) NOT NULL DEFAULT 'medium',
-//
-// Update bntm_ajax_crm_add_lead() to:
-//   1. Accept contact_rand_id → look up the contact id for this business
-//   2. Insert the 4 new fields
-// ============================================================
 
-// ============================================================
-// TAB: LEADS
-// ============================================================
-
-/**
- * Render the leads tab content for the CRM dashboard.
- * @param int $business_id Business ID to scope the CRM data.
- * @return array
- */
-function crm_leads_tab($business_id) {
-    global $wpdb;
-
-    $pipeline_type = isset($_GET['pipeline']) && in_array($_GET['pipeline'], ['subscription', 'enterprise']) ? sanitize_text_field($_GET['pipeline']) : 'subscription';
-    $stages        = crm_get_pipeline_stages($business_id, $pipeline_type);
-    $lead_sources  = crm_get_lead_sources();
-    $product_types = crm_get_product_types();
-
-    $leads_by_stage = [];
-    foreach ($stages as $stage) {
-        $leads_by_stage[$stage] = $wpdb->get_results($wpdb->prepare(
-            "SELECT l.*, c.first_name, c.last_name
-             FROM {$wpdb->prefix}crm_leads l
-             LEFT JOIN {$wpdb->prefix}crm_contacts c ON c.id = l.contact_id
-             WHERE l.business_id = %d AND l.pipeline_type = %s AND l.stage = %s AND l.status = 'open'
-             ORDER BY l.created_at DESC",
-            $business_id, $pipeline_type, $stage
-        ));
-    }
-
-    $contacts = $wpdb->get_results($wpdb->prepare(
-        "SELECT id, first_name, last_name FROM {$wpdb->prefix}crm_contacts WHERE business_id = %d AND status = 'active' ORDER BY first_name",
-        $business_id
-    ));
-
-    $max_stage_count = max(array_map('count', $leads_by_stage)) ?: 1;
-
-    ob_start();
-    ?>
-    <div class="crm-filter-bar" style="margin-bottom:16px;">
-        <select id="lead-pipeline-filter" class="crm-select" style="width:auto;min-width:150px;" onchange="crmApplyLeadFilters()">
-            <option value="">All Pipelines</option>
-            <?php foreach (crm_get_pipeline_types() as $key => $label): ?>
-                <option value="<?php echo esc_attr($key); ?>" <?php selected($pipeline_type, $key); ?>><?php echo esc_html($label); ?></option>
-            <?php endforeach; ?>
-        </select>
-        <select id="lead-stage-filter" class="crm-select" style="width:auto;min-width:170px;" onchange="crmApplyLeadFilters()">
-            <option value="">All Stages</option>
-            <?php foreach ($stages as $s): ?>
-                <option value="<?php echo esc_attr($s); ?>"><?php echo esc_html($s); ?></option>
-            <?php endforeach; ?>
-        </select>
-        <select id="lead-status-filter" class="crm-select" style="width:auto;min-width:150px;" onchange="crmApplyLeadFilters()">
-            <option value="">All Statuses</option>
-            <option value="open">Open</option>
-            <option value="won">Won</option>
-            <option value="lost">Lost</option>
-        </select>
-        <select id="lead-source-filter" class="crm-select" style="width:auto;min-width:170px;" onchange="crmApplyLeadFilters()">
-            <option value="">All Sources</option>
-            <?php foreach ($lead_sources as $source_key => $source_label): ?>
-                <option value="<?php echo esc_attr($source_key); ?>"><?php echo esc_html($source_label); ?></option>
-            <?php endforeach; ?>
-        </select>
-    </div>
-    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:16px;">
-        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-            <select id="lead-view-mode" class="crm-select" style="width:auto;min-width:140px;" onchange="crmSwitchLeadView(this.value)">
-                <option value="pipeline">Pipeline View</option>
-                <option value="list">List View</option>
-            </select>
-            <div id="pipeline-display-wrap" style="display:flex;align-items:center;gap:8px;">
-                <label for="lead-pipeline-display-mode" style="margin:0;font-size:14px;color:#374151;">Display</label>
-                <select id="lead-pipeline-display-mode" class="crm-select" style="width:auto;min-width:170px;" onchange="crmSwitchPipelineDisplay(this.value)">
-                    <option value="graph">Bar Graph</option>
-                    <option value="cards">Stat Cards</option>
-                </select>
+    <!-- Delete Confirm Modal -->
+    <div class="crm-modal-overlay" id="crm-contact-delete-modal">
+        <div class="crm-modal" style="max-width:420px;">
+            <div class="crm-modal-header">
+                <h3>Delete Contact</h3>
+                <button class="crm-modal-close" type="button">
+                    <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="crm-modal-body">
+                <p style="font-size:14px;color:#374151;margin:0;">Are you sure you want to delete this contact? This action cannot be undone. All linked deals, activities, and tasks will also be removed.</p>
+                <input type="hidden" id="crm-contact-delete-id">
+            </div>
+            <div class="crm-modal-footer">
+                <button class="bntm-btn-secondary" onclick="crmCloseModal('crm-contact-delete-modal')">Cancel</button>
+                <button class="bntm-btn-danger" id="crm-contact-confirm-delete-btn">Delete</button>
             </div>
         </div>
-        <button class="bntm-btn-primary" onclick="crmOpenModal('add-lead-modal')">
-            <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="vertical-align:-3px;margin-right:4px;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
-            Add Lead
-        </button>
     </div>
 
-    <!-- Pipeline view -->
-    <div id="lead-view-pipeline">
-        <div id="lead-view-pipeline-graph">
-            <div class="crm-pipeline">
-                <?php foreach ($stages as $stage):
-                    $stage_leads = $leads_by_stage[$stage] ?? [];
-                    $stage_value = array_sum(array_column($stage_leads, 'value'));
-                    $bar_pct     = $max_stage_count ? round(min(100, (count($stage_leads) / $max_stage_count) * 100)) : 0;
-                    ?>
-                <div class="crm-pipeline-col">
-                    <div class="crm-pipeline-col-header">
-                        <h4><?php echo esc_html($stage); ?></h4>
-                        <span class="crm-pipeline-count"><?php echo count($stage_leads); ?></span>
-                    </div>
-                    <div class="crm-pipeline-bar" title="<?php echo esc_attr(count($stage_leads)); ?> leads">
-                        <div class="crm-pipeline-bar-fill" style="width:<?php echo esc_attr($bar_pct); ?>%;"></div>
-                    </div>
-                    <div style="font-size:11px;color:#9ca3af;margin-bottom:10px;"><?php echo crm_format_price($stage_value); ?></div>
-                    <?php foreach ($stage_leads as $l): ?>
-                    <div class="crm-lead-card" data-pipeline-type="<?php echo esc_attr($l->pipeline_type); ?>" data-stage="<?php echo esc_attr($l->stage); ?>" data-status="<?php echo esc_attr($l->status); ?>" data-product-type="<?php echo esc_attr($l->product_type); ?>" data-service-type="<?php echo esc_attr($l->service_type); ?>" data-source="<?php echo esc_attr($l->lead_source); ?>" onclick="crmEditLead(<?php echo esc_attr(json_encode(['rand_id'=>$l->rand_id,'title'=>$l->title,'contact_id'=>$l->contact_id,'value'=>$l->value,'pipeline_type'=>$l->pipeline_type,'product_type'=>$l->product_type,'service_type'=>$l->service_type,'lead_source'=>$l->lead_source,'motm_uploaded'=>$l->motm_uploaded,'ended_reason'=>$l->ended_reason,'stage'=>$l->stage,'priority'=>$l->priority,'expected_close'=>$l->expected_close,'notes'=>$l->notes,'status'=>$l->status])); ?>)">
-                        <h5><?php echo esc_html($l->title); ?></h5>
-                        <div class="lead-value"><?php echo crm_format_price($l->value); ?></div>
-                        <div class="lead-contact"><?php echo esc_html($l->first_name . ' ' . $l->last_name); ?></div>
-                        <div style="margin-top:8px;">
-                            <span class="crm-badge crm-badge-<?php echo esc_attr($l->priority); ?>" style="font-size:10px;"><?php echo esc_html($l->priority); ?></span>
-                        </div>
+    <!-- Import Modal -->
+    <div class="crm-modal-overlay" id="crm-contact-import-modal">
+        <div class="crm-modal" style="max-width:480px;">
+            <div class="crm-modal-header">
+                <h3>Import Contacts from CSV</h3>
+                <button class="crm-modal-close" type="button">
+                    <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="crm-modal-body">
+                <p style="font-size:13px;color:#6b7280;margin-bottom:14px;">Upload a CSV file with columns: <strong>first_name, last_name, email, phone, company, status, source</strong>. The first row must be the header row.</p>
+                <div class="form-row">
+                    <label>CSV File</label>
+                    <input type="file" id="crm-import-file" accept=".csv" style="border:none;padding:0;">
+                </div>
+                <div id="crm-import-result" style="margin-top:10px;font-size:13px;"></div>
+            </div>
+            <div class="crm-modal-footer">
+                <button class="bntm-btn-secondary" onclick="crmCloseModal('crm-contact-import-modal')">Cancel</button>
+                <button class="bntm-btn-primary" id="crm-import-submit-btn">Import</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tag Manager Modal -->
+    <div class="crm-modal-overlay" id="crm-tag-manager-modal">
+        <div class="crm-modal" style="max-width:480px;">
+            <div class="crm-modal-header">
+                <h3>Tag Manager</h3>
+                <button class="crm-modal-close" type="button">
+                    <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="crm-modal-body">
+                <div style="display:flex;gap:8px;margin-bottom:16px;">
+                    <input type="text" id="crm-new-tag-name" placeholder="Tag name" style="flex:1;">
+                    <input type="color" id="crm-new-tag-colour" value="#6c757d" style="width:44px;height:40px;padding:2px;border:1px solid #e5e7eb;border-radius:6px;cursor:pointer;">
+                    <button class="bntm-btn-primary bntm-btn-small" id="crm-add-tag-btn">Add</button>
+                </div>
+                <div id="crm-tags-list">
+                    <?php if (!empty($tags)): ?>
+                    <?php foreach ($tags as $tag): ?>
+                    <div class="crm-tag-manager-row" data-tag-id="<?php echo intval($tag->id); ?>" style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid #f3f4f6;">
+                        <span class="crm-tag-chip" style="background:<?php echo esc_attr($tag->colour); ?>;"><?php echo esc_html($tag->name); ?></span>
+                        <span style="flex:1;font-size:13px;color:#374151;"><?php echo esc_html($tag->name); ?></span>
+                        <button class="bntm-btn-danger bntm-btn-small crm-delete-tag-btn" data-id="<?php echo intval($tag->id); ?>">Delete</button>
                     </div>
                     <?php endforeach; ?>
-                    <?php if (empty($stage_leads)): ?>
-                    <div style="text-align:center;color:#d1d5db;font-size:12px;padding:16px 0;">Empty</div>
+                    <?php else: ?>
+                    <p style="font-size:13px;color:#9ca3af;">No tags yet.</p>
                     <?php endif; ?>
                 </div>
-                <?php endforeach; ?>
-            </div>
-        </div>
-
-        <div id="lead-view-pipeline-cards" style="display:none;">
-            <div class="crm-stage-cards">
-                <?php foreach ($stages as $stage):
-                    $stage_leads = $leads_by_stage[$stage] ?? [];
-                    $stage_value = array_sum(array_column($stage_leads, 'value'));
-                    $card_pct    = $max_stage_count ? round(min(100, (count($stage_leads) / $max_stage_count) * 100)) : 0;
-                    ?>
-                <div class="crm-stage-card" data-stage="<?php echo esc_attr($stage); ?>">
-                    <div class="crm-stage-card-header">
-                        <h4><?php echo esc_html($stage); ?></h4>
-                        <span class="crm-stage-count"><?php echo count($stage_leads); ?></span>
-                    </div>
-                    <div class="crm-stage-card-value"><?php echo crm_format_price($stage_value); ?></div>
-                    <div class="crm-stage-card-bar">
-                        <div class="crm-stage-card-bar-fill" style="width:<?php echo esc_attr($card_pct); ?>%;"></div>
-                    </div>
-                    <div class="crm-stage-card-meta"><?php echo number_format(count($stage_leads)); ?> open lead<?php echo count($stage_leads) === 1 ? '' : 's'; ?></div>
-                </div>
-                <?php endforeach; ?>
             </div>
         </div>
     </div>
 
     <style>
-    .crm-stage-cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:16px; margin-bottom:20px; }
-    .crm-stage-card { background:#fff; border:1px solid #e5e7eb; border-radius:14px; padding:18px; box-shadow:0 1px 4px rgba(15,23,42,.06); }
-    .crm-stage-card-header { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:12px; }
-    .crm-stage-card-header h4 { margin:0; font-size:14px; font-weight:700; color:#111827; }
-    .crm-stage-count, .crm-stage-card-value, .crm-stage-card-meta { margin:0; color:#374151; }
-    .crm-stage-card-value { font-size:22px; font-weight:700; margin-bottom:10px; color:var(--bntm-primary,#6366f1); }
-    .crm-stage-card-bar { height:10px; background:#f3f4f6; border-radius:999px; overflow:hidden; margin-bottom:10px; }
-    .crm-stage-card-bar-fill { height:100%; background:linear-gradient(90deg,#6366f1,#4f46e5); border-radius:999px; }
-    .crm-stage-card-meta { font-size:12px; color:#6b7280; }
-    .crm-pipeline-bar { height:10px; background:#f3f4f6; border-radius:999px; overflow:hidden; margin-bottom:10px; }
-    .crm-pipeline-bar-fill { height:100%; background:linear-gradient(90deg,#6366f1,#4f46e5); border-radius:999px; }
+    .crm-sortable:hover { background: #f3f4f6; }
+    .crm-sortable.sort-asc::after  { content: ' \2191'; }
+    .crm-sortable.sort-desc::after { content: ' \2193'; }
     </style>
-
-    <!-- List view -->
-    <div id="lead-view-list" style="display:none;">
-        <?php
-        $all_leads = $wpdb->get_results($wpdb->prepare(
-            "SELECT l.*, c.first_name, c.last_name
-             FROM {$wpdb->prefix}crm_leads l
-             LEFT JOIN {$wpdb->prefix}crm_contacts c ON c.id = l.contact_id
-             WHERE l.business_id = %d
-             ORDER BY l.created_at DESC",
-            $business_id
-        ));
-        ?>
-        <div class="bntm-table-wrapper">
-            <table class="bntm-table">
-                <thead><tr><th>Title</th><th>Contact</th><th>Pipeline</th><th>Product / Service</th><th>Source</th><th>Value</th><th>Stage</th><th>Priority</th><th>Close Date</th><th>Status</th><th>Actions</th></tr></thead>
-                <tbody>
-                <?php if (empty($all_leads)): ?>
-                <tr><td colspan="8" style="text-align:center;color:#9ca3af;padding:32px;">No leads yet.</td></tr>
-                <?php else: ?>
-                <?php foreach ($all_leads as $l): ?>
-                <tr data-pipeline-type="<?php echo esc_attr($l->pipeline_type); ?>" data-product-type="<?php echo esc_attr($l->product_type); ?>" data-service-type="<?php echo esc_attr($l->service_type); ?>" data-source="<?php echo esc_attr($l->lead_source); ?>" data-status="<?php echo esc_attr($l->status); ?>">
-                    <td style="font-weight:500;color:#111827;"><?php echo esc_html($l->title); ?></td>
-                    <td><?php echo esc_html($l->first_name . ' ' . $l->last_name); ?></td>
-                    <td><?php echo esc_html(crm_pipeline_type_label($l->pipeline_type)); ?></td>
-                    <td><?php echo esc_html($l->pipeline_type === 'subscription' ? $l->product_type : $l->service_type); ?></td>
-                    <td><?php echo esc_html($l->lead_source ?: '—'); ?></td>
-                    <td style="font-weight:600;color:var(--bntm-primary,#6366f1);"><?php echo crm_format_price($l->value); ?></td>
-                    <td><span class="crm-badge crm-badge-<?php echo esc_attr(sanitize_title($l->stage)); ?>"><?php echo esc_html($l->stage); ?></span></td>
-                    <td><span class="crm-badge crm-badge-<?php echo esc_attr($l->priority); ?>"><?php echo esc_html($l->priority); ?></span></td>
-                    <td style="font-size:13px;color:#6b7280;"><?php echo $l->expected_close ? date('M j, Y', strtotime($l->expected_close)) : '—'; ?></td>
-                    <td><span class="crm-badge crm-badge-<?php echo esc_attr($l->status); ?>"><?php echo esc_html($l->status); ?></span></td>
-                    <td>
-                        <div class="crm-actions">
-                            <button class="bntm-btn-icon" title="Edit" onclick="crmEditLead(<?php echo esc_attr(json_encode(['rand_id'=>$l->rand_id,'title'=>$l->title,'contact_id'=>$l->contact_id,'value'=>$l->value,'pipeline_type'=>$l->pipeline_type,'product_type'=>$l->product_type,'service_type'=>$l->service_type,'lead_source'=>$l->lead_source,'motm_uploaded'=>$l->motm_uploaded,'ended_reason'=>$l->ended_reason,'stage'=>$l->stage,'priority'=>$l->priority,'expected_close'=>$l->expected_close,'notes'=>$l->notes,'status'=>$l->status])); ?>)">
-                                <svg width="15" height="15" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
-                            </button>
-                            <button class="bntm-btn-icon" title="Delete" onclick="crmDeleteLead('<?php echo esc_attr($l->rand_id); ?>', this)" style="color:#ef4444;">
-                                <svg width="15" height="15" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
-                            </button>
-                        </div>
-                    </td>
-                </tr>
-                <?php endforeach; ?>
-                <?php endif; ?>
-                </tbody>
-            </table>
-        </div>
-    </div>
-
-    <!-- Add Lead Modal -->
-    <div class="crm-modal-overlay" id="add-lead-modal">
-        <div class="crm-modal">
-            <div class="crm-modal-header">
-                <h3>Add Lead</h3>
-                <button class="bntm-btn-icon" onclick="crmCloseModal('add-lead-modal')"><svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
-            </div>
-            <div class="crm-modal-body">
-                <div class="crm-form-row single">
-                    <div class="crm-form-group"><label>Lead Title *</label><input type="text" id="add-lead-title" class="crm-input" placeholder="e.g. Website Redesign for Acme"></div>
-                </div>
-                <div class="crm-form-row">
-                    <div class="crm-form-group"><label>Pipeline Type</label>
-                        <select id="add-lead-pipeline-type" class="crm-select" onchange="crmRefreshLeadFields('add')">
-                            <?php foreach (crm_get_pipeline_types() as $key => $label): ?>
-                                <option value="<?php echo esc_attr($key); ?>" <?php selected($key, $pipeline_type); ?>><?php echo esc_html($label); ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-                    <div class="crm-form-group"><label>Lead Source</label>
-                        <select id="add-lead-source" class="crm-select">
-                            <option value="">— Select Source —</option>
-                            <?php foreach ($lead_sources as $source_key => $source_label): ?>
-                                <option value="<?php echo esc_attr($source_key); ?>"><?php echo esc_html($source_label); ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-                </div>
-                <div class="crm-form-row">
-                    <div class="crm-form-group" id="add-lead-product-group"><label>Product Type</label>
-                        <select id="add-lead-product-type" class="crm-select">
-                            <option value="">— Select Product —</option>
-                            <?php foreach ($product_types as $product_key => $product_label): ?>
-                                <option value="<?php echo esc_attr($product_key); ?>"><?php echo esc_html($product_label); ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-                    <div class="crm-form-group" id="add-lead-service-group" style="display:none;"><label>Service Type</label>
-                        <input type="text" id="add-lead-service-type" class="crm-input" placeholder="e.g. Web development"></div>
-                </div>
-                <div class="crm-form-row">
-                    <div class="crm-form-group"><label>Contact</label>
-                        <select id="add-lead-contact" class="crm-select">
-                            <option value="">— Select Contact —</option>
-                            <?php foreach ($contacts as $c): ?><option value="<?php echo esc_attr($c->id); ?>"><?php echo esc_html($c->first_name . ' ' . $c->last_name); ?></option><?php endforeach; ?>
-                        </select>
-                    </div>
-                    <div class="crm-form-group"><label>Value</label><input type="number" id="add-lead-value" class="crm-input" placeholder="0.00" min="0" step="0.01"></div>
-                </div>
-                <div class="crm-form-row triple">
-                    <div class="crm-form-group"><label>Stage</label>
-                        <select id="add-lead-stage" class="crm-select"></select>
-                    </div>
-                    <div class="crm-form-group"><label>Priority</label>
-                        <select id="add-lead-priority" class="crm-select"><option value="low">Low</option><option value="medium" selected>Medium</option><option value="high">High</option></select>
-                    </div>
-                    <div class="crm-form-group"><label>Expected Close</label><input type="date" id="add-lead-close" class="crm-input"></div>
-                </div>
-                <div class="crm-form-row">
-                    <div class="crm-form-group"><label style="display:flex;align-items:center;gap:10px;"><input type="checkbox" id="add-lead-motm" style="margin:0;"> MOTM Uploaded</label></div>
-                    <div class="crm-form-group" id="add-lead-ended-reason-group" style="display:none;"><label>Ended Reason</label>
-                        <select id="add-lead-ended-reason" class="crm-select">
-                            <option value="">— Select Reason —</option>
-                            <?php foreach (crm_get_ended_reasons() as $reason_key => $reason_label): ?>
-                                <option value="<?php echo esc_attr($reason_key); ?>"><?php echo esc_html($reason_label); ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-                </div>
-                <div class="crm-form-row single">
-                    <div class="crm-form-group"><label>Notes</label><textarea id="add-lead-notes" class="crm-textarea" placeholder="Additional details..."></textarea></div>
-                </div>
-                <div id="add-lead-msg"></div>
-            </div>
-            <div class="crm-modal-footer">
-                <button class="bntm-btn-secondary" onclick="crmCloseModal('add-lead-modal')">Cancel</button>
-                <button class="bntm-btn-primary" id="add-lead-btn" onclick="crmSubmitAddLead()">Add Lead</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Edit Lead Modal -->
-    <div class="crm-modal-overlay" id="edit-lead-modal">
-        <div class="crm-modal">
-            <div class="crm-modal-header">
-                <h3>Edit Lead</h3>
-                <button class="bntm-btn-icon" onclick="crmCloseModal('edit-lead-modal')"><svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
-            </div>
-            <div class="crm-modal-body">
-                <input type="hidden" id="edit-lead-rand-id">
-                <div class="crm-form-row single">
-                    <div class="crm-form-group"><label>Lead Title *</label><input type="text" id="edit-lead-title" class="crm-input"></div>
-                </div>
-                <div class="crm-form-row">
-                    <div class="crm-form-group"><label>Pipeline Type</label>
-                        <select id="edit-lead-pipeline-type" class="crm-select" onchange="crmRefreshLeadFields('edit')">
-                            <?php foreach (crm_get_pipeline_types() as $key => $label): ?>
-                                <option value="<?php echo esc_attr($key); ?>"><?php echo esc_html($label); ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-                    <div class="crm-form-group"><label>Lead Source</label>
-                        <select id="edit-lead-source" class="crm-select">
-                            <option value="">— Select Source —</option>
-                            <?php foreach ($lead_sources as $source_key => $source_label): ?>
-                                <option value="<?php echo esc_attr($source_key); ?>"><?php echo esc_html($source_label); ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-                </div>
-                <div class="crm-form-row">
-                    <div class="crm-form-group" id="edit-lead-product-group"><label>Product Type</label>
-                        <select id="edit-lead-product-type" class="crm-select">
-                            <option value="">— Select Product —</option>
-                            <?php foreach ($product_types as $product_key => $product_label): ?>
-                                <option value="<?php echo esc_attr($product_key); ?>"><?php echo esc_html($product_label); ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-                    <div class="crm-form-group" id="edit-lead-service-group" style="display:none;"><label>Service Type</label>
-                        <input type="text" id="edit-lead-service-type" class="crm-input" placeholder="e.g. Web development"></div>
-                </div>
-                <div class="crm-form-row">
-                    <div class="crm-form-group"><label>Contact</label>
-                        <select id="edit-lead-contact" class="crm-select">
-                            <option value="">— Select Contact —</option>
-                            <?php foreach ($contacts as $c): ?><option value="<?php echo esc_attr($c->id); ?>"><?php echo esc_html($c->first_name . ' ' . $c->last_name); ?></option><?php endforeach; ?>
-                        </select>
-                    </div>
-                    <div class="crm-form-group"><label>Value</label><input type="number" id="edit-lead-value" class="crm-input" min="0" step="0.01"></div>
-                </div>
-                <div class="crm-form-row triple">
-                    <div class="crm-form-group"><label>Stage</label>
-                        <select id="edit-lead-stage" class="crm-select"></select>
-                    </div>
-                    <div class="crm-form-group"><label>Priority</label>
-                        <select id="edit-lead-priority" class="crm-select"><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option></select>
-                    </div>
-                    <div class="crm-form-group"><label>Expected Close</label><input type="date" id="edit-lead-close" class="crm-input"></div>
-                </div>
-                <div class="crm-form-row">
-                    <div class="crm-form-group"><label>Status</label>
-                        <select id="edit-lead-status" class="crm-select"><option value="open">Open</option><option value="won">Won</option><option value="lost">Lost</option></select>
-                    </div>
-                    <div class="crm-form-group"><label style="display:flex;align-items:center;gap:10px;"><input type="checkbox" id="edit-lead-motm" style="margin:0;"> MOTM Uploaded</label></div>
-                </div>
-                <div class="crm-form-row">
-                    <div class="crm-form-group" id="edit-lead-ended-reason-group" style="display:none;"><label>Ended Reason</label>
-                        <select id="edit-lead-ended-reason" class="crm-select">
-                            <option value="">— Select Reason —</option>
-                            <?php foreach (crm_get_ended_reasons() as $reason_key => $reason_label): ?>
-                                <option value="<?php echo esc_attr($reason_key); ?>"><?php echo esc_html($reason_label); ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-                </div>
-                <div class="crm-form-row single">
-                    <div class="crm-form-group"><label>Notes</label><textarea id="edit-lead-notes" class="crm-textarea"></textarea></div>
-                </div>
-                <div id="edit-lead-msg"></div>
-            </div>
-            <div class="crm-modal-footer">
-                <button class="bntm-btn-secondary" onclick="crmCloseModal('edit-lead-modal')">Cancel</button>
-                <button class="bntm-btn-danger bntm-btn-small" onclick="crmDeleteCurrentLead()">Delete</button>
-                <button class="bntm-btn-primary" id="edit-lead-btn" onclick="crmSubmitEditLead()">Save Changes</button>
-            </div>
-        </div>
-    </div>
 
     <script>
     (function() {
-        var leadPipelineStages = {
-            subscription: <?php echo json_encode(crm_get_pipeline_stages($business_id, 'subscription')); ?>,
-            enterprise: <?php echo json_encode(crm_get_pipeline_stages($business_id, 'enterprise')); ?>
-        };
+        var currentPage   = 1;
+        var perPage       = 20;
+        var sortCol       = 'created_at';
+        var sortDir       = 'desc';
+        var selectedIds   = [];
+        var editingId     = 0;
 
-        function crmSetStageOptions(prefix, pipeline) {
-            var select = document.getElementById(prefix + '-lead-stage');
-            if (!select) return;
-            select.innerHTML = '';
-            var stages = leadPipelineStages[pipeline] || leadPipelineStages.subscription;
-            stages.forEach(function(stage) {
-                var opt = document.createElement('option');
-                opt.value = stage;
-                opt.textContent = stage;
-                select.appendChild(opt);
+        function getFilters() {
+            return {
+                search:  document.getElementById('crm-contact-search').value,
+                type:    document.getElementById('crm-contact-type-filter').value,
+                status:  document.getElementById('crm-contact-status-filter').value,
+                assigned: document.getElementById('crm-contact-assigned-filter').value,
+                tag:     document.getElementById('crm-contact-tag-filter').value,
+                page:    currentPage,
+                per_page: perPage,
+                sort_col: sortCol,
+                sort_dir: sortDir,
+            };
+        }
+
+        function loadContacts() {
+            var tbody = document.getElementById('crm-contacts-tbody');
+            tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;padding:30px;color:#9ca3af;">Loading…</td></tr>';
+            crmAjax('bntm_crm_get_contacts', getFilters(), function(err, res) {
+                if (err || !res.success) {
+                    tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;padding:30px;color:#dc2626;">Failed to load contacts.</td></tr>';
+                    return;
+                }
+                renderContacts(res.data.contacts, res.data.total);
             });
         }
 
-        function crmRefreshLeadFields(mode) {
-            var pipeline = document.getElementById(mode + '-lead-pipeline-type').value;
-            var productGroup = document.getElementById(mode + '-lead-product-group');
-            var serviceGroup = document.getElementById(mode + '-lead-service-group');
-            var endedGroup = document.getElementById(mode + '-lead-ended-reason-group');
-            var stageSelect = document.getElementById(mode + '-lead-stage');
-
-            if (pipeline === 'enterprise') {
-                productGroup.style.display = 'none';
-                serviceGroup.style.display = '';
-            } else {
-                productGroup.style.display = '';
-                serviceGroup.style.display = 'none';
-            }
-
-            crmSetStageOptions(mode, pipeline);
-            if (endedGroup && stageSelect) {
-                endedGroup.style.display = stageSelect.value === 'Subscription Ended' ? '' : 'none';
-            }
-        }
-
-        function crmApplyLeadFilters() {
-            var pipelineFilter = document.getElementById('lead-pipeline-filter');
-            var stageFilter = document.getElementById('lead-stage-filter');
-            var statusFilter = document.getElementById('lead-status-filter');
-            var sourceFilter = document.getElementById('lead-source-filter');
-
-            if (pipelineFilter && pipelineFilter.value && pipelineFilter.value !== '<?php echo esc_js($pipeline_type); ?>') {
-                var params = new URLSearchParams(window.location.search);
-                params.set('tab', 'leads');
-                params.set('pipeline', pipelineFilter.value);
-                window.location.search = params.toString();
+        function renderContacts(contacts, total) {
+            var tbody = document.getElementById('crm-contacts-tbody');
+            if (!contacts || contacts.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;padding:30px;color:#9ca3af;">No contacts found.</td></tr>';
+                renderPagination(0);
                 return;
             }
+            var html = '';
+            contacts.forEach(function(c) {
+                var tags = (c.tags || []).map(function(t) {
+                    return '<span class="crm-tag-chip" style="background:' + escHtml(t.colour) + ';">' + escHtml(t.name) + '</span>';
+                }).join('');
+                var checked = selectedIds.indexOf(c.id) > -1 ? 'checked' : '';
+                html += '<tr data-id="' + c.id + '">' +
+                    '<td><input type="checkbox" class="crm-contact-row-check" value="' + c.id + '" ' + checked + '></td>' +
+                    '<td><a href="?tab=contacts&contact_id=' + c.id + '" class="crm-contact-link">' + escHtml((c.first_name || '') + ' ' + (c.last_name || '')) + '</a></td>' +
+                    '<td>' + escHtml(c.email || '') + '</td>' +
+                    '<td>' + escHtml(c.phone || '') + '</td>' +
+                    '<td><span class="bntm-badge" style="background:#f3f4f6;color:#374151;">' + escHtml(c.type || '') + '</span></td>' +
+                    '<td>' + escHtml(c.company || '') + '</td>' +
+                    '<td><span class="bntm-badge bntm-badge-' + escHtml(c.status) + '">' + escHtml(ucFirst(c.status)) + '</span></td>' +
+                    '<td>' + escHtml(c.assigned_name || '') + '</td>' +
+                    '<td>' + tags + '</td>' +
+                    '<td>' + escHtml(c.created_at ? c.created_at.substring(0,10) : '') + '</td>' +
+                    '<td style="white-space:nowrap;">' +
+                        '<button class="bntm-btn-secondary bntm-btn-small crm-edit-contact-btn" data-id="' + c.id + '" style="margin-right:4px;">Edit</button>' +
+                        '<button class="bntm-btn-danger bntm-btn-small crm-delete-contact-btn" data-id="' + c.id + '">Delete</button>' +
+                    '</td>' +
+                '</tr>';
+            });
+            tbody.innerHTML = html;
+            bindRowEvents();
+            renderPagination(total);
+        }
 
-            var stageValue = stageFilter ? stageFilter.value.toLowerCase() : '';
-            var statusValue = statusFilter ? statusFilter.value.toLowerCase() : '';
-            var sourceValue = sourceFilter ? sourceFilter.value.toLowerCase() : '';
-
-            document.querySelectorAll('.crm-lead-card, .crm-stage-card, #lead-view-list tbody tr').forEach(function(item) {
-                var match = true;
-                var itemStage = (item.getAttribute('data-stage') || '').toLowerCase();
-                var itemStatus = (item.getAttribute('data-status') || '').toLowerCase();
-                var itemSource = (item.getAttribute('data-source') || '').toLowerCase();
-
-                if (item.classList.contains('crm-stage-card')) {
-                    if (stageValue && itemStage !== stageValue) {
-                        match = false;
-                    }
-                } else {
-                    if (stageValue && itemStage !== stageValue) {
-                        match = false;
-                    }
-                    if (statusValue && itemStatus !== statusValue) {
-                        match = false;
-                    }
-                    if (sourceValue && itemSource !== sourceValue) {
-                        match = false;
-                    }
+        function renderPagination(total) {
+            var pages = Math.ceil(total / perPage);
+            var el    = document.getElementById('crm-contacts-pagination');
+            if (pages <= 1) { el.innerHTML = '<span>' + total + ' contact' + (total !== 1 ? 's' : '') + '</span>'; return; }
+            var btns = '';
+            btns += '<button ' + (currentPage === 1 ? 'disabled' : '') + ' id="crm-prev-page">&larr; Prev</button>';
+            for (var p = 1; p <= pages; p++) {
+                if (pages > 7 && p > 2 && p < pages - 1 && Math.abs(p - currentPage) > 2) {
+                    if (p === 3 || p === pages - 2) btns += '<button disabled>…</button>';
+                    continue;
                 }
+                btns += '<button class="' + (p === currentPage ? 'active' : '') + '" data-page="' + p + '">' + p + '</button>';
+            }
+            btns += '<button ' + (currentPage === pages ? 'disabled' : '') + ' id="crm-next-page">Next &rarr;</button>';
+            el.innerHTML = '<span>' + total + ' contact' + (total !== 1 ? 's' : '') + '</span><div class="crm-pagination-btns">' + btns + '</div>';
 
-                item.style.display = match ? '' : 'none';
+            el.querySelectorAll('[data-page]').forEach(function(btn) {
+                btn.addEventListener('click', function() { currentPage = parseInt(this.dataset.page); loadContacts(); });
+            });
+            var prev = document.getElementById('crm-prev-page');
+            var next = document.getElementById('crm-next-page');
+            if (prev) prev.addEventListener('click', function() { currentPage--; loadContacts(); });
+            if (next) next.addEventListener('click', function() { currentPage++; loadContacts(); });
+        }
+
+        function bindRowEvents() {
+            document.querySelectorAll('.crm-contact-row-check').forEach(function(cb) {
+                cb.addEventListener('change', function() {
+                    var id = parseInt(this.value);
+                    if (this.checked) {
+                        if (selectedIds.indexOf(id) === -1) selectedIds.push(id);
+                    } else {
+                        selectedIds = selectedIds.filter(function(i) { return i !== id; });
+                    }
+                    updateBulkBar();
+                });
+            });
+
+            document.querySelectorAll('.crm-edit-contact-btn').forEach(function(btn) {
+                btn.addEventListener('click', function() { openEditContact(parseInt(this.dataset.id)); });
+            });
+
+            document.querySelectorAll('.crm-delete-contact-btn').forEach(function(btn) {
+                btn.addEventListener('click', function() {
+                    document.getElementById('crm-contact-delete-id').value = this.dataset.id;
+                    crmOpenModal('crm-contact-delete-modal');
+                });
             });
         }
 
-        window.crmSwitchPipelineDisplay = function(v) {
-            document.getElementById('lead-view-pipeline-graph').style.display = v === 'graph' ? '' : 'none';
-            document.getElementById('lead-view-pipeline-cards').style.display = v === 'cards' ? '' : 'none';
-        };
+        function updateBulkBar() {
+            var bar = document.getElementById('crm-contacts-bulk-bar');
+            document.getElementById('crm-contacts-selected-count').textContent = selectedIds.length;
+            bar.classList.toggle('visible', selectedIds.length > 0);
+        }
 
-        window.crmSwitchLeadView = function(v) {
-            var displayWrap = document.getElementById('pipeline-display-wrap');
-            if (displayWrap) {
-                displayWrap.style.display = v === 'pipeline' ? '' : 'none';
-            }
-            document.getElementById('lead-view-pipeline').style.display = v === 'pipeline' ? '' : 'none';
-            document.getElementById('lead-view-list').style.display      = v === 'list' ? '' : 'none';
-        };
+        function openAddContact() {
+            editingId = 0;
+            document.getElementById('crm-contact-modal-title').textContent = 'Add Contact';
+            document.getElementById('crm-contact-id').value = '';
+            ['first-name','last-name','email','phone','mobile','company','job-title','website','address1','address2','city','state','postcode','country','source'].forEach(function(f) {
+                document.getElementById('crm-contact-' + f).value = '';
+            });
+            document.getElementById('crm-contact-type').value   = 'person';
+            document.getElementById('crm-contact-status').value = 'lead';
+            document.getElementById('crm-contact-assigned').value = '';
+            document.querySelectorAll('.crm-tag-checkbox').forEach(function(cb) { cb.checked = false; });
+            crmOpenModal('crm-contact-modal');
+        }
 
-        window.crmSubmitAddLead = function() {
-            var btn = document.getElementById('add-lead-btn');
-            var t   = document.getElementById('add-lead-title').value.trim();
-            if (!t) { document.getElementById('add-lead-msg').innerHTML = '<div class="bntm-notice bntm-notice-error">Lead title is required.</div>'; return; }
+        function openEditContact(id) {
+            editingId = id;
+            crmAjax('bntm_crm_get_contact_detail', { contact_id: id }, function(err, res) {
+                if (err || !res.success) { crmToast('Failed to load contact.', 'error'); return; }
+                var c = res.data;
+                document.getElementById('crm-contact-modal-title').textContent = 'Edit Contact';
+                document.getElementById('crm-contact-id').value          = c.id;
+                document.getElementById('crm-contact-type').value        = c.type        || 'person';
+                document.getElementById('crm-contact-first-name').value  = c.first_name  || '';
+                document.getElementById('crm-contact-last-name').value   = c.last_name   || '';
+                document.getElementById('crm-contact-email').value       = c.email       || '';
+                document.getElementById('crm-contact-phone').value       = c.phone       || '';
+                document.getElementById('crm-contact-mobile').value      = c.mobile      || '';
+                document.getElementById('crm-contact-company').value     = c.company     || '';
+                document.getElementById('crm-contact-job-title').value   = c.job_title   || '';
+                document.getElementById('crm-contact-website').value     = c.website     || '';
+                document.getElementById('crm-contact-address1').value    = c.address_line_1 || '';
+                document.getElementById('crm-contact-address2').value    = c.address_line_2 || '';
+                document.getElementById('crm-contact-city').value        = c.city        || '';
+                document.getElementById('crm-contact-state').value       = c.state       || '';
+                document.getElementById('crm-contact-postcode').value    = c.postcode    || '';
+                document.getElementById('crm-contact-country').value     = c.country     || '';
+                document.getElementById('crm-contact-source').value      = c.source      || '';
+                document.getElementById('crm-contact-status').value      = c.status      || 'lead';
+                document.getElementById('crm-contact-assigned').value    = c.assigned_user_id || '';
+                var tagIds = (c.tags || []).map(function(t) { return parseInt(t.id); });
+                document.querySelectorAll('.crm-tag-checkbox').forEach(function(cb) {
+                    cb.checked = tagIds.indexOf(parseInt(cb.value)) > -1;
+                });
+                crmOpenModal('crm-contact-modal');
+            });
+        }
+
+        function saveContact() {
+            var btn = document.getElementById('crm-contact-save-btn');
+            btn.disabled = true;
+            var tagIds = [];
+            document.querySelectorAll('.crm-tag-checkbox:checked').forEach(function(cb) { tagIds.push(cb.value); });
+            var data = {
+                contact_id:    document.getElementById('crm-contact-id').value,
+                type:          document.getElementById('crm-contact-type').value,
+                first_name:    document.getElementById('crm-contact-first-name').value,
+                last_name:     document.getElementById('crm-contact-last-name').value,
+                email:         document.getElementById('crm-contact-email').value,
+                phone:         document.getElementById('crm-contact-phone').value,
+                mobile:        document.getElementById('crm-contact-mobile').value,
+                company:       document.getElementById('crm-contact-company').value,
+                job_title:     document.getElementById('crm-contact-job-title').value,
+                website:       document.getElementById('crm-contact-website').value,
+                address_line_1: document.getElementById('crm-contact-address1').value,
+                address_line_2: document.getElementById('crm-contact-address2').value,
+                city:          document.getElementById('crm-contact-city').value,
+                state:         document.getElementById('crm-contact-state').value,
+                postcode:      document.getElementById('crm-contact-postcode').value,
+                country:       document.getElementById('crm-contact-country').value,
+                source:        document.getElementById('crm-contact-source').value,
+                status:        document.getElementById('crm-contact-status').value,
+                assigned_user_id: document.getElementById('crm-contact-assigned').value,
+                tag_ids:       tagIds,
+            };
+            crmAjax('bntm_crm_save_contact', data, function(err, res) {
+                btn.disabled = false;
+                if (err || !res.success) { crmToast(res ? res.data.message : 'Save failed.', 'error'); return; }
+                crmToast('Contact saved successfully.', 'success');
+                crmCloseModal('crm-contact-modal');
+                loadContacts();
+            });
+        }
+
+        // Sort
+        document.querySelectorAll('.crm-sortable').forEach(function(th) {
+            th.addEventListener('click', function() {
+                var col = this.dataset.col;
+                if (sortCol === col) {
+                    sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+                } else {
+                    sortCol = col;
+                    sortDir = 'asc';
+                }
+                document.querySelectorAll('.crm-sortable').forEach(function(el) { el.classList.remove('sort-asc','sort-desc'); });
+                this.classList.add('sort-' + sortDir);
+                currentPage = 1;
+                loadContacts();
+            });
+        });
+
+        // Select all
+        document.getElementById('crm-contacts-select-all').addEventListener('change', function() {
+            var checked = this.checked;
+            document.querySelectorAll('.crm-contact-row-check').forEach(function(cb) {
+                cb.checked = checked;
+                var id = parseInt(cb.value);
+                if (checked) { if (selectedIds.indexOf(id) === -1) selectedIds.push(id); }
+                else { selectedIds = selectedIds.filter(function(i) { return i !== id; }); }
+            });
+            updateBulkBar();
+        });
+
+        // Bulk action selects
+        document.getElementById('crm-contacts-bulk-action').addEventListener('change', function() {
+            document.getElementById('crm-contacts-bulk-assign-user').style.display = this.value === 'assign' ? '' : 'none';
+            document.getElementById('crm-contacts-bulk-tag').style.display         = this.value === 'tag'    ? '' : 'none';
+        });
+
+        document.getElementById('crm-contacts-bulk-apply').addEventListener('click', function() {
+            var action = document.getElementById('crm-contacts-bulk-action').value;
+            if (!action || selectedIds.length === 0) return;
+            var extra = {};
+            if (action === 'assign') extra.assign_user_id = document.getElementById('crm-contacts-bulk-assign-user').value;
+            if (action === 'tag')    extra.tag_id         = document.getElementById('crm-contacts-bulk-tag').value;
+            if (action === 'delete' && !confirm('Delete ' + selectedIds.length + ' contacts? This cannot be undone.')) return;
+            this.disabled = true;
+            var self = this;
+            crmAjax('bntm_crm_bulk_action_contacts', Object.assign({ action_type: action, contact_ids: selectedIds }, extra), function(err, res) {
+                self.disabled = false;
+                if (err || !res.success) { crmToast(res ? res.data.message : 'Bulk action failed.', 'error'); return; }
+                crmToast(res.data.message, 'success');
+                selectedIds = [];
+                updateBulkBar();
+                loadContacts();
+            });
+        });
+
+        document.getElementById('crm-contacts-bulk-clear').addEventListener('click', function() {
+            selectedIds = [];
+            document.querySelectorAll('.crm-contact-row-check').forEach(function(cb) { cb.checked = false; });
+            document.getElementById('crm-contacts-select-all').checked = false;
+            updateBulkBar();
+        });
+
+        // Filters
+        document.getElementById('crm-contacts-apply-filters').addEventListener('click', function() { currentPage = 1; loadContacts(); });
+        document.getElementById('crm-contacts-reset-filters').addEventListener('click', function() {
+            document.getElementById('crm-contact-search').value          = '';
+            document.getElementById('crm-contact-type-filter').value     = '';
+            document.getElementById('crm-contact-status-filter').value   = '';
+            document.getElementById('crm-contact-assigned-filter').value = '';
+            document.getElementById('crm-contact-tag-filter').value      = '';
+            currentPage = 1;
+            loadContacts();
+        });
+        document.getElementById('crm-contact-search').addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') { currentPage = 1; loadContacts(); }
+        });
+
+        // Add / Save
+        document.getElementById('crm-add-contact-btn').addEventListener('click', openAddContact);
+        document.getElementById('crm-contact-save-btn').addEventListener('click', saveContact);
+
+        // Delete confirm
+        document.getElementById('crm-contact-confirm-delete-btn').addEventListener('click', function() {
+            var id  = document.getElementById('crm-contact-delete-id').value;
+            var btn = this;
+            btn.disabled = true;
+            crmAjax('bntm_crm_delete_contact', { contact_id: id }, function(err, res) {
+                btn.disabled = false;
+                if (err || !res.success) { crmToast(res ? res.data.message : 'Delete failed.', 'error'); return; }
+                crmToast('Contact deleted.', 'success');
+                crmCloseModal('crm-contact-delete-modal');
+                loadContacts();
+            });
+        });
+
+        // Import
+        document.getElementById('crm-contacts-import-btn').addEventListener('click', function() { crmOpenModal('crm-contact-import-modal'); });
+        document.getElementById('crm-import-submit-btn').addEventListener('click', function() {
+            var file = document.getElementById('crm-import-file').files[0];
+            if (!file) { crmToast('Please select a CSV file.', 'error'); return; }
+            var btn = this;
             btn.disabled = true;
             var fd = new FormData();
-            fd.append('action', 'crm_add_lead');
-            fd.append('nonce', crm_nonce);
-            fd.append('title',          t);
-            fd.append('contact_id',     document.getElementById('add-lead-contact').value);
-            fd.append('value',          document.getElementById('add-lead-value').value || 0);
-            fd.append('pipeline_type',  document.getElementById('add-lead-pipeline-type').value);
-            fd.append('product_type',   document.getElementById('add-lead-product-type').value);
-            fd.append('service_type',   document.getElementById('add-lead-service-type').value);
-            fd.append('lead_source',    document.getElementById('add-lead-source').value);
-            fd.append('motm_uploaded',  document.getElementById('add-lead-motm').checked ? 1 : 0);
-            fd.append('ended_reason',   document.getElementById('add-lead-ended-reason').value);
-            fd.append('stage',          document.getElementById('add-lead-stage').value);
-            fd.append('priority',       document.getElementById('add-lead-priority').value);
-            fd.append('expected_close', document.getElementById('add-lead-close').value);
-            fd.append('notes',          document.getElementById('add-lead-notes').value.trim());
-            fetch(ajaxurl,{method:'POST',body:fd}).then(r=>r.json()).then(function(d){
-                btn.disabled=false;
-                if(d.success){crmShowToast('Lead added!','success');crmCloseModal('add-lead-modal');location.reload();}
-                else{document.getElementById('add-lead-msg').innerHTML='<div class="bntm-notice bntm-notice-error">'+d.data.message+'</div>';}
-            }).catch(function(){btn.disabled=false;crmShowToast('Request failed.','error');});
-        };
+            fd.append('action', 'bntm_crm_import_contacts');
+            fd.append('nonce', bntm_crm_nonce);
+            fd.append('csv_file', file);
+            fetch(ajaxurl, { method: 'POST', body: fd })
+                .then(function(r) { return r.json(); })
+                .then(function(res) {
+                    btn.disabled = false;
+                    var el = document.getElementById('crm-import-result');
+                    if (res.success) {
+                        el.innerHTML = '<span style="color:#059669;font-weight:600;">' + res.data.message + '</span>';
+                        loadContacts();
+                    } else {
+                        el.innerHTML = '<span style="color:#dc2626;">' + (res.data ? res.data.message : 'Import failed.') + '</span>';
+                    }
+                })
+                .catch(function() { btn.disabled = false; crmToast('Import request failed.', 'error'); });
+        });
 
-        window.crmEditLead = function(data) {
-            document.getElementById('edit-lead-rand-id').value       = data.rand_id;
-            document.getElementById('edit-lead-title').value         = data.title;
-            document.getElementById('edit-lead-contact').value       = data.contact_id;
-            document.getElementById('edit-lead-value').value         = data.value;
-            document.getElementById('edit-lead-pipeline-type').value = data.pipeline_type || 'subscription';
-            document.getElementById('edit-lead-source').value        = data.lead_source || '';
-            document.getElementById('edit-lead-product-type').value  = data.product_type || '';
-            document.getElementById('edit-lead-service-type').value  = data.service_type || '';
-            document.getElementById('edit-lead-motm').checked        = parseInt(data.motm_uploaded || 0, 10) === 1;
-            document.getElementById('edit-lead-ended-reason').value  = data.ended_reason || '';
-            crmRefreshLeadFields('edit');
-            document.getElementById('edit-lead-stage').value       = data.stage;
-            document.getElementById('edit-lead-priority').value    = data.priority;
-            document.getElementById('edit-lead-close').value       = data.expected_close || '';
-            document.getElementById('edit-lead-status').value      = data.status;
-            document.getElementById('edit-lead-notes').value    = data.notes || '';
-            document.getElementById('edit-lead-msg').innerHTML  = '';
-            crmOpenModal('edit-lead-modal');
-        };
+        // Export
+        document.getElementById('crm-contacts-export-btn').addEventListener('click', function() {
+            var params = new URLSearchParams({
+                action: 'bntm_crm_export_contacts',
+                nonce:  bntm_crm_nonce,
+                search: document.getElementById('crm-contact-search').value,
+                status: document.getElementById('crm-contact-status-filter').value,
+                type:   document.getElementById('crm-contact-type-filter').value,
+            });
+            window.location.href = ajaxurl + '?' + params.toString();
+        });
 
-        window.crmSubmitEditLead = function() {
-            var btn = document.getElementById('edit-lead-btn');
-            var t   = document.getElementById('edit-lead-title').value.trim();
-            if (!t) { document.getElementById('edit-lead-msg').innerHTML = '<div class="bntm-notice bntm-notice-error">Lead title is required.</div>'; return; }
+        // Tag manager
+        document.getElementById('crm-tag-manager-btn').addEventListener('click', function() { crmOpenModal('crm-tag-manager-modal'); });
+        document.getElementById('crm-add-tag-btn').addEventListener('click', function() {
+            var name   = document.getElementById('crm-new-tag-name').value.trim();
+            var colour = document.getElementById('crm-new-tag-colour').value;
+            if (!name) { crmToast('Tag name is required.', 'error'); return; }
+            var btn = this;
             btn.disabled = true;
-            var fd = new FormData();
-            fd.append('action', 'crm_edit_lead');
-            fd.append('nonce', crm_nonce);
-            fd.append('rand_id',        document.getElementById('edit-lead-rand-id').value);
-            fd.append('title',          t);
-            fd.append('contact_id',     document.getElementById('edit-lead-contact').value);
-            fd.append('value',          document.getElementById('edit-lead-value').value || 0);
-            fd.append('pipeline_type',  document.getElementById('edit-lead-pipeline-type').value);
-            fd.append('product_type',   document.getElementById('edit-lead-product-type').value);
-            fd.append('service_type',   document.getElementById('edit-lead-service-type').value);
-            fd.append('lead_source',    document.getElementById('edit-lead-source').value);
-            fd.append('motm_uploaded',  document.getElementById('edit-lead-motm').checked ? 1 : 0);
-            fd.append('ended_reason',   document.getElementById('edit-lead-ended-reason').value);
-            fd.append('stage',          document.getElementById('edit-lead-stage').value);
-            fd.append('priority',       document.getElementById('edit-lead-priority').value);
-            fd.append('expected_close', document.getElementById('edit-lead-close').value);
-            fd.append('status',         document.getElementById('edit-lead-status').value);
-            fd.append('notes',          document.getElementById('edit-lead-notes').value.trim());
-            fetch(ajaxurl,{method:'POST',body:fd}).then(r=>r.json()).then(function(d){
-                btn.disabled=false;
-                if(d.success){crmShowToast('Lead updated!','success');crmCloseModal('edit-lead-modal');location.reload();}
-                else{document.getElementById('edit-lead-msg').innerHTML='<div class="bntm-notice bntm-notice-error">'+d.data.message+'</div>';}
-            }).catch(function(){btn.disabled=false;crmShowToast('Request failed.','error');});
-        };
+            crmAjax('bntm_crm_save_tags', { tag_name: name, tag_colour: colour, tag_id: '' }, function(err, res) {
+                btn.disabled = false;
+                if (err || !res.success) { crmToast(res ? res.data.message : 'Failed.', 'error'); return; }
+                crmToast('Tag added.', 'success');
+                document.getElementById('crm-new-tag-name').value = '';
+                var list = document.getElementById('crm-tags-list');
+                var row  = document.createElement('div');
+                row.className = 'crm-tag-manager-row';
+                row.dataset.tagId = res.data.tag_id;
+                row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid #f3f4f6;';
+                row.innerHTML = '<span class="crm-tag-chip" style="background:' + colour + ';">' + escHtml(name) + '</span>' +
+                    '<span style="flex:1;font-size:13px;color:#374151;">' + escHtml(name) + '</span>' +
+                    '<button class="bntm-btn-danger bntm-btn-small crm-delete-tag-btn" data-id="' + res.data.tag_id + '">Delete</button>';
+                list.appendChild(row);
+                bindDeleteTagBtns();
+            });
+        });
 
-        window.crmDeleteCurrentLead = function() {
-            var rand_id = document.getElementById('edit-lead-rand-id').value;
-            crmDeleteLead(rand_id, null);
-        };
+        function bindDeleteTagBtns() {
+            document.querySelectorAll('.crm-delete-tag-btn').forEach(function(btn) {
+                btn.onclick = function() {
+                    var id  = this.dataset.id;
+                    var row = this.closest('.crm-tag-manager-row');
+                    if (!confirm('Delete this tag?')) return;
+                    crmAjax('bntm_crm_save_tags', { tag_id: id, delete_tag: 1 }, function(err, res) {
+                        if (err || !res.success) { crmToast('Failed to delete tag.', 'error'); return; }
+                        if (row) row.remove();
+                        crmToast('Tag deleted.', 'success');
+                    });
+                };
+            });
+        }
+        bindDeleteTagBtns();
 
-        window.crmDeleteLead = function(rand_id, btn) {
-            if (!confirm('Delete this lead?')) return;
-            if (btn) btn.disabled = true;
-            var fd = new FormData();
-            fd.append('action', 'crm_delete_lead');
-            fd.append('nonce', crm_nonce);
-            fd.append('rand_id', rand_id);
-            fetch(ajaxurl,{method:'POST',body:fd}).then(r=>r.json()).then(function(d){
-                if(btn) btn.disabled=false;
-                if(d.success){crmShowToast('Lead deleted.','success');crmCloseModal('edit-lead-modal');location.reload();}
-                else{crmShowToast(d.data.message,'error');}
-            }).catch(function(){if(btn)btn.disabled=false;crmShowToast('Request failed.','error');});
-        };
+        function escHtml(str) {
+            if (!str) return '';
+            return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+        }
+        function ucFirst(str) { return str ? str.charAt(0).toUpperCase() + str.slice(1) : ''; }
 
-        crmRefreshLeadFields('add');
+        loadContacts();
     })();
     </script>
     <?php
     return ob_get_clean();
 }
 
-// ============================================================
-// TAB: INTERACTIONS
-// ============================================================
+// =============================================================================
+// CONTACT PROFILE PAGE
+// =============================================================================
 
-/**
- * Render the interactions tab content for the CRM dashboard.
- * @param int $business_id Business ID to scope the CRM data.
- * @return array
- */
-function crm_interactions_tab($business_id) {
+function crm_contact_profile_page($contact_id, $business_id) {
     global $wpdb;
 
-    $interactions = $wpdb->get_results($wpdb->prepare(
-        "SELECT i.*, c.first_name, c.last_name
-         FROM {$wpdb->prefix}crm_interactions i
-         LEFT JOIN {$wpdb->prefix}crm_contacts c ON c.id = i.contact_id
-         WHERE i.business_id = %d AND i.status = 'active'
-         ORDER BY i.interaction_date DESC
-         LIMIT 100",
-        $business_id
+    $contacts_table = $wpdb->prefix . 'bntm_crm_contacts';
+    $contact = $wpdb->get_row($wpdb->prepare(
+        "SELECT * FROM {$contacts_table} WHERE id = %d AND deleted_at IS NULL",
+        $contact_id
     ));
 
-    $contacts = $wpdb->get_results($wpdb->prepare(
-        "SELECT id, first_name, last_name FROM {$wpdb->prefix}crm_contacts WHERE business_id = %d AND status = 'active' ORDER BY first_name",
-        $business_id
+    if (!$contact) {
+        return '<div class="bntm-notice bntm-notice-error">Contact not found.</div>';
+    }
+
+    $tags_table  = $wpdb->prefix . 'bntm_crm_tags';
+    $ctags_table = $wpdb->prefix . 'bntm_crm_contact_tags';
+    $deals_table = $wpdb->prefix . 'bntm_crm_deals';
+    $stages_table = $wpdb->prefix . 'bntm_crm_pipeline_stages';
+    $cf_table    = $wpdb->prefix . 'bntm_crm_custom_fields';
+    $meta_table  = $wpdb->prefix . 'bntm_crm_contact_meta';
+    $users       = get_users(['fields' => ['ID', 'display_name']]);
+
+    $contact_tags = $wpdb->get_results($wpdb->prepare(
+        "SELECT t.* FROM {$tags_table} t
+         INNER JOIN {$ctags_table} ct ON ct.tag_id = t.id
+         WHERE ct.contact_id = %d",
+        $contact_id
     ));
+
+    $linked_deals = $wpdb->get_results($wpdb->prepare(
+        "SELECT d.*, ps.name AS stage_name, ps.colour AS stage_colour
+         FROM {$deals_table} d
+         LEFT JOIN {$stages_table} ps ON ps.id = d.stage_id
+         WHERE d.contact_id = %d AND d.deleted_at IS NULL
+         ORDER BY d.created_at DESC",
+        $contact_id
+    ));
+
+    $custom_fields = $wpdb->get_results(
+        "SELECT * FROM {$cf_table} WHERE object_type = 'contact' ORDER BY sort_order ASC"
+    );
+
+    $all_tags = $wpdb->get_results("SELECT * FROM {$tags_table} ORDER BY name ASC");
+
+    $assigned_user = $contact->assigned_user_id ? get_user_by('ID', $contact->assigned_user_id) : null;
+    $initials = strtoupper(substr($contact->first_name ?? '', 0, 1) . substr($contact->last_name ?? '', 0, 1));
+    $full_name = trim(($contact->first_name ?? '') . ' ' . ($contact->last_name ?? ''));
 
     ob_start();
     ?>
-    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:16px;">
-        <div class="crm-filter-bar" style="margin:0;flex:1;">
-            <select id="int-type-filter" class="crm-select" style="width:auto;min-width:130px;">
+    <!-- Back link -->
+    <div style="margin-bottom:16px;">
+        <a href="?tab=contacts" style="font-size:13px;color:var(--bntm-primary);text-decoration:none;display:inline-flex;align-items:center;gap:4px;">
+            <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+            </svg>
+            Back to Contacts
+        </a>
+    </div>
+
+    <!-- Header Bar -->
+    <div class="bntm-form-section" style="margin-bottom:20px;">
+        <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+            <div class="crm-avatar" style="width:56px;height:56px;font-size:18px;">
+                <?php echo esc_html($initials ?: '?'); ?>
+            </div>
+            <div style="flex:1;">
+                <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                    <h2 style="margin:0;font-size:20px;font-weight:700;color:#111827;"><?php echo esc_html($full_name ?: 'Unnamed Contact'); ?></h2>
+                    <span class="bntm-badge bntm-badge-<?php echo esc_attr($contact->status); ?>"><?php echo esc_html(ucfirst($contact->status)); ?></span>
+                </div>
+                <div style="font-size:13px;color:#6b7280;margin-top:4px;display:flex;gap:16px;flex-wrap:wrap;">
+                    <?php if ($assigned_user): ?>
+                    <span>Assigned to: <strong><?php echo esc_html($assigned_user->display_name); ?></strong></span>
+                    <?php endif; ?>
+                    <?php if ($contact->source): ?>
+                    <span>Source: <strong><?php echo esc_html($contact->source); ?></strong></span>
+                    <?php endif; ?>
+                    <?php if ($contact->company): ?>
+                    <span><?php echo esc_html($contact->company); ?><?php if ($contact->job_title): ?> &mdash; <?php echo esc_html($contact->job_title); ?><?php endif; ?></span>
+                    <?php endif; ?>
+                </div>
+            </div>
+            <div style="display:flex;gap:8px;">
+                <button class="bntm-btn-secondary bntm-btn-small" id="crm-profile-edit-btn" data-id="<?php echo intval($contact->id); ?>">
+                    <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="margin-right:4px;vertical-align:middle;">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+                    </svg>
+                    Edit
+                </button>
+                <button class="bntm-btn-danger bntm-btn-small" id="crm-profile-delete-btn" data-id="<?php echo intval($contact->id); ?>">
+                    <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="margin-right:4px;vertical-align:middle;">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                    </svg>
+                    Delete
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Two-column layout -->
+    <div style="display:grid;grid-template-columns:2fr 3fr;gap:20px;" class="crm-profile-grid">
+
+        <!-- LEFT COLUMN -->
+        <div>
+
+            <!-- Contact Details -->
+            <div class="bntm-form-section">
+                <h3>Contact Details</h3>
+                <?php
+                $detail_fields = [
+                    'Email'        => $contact->email,
+                    'Phone'        => $contact->phone,
+                    'Mobile'       => $contact->mobile,
+                    'Company'      => $contact->company,
+                    'Job Title'    => $contact->job_title,
+                    'Address'      => implode(', ', array_filter([
+                        $contact->address_line_1,
+                        $contact->address_line_2,
+                        $contact->city,
+                        $contact->state,
+                        $contact->postcode,
+                        $contact->country,
+                    ])),
+                    'Website'      => $contact->website,
+                    'Created'      => $contact->created_at ? date('M j, Y', strtotime($contact->created_at)) : '',
+                    'Opt-Out'      => $contact->email_opt_out ? 'Yes' : 'No',
+                ];
+                foreach ($detail_fields as $label => $value):
+                    if (!$value) continue;
+                ?>
+                <div class="crm-detail-field">
+                    <label><?php echo esc_html($label); ?></label>
+                    <?php if ($label === 'Website'): ?>
+                    <span><a href="<?php echo esc_url($value); ?>" target="_blank" style="color:var(--bntm-primary);"><?php echo esc_html($value); ?></a></span>
+                    <?php elseif ($label === 'Email'): ?>
+                    <span><a href="mailto:<?php echo esc_attr($value); ?>" style="color:var(--bntm-primary);"><?php echo esc_html($value); ?></a></span>
+                    <?php else: ?>
+                    <span><?php echo esc_html($value); ?></span>
+                    <?php endif; ?>
+                </div>
+                <?php endforeach; ?>
+
+                <?php if (!empty($contact_tags)): ?>
+                <div class="crm-detail-field">
+                    <label>Tags</label>
+                    <div>
+                        <?php foreach ($contact_tags as $tag): ?>
+                        <span class="crm-tag-chip" style="background:<?php echo esc_attr($tag->colour); ?>;"><?php echo esc_html($tag->name); ?></span>
+                        <?php endforeach; ?>
+                    </div>
+                </div>
+                <?php endif; ?>
+            </div>
+
+            <!-- Linked Deals -->
+            <div class="bntm-form-section">
+                <div class="bntm-section-header">
+                    <h3>Linked Deals</h3>
+                    <button class="bntm-btn-primary bntm-btn-small" id="crm-profile-add-deal-btn">+ Add Deal</button>
+                </div>
+                <?php if (!empty($linked_deals)): ?>
+                <?php foreach ($linked_deals as $deal): ?>
+                <div style="padding:10px 0;border-bottom:1px solid #f3f4f6;">
+                    <div style="font-size:14px;font-weight:600;color:#111827;margin-bottom:4px;"><?php echo esc_html($deal->title); ?></div>
+                    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                        <span class="bntm-badge" style="background:<?php echo esc_attr($deal->stage_colour ?? '#e5e7eb'); ?>;color:#fff;"><?php echo esc_html($deal->stage_name ?? ''); ?></span>
+                        <span style="font-size:13px;font-weight:600;color:#059669;"><?php echo crm_format_price($deal->value); ?></span>
+                        <?php if ($deal->close_date): ?>
+                        <span style="font-size:12px;color:#9ca3af;">Close: <?php echo esc_html(date('M j, Y', strtotime($deal->close_date))); ?></span>
+                        <?php endif; ?>
+                    </div>
+                </div>
+                <?php endforeach; ?>
+                <?php else: ?>
+                <div class="crm-empty-state" style="padding:20px 0;">
+                    <p>No deals linked yet.</p>
+                </div>
+                <?php endif; ?>
+            </div>
+
+            <!-- Custom Fields -->
+            <?php if (!empty($custom_fields)): ?>
+            <div class="bntm-form-section">
+                <h3>Custom Fields</h3>
+                <?php foreach ($custom_fields as $cf):
+                    $meta_val = $wpdb->get_var($wpdb->prepare(
+                        "SELECT meta_value FROM {$meta_table} WHERE contact_id = %d AND meta_key = %s",
+                        $contact_id, $cf->field_key
+                    ));
+                    if (!$meta_val) continue;
+                ?>
+                <div class="crm-detail-field">
+                    <label><?php echo esc_html($cf->field_label); ?></label>
+                    <span><?php echo esc_html($meta_val); ?></span>
+                </div>
+                <?php endforeach; ?>
+            </div>
+            <?php endif; ?>
+
+        </div>
+
+        <!-- RIGHT COLUMN -->
+        <div>
+
+            <!-- Activity Timeline -->
+            <div class="bntm-form-section">
+                <div class="bntm-section-header">
+                    <h3>Activity Timeline</h3>
+                    <button class="bntm-btn-primary bntm-btn-small" id="crm-profile-log-activity-btn">+ Log Activity</button>
+                </div>
+                <div id="crm-profile-timeline">
+                    <div style="text-align:center;padding:20px;color:#9ca3af;font-size:13px;">Loading timeline…</div>
+                </div>
+            </div>
+
+            <!-- Open Tasks -->
+            <div class="bntm-form-section">
+                <div class="bntm-section-header">
+                    <h3>Open Tasks</h3>
+                    <button class="bntm-btn-primary bntm-btn-small" id="crm-profile-add-task-btn">+ Add Task</button>
+                </div>
+                <div id="crm-profile-tasks">
+                    <div style="text-align:center;padding:20px;color:#9ca3af;font-size:13px;">Loading tasks…</div>
+                </div>
+            </div>
+
+            <!-- Linked Files -->
+            <div class="bntm-form-section">
+                <div class="bntm-section-header">
+                    <h3>Linked Files</h3>
+                    <button class="bntm-btn-primary bntm-btn-small" id="crm-profile-upload-file-btn">+ Upload File</button>
+                </div>
+                <div id="crm-profile-files">
+                    <div style="text-align:center;padding:20px;color:#9ca3af;font-size:13px;">Loading files…</div>
+                </div>
+                <input type="file" id="crm-profile-file-input" style="display:none;" multiple>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Log Activity Modal -->
+    <div class="crm-modal-overlay" id="crm-profile-activity-modal">
+        <div class="crm-modal">
+            <div class="crm-modal-header">
+                <h3>Log Activity</h3>
+                <button class="crm-modal-close" type="button">
+                    <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="crm-modal-body">
+                <div class="form-grid-2">
+                    <div class="form-row">
+                        <label>Activity Type</label>
+                        <select id="crm-pa-type">
+                            <option value="call">Call</option>
+                            <option value="email">Email</option>
+                            <option value="meeting">Meeting</option>
+                            <option value="note">Note</option>
+                        </select>
+                    </div>
+                    <div class="form-row">
+                        <label>Date &amp; Time</label>
+                        <input type="datetime-local" id="crm-pa-datetime">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <label>Subject</label>
+                    <input type="text" id="crm-pa-subject" placeholder="Brief subject">
+                </div>
+                <div class="form-row">
+                    <label>Notes</label>
+                    <textarea id="crm-pa-body" rows="4" placeholder="Detailed notes…"></textarea>
+                </div>
+                <div class="form-grid-2">
+                    <div class="form-row">
+                        <label>Outcome</label>
+                        <input type="text" id="crm-pa-outcome" placeholder="e.g. Positive, Follow-up needed">
+                    </div>
+                    <div class="form-row">
+                        <label>Duration (minutes)</label>
+                        <input type="number" id="crm-pa-duration" min="0" placeholder="0">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <label style="display:inline-flex;align-items:center;gap:8px;font-weight:400;">
+                        <input type="checkbox" id="crm-pa-visible">
+                        Visible to customer in portal
+                    </label>
+                </div>
+            </div>
+            <div class="crm-modal-footer">
+                <button class="bntm-btn-secondary" onclick="crmCloseModal('crm-profile-activity-modal')">Cancel</button>
+                <button class="bntm-btn-primary" id="crm-pa-save-btn">Log Activity</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Task Modal -->
+    <div class="crm-modal-overlay" id="crm-profile-task-modal">
+        <div class="crm-modal">
+            <div class="crm-modal-header">
+                <h3>Add Task</h3>
+                <button class="crm-modal-close" type="button">
+                    <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="crm-modal-body">
+                <div class="form-row">
+                    <label>Task Title</label>
+                    <input type="text" id="crm-pt-title" placeholder="Task title">
+                </div>
+                <div class="form-row">
+                    <label>Description</label>
+                    <textarea id="crm-pt-description" rows="3" placeholder="Optional description…"></textarea>
+                </div>
+                <div class="form-grid-2">
+                    <div class="form-row">
+                        <label>Priority</label>
+                        <select id="crm-pt-priority">
+                            <option value="low">Low</option>
+                            <option value="medium" selected>Medium</option>
+                            <option value="high">High</option>
+                            <option value="urgent">Urgent</option>
+                        </select>
+                    </div>
+                    <div class="form-row">
+                        <label>Due Date</label>
+                        <input type="datetime-local" id="crm-pt-due-date">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <label>Assign To</label>
+                    <select id="crm-pt-assigned">
+                        <option value="">Unassigned</option>
+                        <?php foreach ($users as $u): ?>
+                        <option value="<?php echo intval($u->ID); ?>"><?php echo esc_html($u->display_name); ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+            </div>
+            <div class="crm-modal-footer">
+                <button class="bntm-btn-secondary" onclick="crmCloseModal('crm-profile-task-modal')">Cancel</button>
+                <button class="bntm-btn-primary" id="crm-pt-save-btn">Add Task</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Delete Contact Confirm -->
+    <div class="crm-modal-overlay" id="crm-profile-delete-modal">
+        <div class="crm-modal" style="max-width:420px;">
+            <div class="crm-modal-header">
+                <h3>Delete Contact</h3>
+                <button class="crm-modal-close" type="button">
+                    <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="crm-modal-body">
+                <p style="font-size:14px;color:#374151;margin:0;">Are you sure you want to permanently delete <strong><?php echo esc_html($full_name); ?></strong>? This cannot be undone.</p>
+            </div>
+            <div class="crm-modal-footer">
+                <button class="bntm-btn-secondary" onclick="crmCloseModal('crm-profile-delete-modal')">Cancel</button>
+                <button class="bntm-btn-danger" id="crm-profile-confirm-delete-btn" data-id="<?php echo intval($contact->id); ?>">Delete</button>
+            </div>
+        </div>
+    </div>
+
+    <style>
+    @media (max-width: 900px) {
+        .crm-profile-grid { grid-template-columns: 1fr !important; }
+    }
+    .crm-file-row {
+        display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #f3f4f6;
+    }
+    .crm-file-row:last-child { border-bottom:none; }
+    .crm-file-icon {
+        width:34px;height:34px;border-radius:7px;background:#f3f4f6;
+        display:flex;align-items:center;justify-content:center;flex-shrink:0;color:#6b7280;
+    }
+    </style>
+
+    <script>
+    (function() {
+        var contactId = <?php echo intval($contact_id); ?>;
+
+        // Load timeline
+        function loadTimeline() {
+            crmAjax('bntm_crm_get_contact_timeline', { contact_id: contactId }, function(err, res) {
+                var el = document.getElementById('crm-profile-timeline');
+                if (err || !res.success || !res.data.length) {
+                    el.innerHTML = '<div class="crm-empty-state" style="padding:20px 0;"><p>No activity logged yet.</p></div>';
+                    return;
+                }
+                var html = '<ul class="crm-activity-feed">';
+                res.data.forEach(function(a) {
+                    html += '<li class="crm-activity-item">' +
+                        '<div class="crm-activity-icon type-' + escHtml(a.type) + '">' + getActivityIcon(a.type) + '</div>' +
+                        '<div class="crm-activity-body">' +
+                            '<strong>' + escHtml(ucFirst(a.type.replace(/_/g,' '))) + '</strong>' +
+                            (a.subject ? ' <span style="color:#6b7280;">&mdash; ' + escHtml(a.subject) + '</span>' : '') +
+                            (a.body ? '<p style="margin:4px 0 0;font-size:13px;color:#374151;">' + escHtml(a.body) + '</p>' : '') +
+                            '<p style="font-size:12px;color:#9ca3af;margin:3px 0 0;">' + escHtml(a.logged_by_name || '') + ' &mdash; ' + escHtml(a.logged_at || '') + '</p>' +
+                        '</div>' +
+                    '</li>';
+                });
+                html += '</ul>';
+                el.innerHTML = html;
+            });
+        }
+
+        // Load tasks
+        function loadTasks() {
+            crmAjax('bntm_crm_get_contact_tasks', { contact_id: contactId }, function(err, res) {
+                var el = document.getElementById('crm-profile-tasks');
+                if (err || !res.success || !res.data.length) {
+                    el.innerHTML = '<div class="crm-empty-state" style="padding:20px 0;"><p>No open tasks.</p></div>';
+                    return;
+                }
+                var html = '';
+                res.data.forEach(function(t) {
+                    var overdue = t.due_date && new Date(t.due_date) < new Date() && t.status !== 'done';
+                    html += '<div class="crm-task-item">' +
+                        '<input type="checkbox" class="crm-task-checkbox crm-profile-complete-task" data-id="' + t.id + '" ' + (t.status === 'done' ? 'checked' : '') + '>' +
+                        '<div class="crm-task-body">' +
+                            '<div class="crm-task-title' + (t.status === 'done' ? ' done' : '') + '">' + escHtml(t.title) + '</div>' +
+                            '<div class="crm-task-meta">' +
+                                '<span class="bntm-badge bntm-badge-' + escHtml(t.priority) + '">' + escHtml(ucFirst(t.priority)) + '</span>' +
+                                (t.due_date ? '<span class="' + (overdue ? 'crm-task-overdue' : '') + '">' + (overdue ? 'Overdue: ' : '') + formatDate(t.due_date) + '</span>' : '') +
+                            '</div>' +
+                        '</div>' +
+                    '</div>';
+                });
+                el.innerHTML = html;
+                el.querySelectorAll('.crm-profile-complete-task').forEach(function(cb) {
+                    cb.addEventListener('change', function() {
+                        var tid = this.dataset.id;
+                        crmAjax('bntm_crm_complete_task', { task_id: tid }, function(err, res) {
+                            if (err || !res.success) { crmToast('Failed.', 'error'); return; }
+                            crmToast('Task updated.', 'success');
+                            loadTasks();
+                        });
+                    });
+                });
+            });
+        }
+
+        // Load files
+        function loadFiles() {
+            crmAjax('bntm_crm_get_contact_files', { contact_id: contactId }, function(err, res) {
+                var el = document.getElementById('crm-profile-files');
+                if (err || !res.success || !res.data.length) {
+                    el.innerHTML = '<div class="crm-empty-state" style="padding:20px 0;"><p>No files uploaded yet.</p></div>';
+                    return;
+                }
+                var html = '';
+                res.data.forEach(function(f) {
+                    html += '<div class="crm-file-row">' +
+                        '<div class="crm-file-icon">' +
+                            '<svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>' +
+                        '</div>' +
+                        '<div style="flex:1;">' +
+                            '<div style="font-size:14px;font-weight:500;color:#111827;">' + escHtml(f.file_name) + '</div>' +
+                            '<div style="font-size:12px;color:#9ca3af;">' + escHtml(formatBytes(f.file_size)) + ' &mdash; ' + escHtml(f.created_at ? f.created_at.substring(0,10) : '') + '</div>' +
+                        '</div>' +
+                        '<a href="' + escHtml(f.file_url || '#') + '" target="_blank" class="bntm-btn-secondary bntm-btn-small" style="text-decoration:none;">Download</a>' +
+                        '<button class="bntm-btn-danger bntm-btn-small crm-delete-file-btn" data-id="' + f.id + '">Delete</button>' +
+                    '</div>';
+                });
+                el.innerHTML = html;
+                el.querySelectorAll('.crm-delete-file-btn').forEach(function(btn) {
+                    btn.addEventListener('click', function() {
+                        var fid = this.dataset.id;
+                        if (!confirm('Delete this file?')) return;
+                        crmAjax('bntm_crm_delete_contact_file', { file_id: fid }, function(err, res) {
+                            if (err || !res.success) { crmToast('Delete failed.', 'error'); return; }
+                            crmToast('File deleted.', 'success');
+                            loadFiles();
+                        });
+                    });
+                });
+            });
+        }
+
+        // Log activity
+        document.getElementById('crm-profile-log-activity-btn').addEventListener('click', function() {
+            var now = new Date();
+            var pad = function(n) { return n < 10 ? '0' + n : n; };
+            document.getElementById('crm-pa-datetime').value = now.getFullYear() + '-' + pad(now.getMonth()+1) + '-' + pad(now.getDate()) + 'T' + pad(now.getHours()) + ':' + pad(now.getMinutes());
+            crmOpenModal('crm-profile-activity-modal');
+        });
+
+        document.getElementById('crm-pa-save-btn').addEventListener('click', function() {
+            var btn = this;
+            btn.disabled = true;
+            crmAjax('bntm_crm_save_activity', {
+                type:             document.getElementById('crm-pa-type').value,
+                contact_id:       contactId,
+                subject:          document.getElementById('crm-pa-subject').value,
+                body:             document.getElementById('crm-pa-body').value,
+                outcome:          document.getElementById('crm-pa-outcome').value,
+                duration_minutes: document.getElementById('crm-pa-duration').value,
+                scheduled_at:     document.getElementById('crm-pa-datetime').value,
+                visible_to_customer: document.getElementById('crm-pa-visible').checked ? 1 : 0,
+            }, function(err, res) {
+                btn.disabled = false;
+                if (err || !res.success) { crmToast(res ? res.data.message : 'Failed.', 'error'); return; }
+                crmToast('Activity logged.', 'success');
+                crmCloseModal('crm-profile-activity-modal');
+                loadTimeline();
+            });
+        });
+
+        // Add task
+        document.getElementById('crm-profile-add-task-btn').addEventListener('click', function() {
+            crmOpenModal('crm-profile-task-modal');
+        });
+
+        document.getElementById('crm-pt-save-btn').addEventListener('click', function() {
+            var btn = this;
+            btn.disabled = true;
+            crmAjax('bntm_crm_save_task', {
+                title:            document.getElementById('crm-pt-title').value,
+                description:      document.getElementById('crm-pt-description').value,
+                priority:         document.getElementById('crm-pt-priority').value,
+                due_date:         document.getElementById('crm-pt-due-date').value,
+                assigned_user_id: document.getElementById('crm-pt-assigned').value,
+                contact_id:       contactId,
+            }, function(err, res) {
+                btn.disabled = false;
+                if (err || !res.success) { crmToast(res ? res.data.message : 'Failed.', 'error'); return; }
+                crmToast('Task added.', 'success');
+                crmCloseModal('crm-profile-task-modal');
+                loadTasks();
+            });
+        });
+
+        // Upload file
+        document.getElementById('crm-profile-upload-file-btn').addEventListener('click', function() {
+            document.getElementById('crm-profile-file-input').click();
+        });
+
+        document.getElementById('crm-profile-file-input').addEventListener('change', function() {
+            var files = this.files;
+            if (!files.length) return;
+            var fd = new FormData();
+            fd.append('action', 'bntm_crm_upload_contact_file');
+            fd.append('nonce', bntm_crm_nonce);
+            fd.append('contact_id', contactId);
+            for (var i = 0; i < files.length; i++) { fd.append('files[]', files[i]); }
+            fetch(ajaxurl, { method: 'POST', body: fd })
+                .then(function(r) { return r.json(); })
+                .then(function(res) {
+                    if (res.success) { crmToast('File(s) uploaded.', 'success'); loadFiles(); }
+                    else { crmToast(res.data ? res.data.message : 'Upload failed.', 'error'); }
+                })
+                .catch(function() { crmToast('Upload error.', 'error'); });
+            this.value = '';
+        });
+
+        // Add deal
+        document.getElementById('crm-profile-add-deal-btn').addEventListener('click', function() {
+            window.location.href = '?tab=pipeline&new_deal_contact=' + contactId;
+        });
+
+        // Delete contact
+        document.getElementById('crm-profile-delete-btn').addEventListener('click', function() {
+            crmOpenModal('crm-profile-delete-modal');
+        });
+        document.getElementById('crm-profile-confirm-delete-btn').addEventListener('click', function() {
+            var btn = this;
+            btn.disabled = true;
+            crmAjax('bntm_crm_delete_contact', { contact_id: contactId }, function(err, res) {
+                btn.disabled = false;
+                if (err || !res.success) { crmToast(res ? res.data.message : 'Delete failed.', 'error'); return; }
+                crmToast('Contact deleted.', 'success');
+                window.location.href = '?tab=contacts';
+            });
+        });
+
+        function getActivityIcon(type) {
+            var icons = {
+                call:    '<svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"/></svg>',
+                email:   '<svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>',
+                meeting: '<svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>',
+                note:    '<svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>',
+            };
+            return icons[type] || icons.note;
+        }
+
+        function formatDate(dt) {
+            if (!dt) return '';
+            var d = new Date(dt);
+            return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        }
+
+        function formatBytes(bytes) {
+            if (!bytes) return '0 B';
+            var k = 1024, sizes = ['B','KB','MB','GB'];
+            var i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+        }
+
+        function escHtml(str) {
+            if (!str) return '';
+            return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+        }
+
+        function ucFirst(str) { return str ? str.charAt(0).toUpperCase() + str.slice(1) : ''; }
+
+        loadTimeline();
+        loadTasks();
+        loadFiles();
+    })();
+    </script>
+    <?php
+    return ob_get_clean();
+}
+
+// =============================================================================
+// TAB 3 — PIPELINE TAB
+// =============================================================================
+
+function crm_pipeline_tab($business_id) {
+    global $wpdb;
+
+    $pipelines_table = $wpdb->prefix . 'bntm_crm_pipelines';
+    $users           = get_users(['fields' => ['ID', 'display_name']]);
+    $pipelines       = $wpdb->get_results("SELECT * FROM {$pipelines_table} ORDER BY sort_order ASC");
+    $default_pipeline = null;
+    foreach ($pipelines as $pl) {
+        if ($pl->is_default) { $default_pipeline = $pl; break; }
+    }
+    if (!$default_pipeline && !empty($pipelines)) {
+        $default_pipeline = $pipelines[0];
+    }
+    $default_pipeline_id = $default_pipeline ? intval($default_pipeline->id) : 0;
+
+    $contacts_table = $wpdb->prefix . 'bntm_crm_contacts';
+    $contacts       = $wpdb->get_results(
+        "SELECT id, first_name, last_name, company FROM {$contacts_table} WHERE deleted_at IS NULL ORDER BY first_name ASC"
+    );
+
+    ob_start();
+    ?>
+    <div class="bntm-form-section" style="margin-bottom:16px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                <label style="font-size:13px;color:#6b7280;margin:0;">Pipeline:</label>
+                <select id="crm-pipeline-selector" style="width:auto;min-width:180px;">
+                    <?php foreach ($pipelines as $pl): ?>
+                    <option value="<?php echo intval($pl->id); ?>" <?php selected($pl->id, $default_pipeline_id); ?>>
+                        <?php echo esc_html($pl->name); ?>
+                    </option>
+                    <?php endforeach; ?>
+                    <?php if (empty($pipelines)): ?>
+                    <option value="">No pipelines — create one in Settings</option>
+                    <?php endif; ?>
+                </select>
+            </div>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+                <!-- Filters -->
+                <select id="crm-pipeline-filter-owner" style="width:auto;min-width:150px;">
+                    <option value="">All Owners</option>
+                    <?php foreach ($users as $u): ?>
+                    <option value="<?php echo intval($u->ID); ?>"><?php echo esc_html($u->display_name); ?></option>
+                    <?php endforeach; ?>
+                </select>
+                <input type="date" id="crm-pipeline-filter-date-from" style="width:auto;" placeholder="From date">
+                <input type="date" id="crm-pipeline-filter-date-to" style="width:auto;" placeholder="To date">
+                <button class="bntm-btn-secondary bntm-btn-small" id="crm-pipeline-apply-filters">Filter</button>
+                <button class="bntm-btn-primary bntm-btn-small" id="crm-add-deal-btn">
+                    <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="margin-right:4px;vertical-align:middle;">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+                    </svg>
+                    Add Deal
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Kanban board -->
+    <div id="crm-kanban-board" class="crm-kanban-board">
+        <div style="display:flex;align-items:center;justify-content:center;width:100%;color:#9ca3af;font-size:14px;padding:40px;">
+            Loading pipeline…
+        </div>
+    </div>
+
+    <!-- Deal detail slide panel -->
+    <div class="crm-detail-panel" id="crm-deal-panel">
+        <div class="crm-detail-panel-header">
+            <h3 id="crm-deal-panel-title">Deal Details</h3>
+            <button onclick="crmClosePanel('crm-deal-panel')" style="background:none;border:none;cursor:pointer;color:#9ca3af;">
+                <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                </svg>
+            </button>
+        </div>
+        <div class="crm-detail-panel-body" id="crm-deal-panel-body">
+            <div style="text-align:center;padding:40px;color:#9ca3af;">Select a deal to view details.</div>
+        </div>
+    </div>
+
+    <!-- Add / Edit Deal Modal -->
+    <div class="crm-modal-overlay" id="crm-deal-modal">
+        <div class="crm-modal crm-modal-lg">
+            <div class="crm-modal-header">
+                <h3 id="crm-deal-modal-title">Add Deal</h3>
+                <button class="crm-modal-close" type="button">
+                    <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="crm-modal-body">
+                <input type="hidden" id="crm-deal-id" value="">
+                <div class="form-row">
+                    <label>Deal Title <span style="color:#dc2626;">*</span></label>
+                    <input type="text" id="crm-deal-title" placeholder="e.g. Website Redesign Project">
+                </div>
+                <div class="form-grid-2">
+                    <div class="form-row">
+                        <label>Contact <span style="color:#dc2626;">*</span></label>
+                        <select id="crm-deal-contact">
+                            <option value="">Select contact…</option>
+                            <?php foreach ($contacts as $c): ?>
+                            <option value="<?php echo intval($c->id); ?>">
+                                <?php echo esc_html(trim($c->first_name . ' ' . $c->last_name) . ($c->company ? ' (' . $c->company . ')' : '')); ?>
+                            </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div class="form-row">
+                        <label>Pipeline <span style="color:#dc2626;">*</span></label>
+                        <select id="crm-deal-pipeline">
+                            <?php foreach ($pipelines as $pl): ?>
+                            <option value="<?php echo intval($pl->id); ?>"><?php echo esc_html($pl->name); ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-grid-2">
+                    <div class="form-row">
+                        <label>Stage <span style="color:#dc2626;">*</span></label>
+                        <select id="crm-deal-stage">
+                            <option value="">Select pipeline first…</option>
+                        </select>
+                    </div>
+                    <div class="form-row">
+                        <label>Assigned To</label>
+                        <select id="crm-deal-assigned">
+                            <option value="">Unassigned</option>
+                            <?php foreach ($users as $u): ?>
+                            <option value="<?php echo intval($u->ID); ?>"><?php echo esc_html($u->display_name); ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-grid-2">
+                    <div class="form-row">
+                        <label>Value</label>
+                        <input type="number" id="crm-deal-value" min="0" step="0.01" placeholder="0.00">
+                    </div>
+                    <div class="form-row">
+                        <label>Currency</label>
+                        <select id="crm-deal-currency">
+                            <option value="USD">USD</option>
+                            <option value="EUR">EUR</option>
+                            <option value="GBP">GBP</option>
+                            <option value="PHP">PHP</option>
+                            <option value="AED">AED</option>
+                            <option value="AUD">AUD</option>
+                            <option value="CAD">CAD</option>
+                            <option value="SGD">SGD</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-grid-2">
+                    <div class="form-row">
+                        <label>Probability (%)</label>
+                        <input type="number" id="crm-deal-probability" min="0" max="100" placeholder="0">
+                    </div>
+                    <div class="form-row">
+                        <label>Close Date</label>
+                        <input type="date" id="crm-deal-close-date">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <label>Source</label>
+                    <input type="text" id="crm-deal-source" placeholder="e.g. Referral, Web Form">
+                </div>
+
+                <!-- Line Items -->
+                <div style="margin-top:8px;">
+                    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+                        <label style="margin:0;font-size:14px;font-weight:600;color:#111827;">Line Items</label>
+                        <button type="button" class="bntm-btn-secondary bntm-btn-small" id="crm-add-line-item-btn">+ Add Line</button>
+                    </div>
+                    <div id="crm-line-items-container">
+                        <div style="display:grid;grid-template-columns:1fr 80px 100px 36px;gap:8px;margin-bottom:6px;font-size:12px;color:#6b7280;font-weight:600;">
+                            <span>Description</span><span>Qty</span><span>Unit Price</span><span></span>
+                        </div>
+                        <div id="crm-line-items-rows"></div>
+                    </div>
+                    <div style="text-align:right;font-size:14px;font-weight:700;color:#059669;margin-top:8px;">
+                        Total: <span id="crm-line-items-total">0.00</span>
+                    </div>
+                </div>
+            </div>
+            <div class="crm-modal-footer">
+                <button class="bntm-btn-secondary" onclick="crmCloseModal('crm-deal-modal')">Cancel</button>
+                <button class="bntm-btn-primary" id="crm-deal-save-btn">Save Deal</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Won / Lost Modal -->
+    <div class="crm-modal-overlay" id="crm-deal-close-modal">
+        <div class="crm-modal" style="max-width:440px;">
+            <div class="crm-modal-header">
+                <h3 id="crm-deal-close-modal-title">Close Deal</h3>
+                <button class="crm-modal-close" type="button">
+                    <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="crm-modal-body">
+                <input type="hidden" id="crm-deal-close-id">
+                <input type="hidden" id="crm-deal-close-outcome">
+                <div id="crm-deal-close-reason-row" class="form-row" style="display:none;">
+                    <label>Lost Reason</label>
+                    <input type="text" id="crm-deal-close-reason" placeholder="Why was this deal lost?">
+                </div>
+                <p id="crm-deal-close-message" style="font-size:14px;color:#374151;margin:0;"></p>
+            </div>
+            <div class="crm-modal-footer">
+                <button class="bntm-btn-secondary" onclick="crmCloseModal('crm-deal-close-modal')">Cancel</button>
+                <button class="bntm-btn-primary" id="crm-deal-close-confirm-btn">Confirm</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Delete Deal Modal -->
+    <div class="crm-modal-overlay" id="crm-deal-delete-modal">
+        <div class="crm-modal" style="max-width:420px;">
+            <div class="crm-modal-header">
+                <h3>Delete Deal</h3>
+                <button class="crm-modal-close" type="button">
+                    <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="crm-modal-body">
+                <p style="font-size:14px;color:#374151;margin:0;">Are you sure you want to delete this deal? This cannot be undone.</p>
+                <input type="hidden" id="crm-deal-delete-id">
+            </div>
+            <div class="crm-modal-footer">
+                <button class="bntm-btn-secondary" onclick="crmCloseModal('crm-deal-delete-modal')">Cancel</button>
+                <button class="bntm-btn-danger" id="crm-deal-confirm-delete-btn">Delete</button>
+            </div>
+        </div>
+    </div>
+
+    <style>
+    #crm-kanban-board::-webkit-scrollbar { height: 6px; }
+    #crm-kanban-board::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 3px; }
+    #crm-kanban-board::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 3px; }
+    .crm-line-item-row {
+        display: grid;
+        grid-template-columns: 1fr 80px 100px 36px;
+        gap: 8px;
+        margin-bottom: 6px;
+        align-items: center;
+    }
+    .crm-line-item-row input { margin: 0; }
+    .crm-line-remove-btn {
+        background: none;
+        border: none;
+        cursor: pointer;
+        color: #dc2626;
+        padding: 4px;
+        border-radius: 4px;
+    }
+    .crm-line-remove-btn:hover { background: #fee2e2; }
+    .crm-deal-panel-section { margin-bottom: 20px; }
+    .crm-deal-panel-section h4 {
+        font-size: 12px;
+        font-weight: 600;
+        color: #6b7280;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin: 0 0 10px;
+        padding-bottom: 6px;
+        border-bottom: 1px solid #f3f4f6;
+    }
+    </style>
+
+    <script>
+    (function() {
+        var currentPipelineId = <?php echo intval($default_pipeline_id); ?>;
+        var stagesCache       = {};
+        var dragSrcCard       = null;
+        var dragSrcColId      = null;
+
+        // ---- Load board ----
+        function loadBoard() {
+            var board = document.getElementById('crm-kanban-board');
+            board.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;width:100%;color:#9ca3af;font-size:14px;padding:40px;">Loading pipeline…</div>';
+            crmAjax('bntm_crm_get_pipeline_board', {
+                pipeline_id: currentPipelineId,
+                owner:       document.getElementById('crm-pipeline-filter-owner').value,
+                date_from:   document.getElementById('crm-pipeline-filter-date-from').value,
+                date_to:     document.getElementById('crm-pipeline-filter-date-to').value,
+            }, function(err, res) {
+                if (err || !res.success) {
+                    board.innerHTML = '<div style="padding:40px;color:#dc2626;font-size:14px;">Failed to load pipeline board.</div>';
+                    return;
+                }
+                renderBoard(res.data.stages);
+                stagesCache[currentPipelineId] = res.data.stages.map(function(s) {
+                    return { id: s.id, name: s.name };
+                });
+                populateDealStageSelect(currentPipelineId);
+            });
+        }
+
+        function renderBoard(stages) {
+            var board = document.getElementById('crm-kanban-board');
+            if (!stages || stages.length === 0) {
+                board.innerHTML = '<div style="padding:40px;color:#9ca3af;font-size:14px;">No stages configured. Add stages in the Settings tab.</div>';
+                return;
+            }
+            board.innerHTML = '';
+            stages.forEach(function(stage) {
+                var col     = document.createElement('div');
+                col.className = 'crm-kanban-column';
+                col.dataset.stageId = stage.id;
+
+                var totalVal = (stage.deals || []).reduce(function(sum, d) { return sum + parseFloat(d.value || 0); }, 0);
+
+                col.innerHTML =
+                    '<div class="crm-kanban-col-header">' +
+                        '<div class="crm-kanban-col-title">' +
+                            '<span class="crm-kanban-col-dot" style="background:' + escHtml(stage.colour || '#0d6efd') + ';"></span>' +
+                            escHtml(stage.name) +
+                        '</div>' +
+                        '<div class="crm-kanban-col-meta">' +
+                            (stage.deals ? stage.deals.length : 0) + ' &bull; ' + formatCurrency(totalVal) +
+                        '</div>' +
+                    '</div>' +
+                    '<div class="crm-kanban-cards" data-stage-id="' + stage.id + '"></div>';
+
+                board.appendChild(col);
+
+                var cardsEl = col.querySelector('.crm-kanban-cards');
+                bindColumnDrop(cardsEl, stage.id);
+
+                if (stage.deals && stage.deals.length) {
+                    stage.deals.forEach(function(deal) {
+                        cardsEl.appendChild(buildDealCard(deal));
+                    });
+                }
+            });
+        }
+
+        function buildDealCard(deal) {
+            var card = document.createElement('div');
+            card.className  = 'crm-deal-card';
+            card.dataset.dealId = deal.id;
+            card.draggable  = true;
+
+            var daysInStage = deal.stage_entered_at ? Math.floor((Date.now() - new Date(deal.stage_entered_at)) / 86400000) : 0;
+
+            card.innerHTML =
+                '<div class="crm-deal-card-title">' + escHtml(deal.title) + '</div>' +
+                '<div class="crm-deal-card-contact">' +
+                    '<svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="vertical-align:middle;margin-right:3px;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>' +
+                    escHtml(deal.contact_name || '') +
+                '</div>' +
+                '<div class="crm-deal-card-meta">' +
+                    '<span class="crm-deal-card-value">' + formatCurrency(deal.value) + '</span>' +
+                    '<span style="color:#9ca3af;font-size:11px;">' + (daysInStage > 0 ? daysInStage + 'd' : 'Today') + '</span>' +
+                '</div>' +
+                (deal.close_date ? '<div style="font-size:11px;color:#9ca3af;margin-top:5px;">Close: ' + escHtml(deal.close_date) + '</div>' : '') +
+                '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;">' +
+                    '<span style="font-size:11px;color:#9ca3af;">' + escHtml(deal.assigned_name || 'Unassigned') + '</span>' +
+                    '<div style="display:flex;gap:4px;">' +
+                        '<button class="bntm-btn-secondary bntm-btn-small crm-won-deal-btn" data-id="' + deal.id + '" style="font-size:11px;padding:2px 6px;" title="Mark Won">Won</button>' +
+                        '<button class="bntm-btn-danger bntm-btn-small crm-lost-deal-btn" data-id="' + deal.id + '" style="font-size:11px;padding:2px 6px;" title="Mark Lost">Lost</button>' +
+                    '</div>' +
+                '</div>';
+
+            card.addEventListener('click', function(e) {
+                if (e.target.closest('button')) return;
+                openDealPanel(deal.id);
+            });
+
+            card.querySelector('.crm-won-deal-btn').addEventListener('click', function(e) {
+                e.stopPropagation();
+                openCloseDeal(deal.id, 'won');
+            });
+            card.querySelector('.crm-lost-deal-btn').addEventListener('click', function(e) {
+                e.stopPropagation();
+                openCloseDeal(deal.id, 'lost');
+            });
+
+            card.addEventListener('dragstart', function(e) {
+                dragSrcCard   = card;
+                dragSrcColId  = card.closest('.crm-kanban-cards').dataset.stageId;
+                card.classList.add('dragging');
+                e.dataTransfer.effectAllowed = 'move';
+                e.dataTransfer.setData('text/plain', deal.id);
+            });
+            card.addEventListener('dragend', function() {
+                card.classList.remove('dragging');
+            });
+
+            return card;
+        }
+
+        function bindColumnDrop(cardsEl, stageId) {
+            cardsEl.addEventListener('dragover', function(e) {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+                cardsEl.classList.add('drag-over');
+            });
+            cardsEl.addEventListener('dragleave', function() {
+                cardsEl.classList.remove('drag-over');
+            });
+            cardsEl.addEventListener('drop', function(e) {
+                e.preventDefault();
+                cardsEl.classList.remove('drag-over');
+                var dealId = parseInt(e.dataTransfer.getData('text/plain'));
+                var fromStageId = parseInt(dragSrcColId);
+                var toStageId   = parseInt(stageId);
+                if (!dealId || fromStageId === toStageId) return;
+                if (dragSrcCard) cardsEl.appendChild(dragSrcCard);
+                crmAjax('bntm_crm_move_deal_stage', {
+                    deal_id:      dealId,
+                    stage_id:     toStageId,
+                    pipeline_id:  currentPipelineId,
+                }, function(err, res) {
+                    if (err || !res.success) {
+                        crmToast('Failed to move deal.', 'error');
+                        loadBoard();
+                        return;
+                    }
+                    crmToast('Deal moved.', 'success');
+                    loadBoard();
+                });
+            });
+        }
+
+        // ---- Deal panel ----
+        function openDealPanel(dealId) {
+            var body = document.getElementById('crm-deal-panel-body');
+            body.innerHTML = '<div style="text-align:center;padding:40px;color:#9ca3af;">Loading…</div>';
+            crmOpenPanel('crm-deal-panel');
+            crmAjax('bntm_crm_get_deal_detail', { deal_id: dealId }, function(err, res) {
+                if (err || !res.success) {
+                    body.innerHTML = '<div style="color:#dc2626;padding:20px;">Failed to load deal.</div>';
+                    return;
+                }
+                var d = res.data;
+                document.getElementById('crm-deal-panel-title').textContent = d.title;
+                body.innerHTML =
+                    '<div class="crm-deal-panel-section">' +
+                        '<h4>Deal Info</h4>' +
+                        detailField('Value', formatCurrency(d.value) + ' ' + escHtml(d.currency || '')) +
+                        detailField('Stage', escHtml(d.stage_name || '')) +
+                        detailField('Status', escHtml(ucFirst(d.status || ''))) +
+                        detailField('Probability', (d.probability || 0) + '%') +
+                        detailField('Close Date', escHtml(d.close_date || '—')) +
+                        detailField('Source', escHtml(d.source || '—')) +
+                        detailField('Assigned To', escHtml(d.assigned_name || 'Unassigned')) +
+                        (d.lost_reason ? detailField('Lost Reason', escHtml(d.lost_reason)) : '') +
+                    '</div>' +
+                    '<div class="crm-deal-panel-section">' +
+                        '<h4>Contact</h4>' +
+                        '<a href="?tab=contacts&contact_id=' + escHtml(d.contact_id) + '" class="crm-contact-link">' + escHtml(d.contact_name || '') + '</a>' +
+                    '</div>' +
+                    (d.line_items && d.line_items.length ?
+                        '<div class="crm-deal-panel-section"><h4>Line Items</h4>' +
+                        renderLineItemsReadonly(d.line_items) + '</div>' : '') +
+                    '<div class="crm-deal-panel-section">' +
+                        '<h4>Recent Activity</h4>' +
+                        renderPanelActivities(d.activities || []) +
+                    '</div>' +
+                    '<div class="crm-deal-panel-section">' +
+                        '<h4>Attached Files</h4>' +
+                        renderPanelFiles(d.files || []) +
+                    '</div>' +
+                    '<div style="display:flex;gap:8px;margin-top:12px;">' +
+                        '<button class="bntm-btn-secondary bntm-btn-small" id="crm-panel-edit-deal-btn" data-id="' + d.id + '">Edit Deal</button>' +
+                        '<button class="bntm-btn-danger bntm-btn-small" id="crm-panel-delete-deal-btn" data-id="' + d.id + '">Delete</button>' +
+                    '</div>';
+
+                document.getElementById('crm-panel-edit-deal-btn').addEventListener('click', function() {
+                    crmClosePanel('crm-deal-panel');
+                    openEditDeal(parseInt(this.dataset.id));
+                });
+                document.getElementById('crm-panel-delete-deal-btn').addEventListener('click', function() {
+                    document.getElementById('crm-deal-delete-id').value = this.dataset.id;
+                    crmClosePanel('crm-deal-panel');
+                    crmOpenModal('crm-deal-delete-modal');
+                });
+            });
+        }
+
+        function detailField(label, value) {
+            return '<div class="crm-detail-field"><label>' + escHtml(label) + '</label><span>' + value + '</span></div>';
+        }
+
+        function renderLineItemsReadonly(items) {
+            var html = '<div style="font-size:13px;">';
+            var total = 0;
+            items.forEach(function(item) {
+                var lineTotal = parseFloat(item.quantity || 1) * parseFloat(item.unit_price || 0);
+                total += lineTotal;
+                html += '<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f3f4f6;">' +
+                    '<span style="color:#374151;">' + escHtml(item.description) + ' x' + escHtml(String(item.quantity)) + '</span>' +
+                    '<span style="font-weight:600;color:#111827;">' + formatCurrency(lineTotal) + '</span>' +
+                '</div>';
+            });
+            html += '<div style="text-align:right;font-weight:700;color:#059669;margin-top:8px;">Total: ' + formatCurrency(total) + '</div>';
+            html += '</div>';
+            return html;
+        }
+
+        function renderPanelActivities(activities) {
+            if (!activities.length) return '<p style="font-size:13px;color:#9ca3af;">No activity logged.</p>';
+            var html = '<ul class="crm-activity-feed" style="margin:0;padding:0;">';
+            activities.slice(0, 5).forEach(function(a) {
+                html += '<li class="crm-activity-item">' +
+                    '<div class="crm-activity-icon type-' + escHtml(a.type) + '" style="width:28px;height:28px;">' +
+                        '<svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/></svg>' +
+                    '</div>' +
+                    '<div class="crm-activity-body">' +
+                        '<strong style="font-size:13px;">' + escHtml(ucFirst(a.type)) + '</strong>' +
+                        (a.subject ? ' — ' + escHtml(a.subject) : '') +
+                        '<p style="font-size:11px;color:#9ca3af;margin:2px 0 0;">' + escHtml(a.logged_at ? a.logged_at.substring(0,10) : '') + '</p>' +
+                    '</div>' +
+                '</li>';
+            });
+            html += '</ul>';
+            return html;
+        }
+
+        function renderPanelFiles(files) {
+            if (!files.length) return '<p style="font-size:13px;color:#9ca3af;">No files attached.</p>';
+            var html = '';
+            files.forEach(function(f) {
+                html += '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #f3f4f6;">' +
+                    '<svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"/></svg>' +
+                    '<span style="flex:1;font-size:13px;color:#374151;">' + escHtml(f.file_name) + '</span>' +
+                    '<a href="' + escHtml(f.file_url || '#') + '" target="_blank" style="font-size:12px;color:var(--bntm-primary);">Download</a>' +
+                '</div>';
+            });
+            return html;
+        }
+
+        // ---- Add / Edit deal ----
+        function openAddDeal() {
+            document.getElementById('crm-deal-modal-title').textContent = 'Add Deal';
+            document.getElementById('crm-deal-id').value       = '';
+            document.getElementById('crm-deal-title').value    = '';
+            document.getElementById('crm-deal-contact').value  = '';
+            document.getElementById('crm-deal-pipeline').value = currentPipelineId;
+            document.getElementById('crm-deal-value').value    = '';
+            document.getElementById('crm-deal-currency').value = 'USD';
+            document.getElementById('crm-deal-probability').value = '';
+            document.getElementById('crm-deal-close-date').value  = '';
+            document.getElementById('crm-deal-source').value      = '';
+            document.getElementById('crm-deal-assigned').value    = '';
+            document.getElementById('crm-line-items-rows').innerHTML = '';
+            updateLineTotal();
+            loadStagesForPipeline(currentPipelineId, 0);
+            crmOpenModal('crm-deal-modal');
+        }
+
+        function openEditDeal(dealId) {
+            crmAjax('bntm_crm_get_deal_detail', { deal_id: dealId }, function(err, res) {
+                if (err || !res.success) { crmToast('Failed to load deal.', 'error'); return; }
+                var d = res.data;
+                document.getElementById('crm-deal-modal-title').textContent = 'Edit Deal';
+                document.getElementById('crm-deal-id').value         = d.id;
+                document.getElementById('crm-deal-title').value       = d.title || '';
+                document.getElementById('crm-deal-contact').value     = d.contact_id || '';
+                document.getElementById('crm-deal-pipeline').value    = d.pipeline_id || currentPipelineId;
+                document.getElementById('crm-deal-value').value       = d.value || '';
+                document.getElementById('crm-deal-currency').value    = d.currency || 'USD';
+                document.getElementById('crm-deal-probability').value = d.probability || '';
+                document.getElementById('crm-deal-close-date').value  = d.close_date || '';
+                document.getElementById('crm-deal-source').value      = d.source || '';
+                document.getElementById('crm-deal-assigned').value    = d.assigned_user_id || '';
+                document.getElementById('crm-line-items-rows').innerHTML = '';
+                (d.line_items || []).forEach(function(li) { addLineItemRow(li.description, li.quantity, li.unit_price); });
+                updateLineTotal();
+                loadStagesForPipeline(d.pipeline_id, d.stage_id);
+                crmOpenModal('crm-deal-modal');
+            });
+        }
+
+        function loadStagesForPipeline(pipelineId, selectedStageId) {
+            if (stagesCache[pipelineId]) {
+                populateStageSelect(stagesCache[pipelineId], selectedStageId);
+                return;
+            }
+            crmAjax('bntm_crm_get_pipeline_board', { pipeline_id: pipelineId }, function(err, res) {
+                if (err || !res.success) return;
+                stagesCache[pipelineId] = (res.data.stages || []).map(function(s) { return { id: s.id, name: s.name }; });
+                populateStageSelect(stagesCache[pipelineId], selectedStageId);
+            });
+        }
+
+        function populateDealStageSelect(pipelineId) {
+            if (stagesCache[pipelineId]) {
+                populateStageSelect(stagesCache[pipelineId], 0);
+            }
+        }
+
+        function populateStageSelect(stages, selectedId) {
+            var sel = document.getElementById('crm-deal-stage');
+            sel.innerHTML = '';
+            stages.forEach(function(s) {
+                var opt = document.createElement('option');
+                opt.value = s.id;
+                opt.textContent = s.name;
+                if (parseInt(s.id) === parseInt(selectedId)) opt.selected = true;
+                sel.appendChild(opt);
+            });
+        }
+
+        document.getElementById('crm-deal-pipeline').addEventListener('change', function() {
+            loadStagesForPipeline(this.value, 0);
+        });
+
+        // ---- Line items ----
+        function addLineItemRow(desc, qty, price) {
+            var row = document.createElement('div');
+            row.className = 'crm-line-item-row';
+            row.innerHTML =
+                '<input type="text" class="li-desc" placeholder="Description" value="' + escHtml(desc || '') + '">' +
+                '<input type="number" class="li-qty" min="0" step="0.01" placeholder="1" value="' + escHtml(String(qty || 1)) + '">' +
+                '<input type="number" class="li-price" min="0" step="0.01" placeholder="0.00" value="' + escHtml(String(price || '')) + '">' +
+                '<button type="button" class="crm-line-remove-btn">' +
+                    '<svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>' +
+                '</button>';
+            row.querySelector('.crm-line-remove-btn').addEventListener('click', function() {
+                row.remove();
+                updateLineTotal();
+            });
+            row.querySelector('.li-qty').addEventListener('input', updateLineTotal);
+            row.querySelector('.li-price').addEventListener('input', updateLineTotal);
+            document.getElementById('crm-line-items-rows').appendChild(row);
+        }
+
+        function updateLineTotal() {
+            var total = 0;
+            document.querySelectorAll('.crm-line-item-row').forEach(function(row) {
+                var qty   = parseFloat(row.querySelector('.li-qty').value) || 0;
+                var price = parseFloat(row.querySelector('.li-price').value) || 0;
+                total += qty * price;
+            });
+            document.getElementById('crm-line-items-total').textContent = total.toFixed(2);
+        }
+
+        document.getElementById('crm-add-line-item-btn').addEventListener('click', function() {
+            addLineItemRow('', 1, '');
+        });
+
+        // ---- Save deal ----
+        document.getElementById('crm-deal-save-btn').addEventListener('click', function() {
+            var btn = this;
+            if (!document.getElementById('crm-deal-title').value.trim()) {
+                crmToast('Deal title is required.', 'error'); return;
+            }
+            if (!document.getElementById('crm-deal-contact').value) {
+                crmToast('Please select a contact.', 'error'); return;
+            }
+            btn.disabled = true;
+            var lineItems = [];
+            document.querySelectorAll('.crm-line-item-row').forEach(function(row, idx) {
+                lineItems.push({
+                    description: row.querySelector('.li-desc').value,
+                    quantity:    row.querySelector('.li-qty').value,
+                    unit_price:  row.querySelector('.li-price').value,
+                    sort_order:  idx,
+                });
+            });
+            crmAjax('bntm_crm_save_deal', {
+                deal_id:         document.getElementById('crm-deal-id').value,
+                title:           document.getElementById('crm-deal-title').value,
+                contact_id:      document.getElementById('crm-deal-contact').value,
+                pipeline_id:     document.getElementById('crm-deal-pipeline').value,
+                stage_id:        document.getElementById('crm-deal-stage').value,
+                value:           document.getElementById('crm-deal-value').value,
+                currency:        document.getElementById('crm-deal-currency').value,
+                probability:     document.getElementById('crm-deal-probability').value,
+                close_date:      document.getElementById('crm-deal-close-date').value,
+                source:          document.getElementById('crm-deal-source').value,
+                assigned_user_id: document.getElementById('crm-deal-assigned').value,
+                line_items:      JSON.stringify(lineItems),
+            }, function(err, res) {
+                btn.disabled = false;
+                if (err || !res.success) { crmToast(res ? res.data.message : 'Save failed.', 'error'); return; }
+                crmToast('Deal saved.', 'success');
+                crmCloseModal('crm-deal-modal');
+                loadBoard();
+            });
+        });
+
+        // ---- Won / Lost ----
+        function openCloseDeal(dealId, outcome) {
+            document.getElementById('crm-deal-close-id').value      = dealId;
+            document.getElementById('crm-deal-close-outcome').value  = outcome;
+            var reasonRow = document.getElementById('crm-deal-close-reason-row');
+            var msgEl     = document.getElementById('crm-deal-close-message');
+            if (outcome === 'won') {
+                document.getElementById('crm-deal-close-modal-title').textContent = 'Mark Deal as Won';
+                msgEl.textContent = 'Congratulations! Mark this deal as Won?';
+                reasonRow.style.display = 'none';
+            } else {
+                document.getElementById('crm-deal-close-modal-title').textContent = 'Mark Deal as Lost';
+                msgEl.textContent = 'Mark this deal as Lost?';
+                reasonRow.style.display = '';
+                document.getElementById('crm-deal-close-reason').value = '';
+            }
+            crmOpenModal('crm-deal-close-modal');
+        }
+
+        document.getElementById('crm-deal-close-confirm-btn').addEventListener('click', function() {
+            var btn     = this;
+            var dealId  = document.getElementById('crm-deal-close-id').value;
+            var outcome = document.getElementById('crm-deal-close-outcome').value;
+            var reason  = document.getElementById('crm-deal-close-reason').value;
+            btn.disabled = true;
+            crmAjax('bntm_crm_close_deal', { deal_id: dealId, outcome: outcome, lost_reason: reason }, function(err, res) {
+                btn.disabled = false;
+                if (err || !res.success) { crmToast(res ? res.data.message : 'Failed.', 'error'); return; }
+                crmToast('Deal marked as ' + outcome + '.', 'success');
+                crmCloseModal('crm-deal-close-modal');
+                loadBoard();
+            });
+        });
+
+        // ---- Delete deal ----
+        document.getElementById('crm-deal-confirm-delete-btn').addEventListener('click', function() {
+            var btn = this;
+            btn.disabled = true;
+            crmAjax('bntm_crm_delete_deal', { deal_id: document.getElementById('crm-deal-delete-id').value }, function(err, res) {
+                btn.disabled = false;
+                if (err || !res.success) { crmToast(res ? res.data.message : 'Delete failed.', 'error'); return; }
+                crmToast('Deal deleted.', 'success');
+                crmCloseModal('crm-deal-delete-modal');
+                loadBoard();
+            });
+        });
+
+        // ---- Pipeline selector / filters ----
+        document.getElementById('crm-pipeline-selector').addEventListener('change', function() {
+            currentPipelineId = parseInt(this.value);
+            loadBoard();
+        });
+        document.getElementById('crm-pipeline-apply-filters').addEventListener('click', loadBoard);
+        document.getElementById('crm-add-deal-btn').addEventListener('click', openAddDeal);
+
+        // Pre-fill contact if coming from contact profile
+        var urlParams = new URLSearchParams(window.location.search);
+        var preContact = urlParams.get('new_deal_contact');
+        if (preContact) { openAddDeal(); document.getElementById('crm-deal-contact').value = preContact; }
+
+        function formatCurrency(val) {
+            return parseFloat(val || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        }
+        function escHtml(str) {
+            if (str === null || str === undefined) return '';
+            return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+        }
+        function ucFirst(str) { return str ? str.charAt(0).toUpperCase() + str.slice(1) : ''; }
+
+        loadBoard();
+    })();
+    </script>
+    <?php
+    return ob_get_clean();
+}
+
+// =============================================================================
+// TAB 4 — ACTIVITIES TAB
+// =============================================================================
+
+function crm_activities_tab($business_id) {
+    global $wpdb;
+
+    $users          = get_users(['fields' => ['ID', 'display_name']]);
+    $contacts_table = $wpdb->prefix . 'bntm_crm_contacts';
+    $contacts       = $wpdb->get_results(
+        "SELECT id, first_name, last_name FROM {$contacts_table} WHERE deleted_at IS NULL ORDER BY first_name ASC"
+    );
+    $deals_table    = $wpdb->prefix . 'bntm_crm_deals';
+    $deals          = $wpdb->get_results(
+        "SELECT id, title FROM {$deals_table} WHERE deleted_at IS NULL AND status = 'open' ORDER BY title ASC"
+    );
+
+    ob_start();
+    ?>
+    <div class="bntm-form-section">
+        <div class="bntm-section-header">
+            <h3>Activities</h3>
+            <button class="bntm-btn-primary bntm-btn-small" id="crm-log-activity-btn">
+                <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="margin-right:4px;vertical-align:middle;">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+                </svg>
+                Log Activity
+            </button>
+        </div>
+
+        <!-- Filters -->
+        <div class="crm-filters-bar">
+            <select id="crm-activity-type-filter" style="min-width:140px;">
                 <option value="">All Types</option>
                 <option value="call">Call</option>
                 <option value="email">Email</option>
                 <option value="meeting">Meeting</option>
                 <option value="note">Note</option>
+                <option value="task_completion">Task Completion</option>
             </select>
+            <select id="crm-activity-user-filter" style="min-width:150px;">
+                <option value="">All Users</option>
+                <?php foreach ($users as $u): ?>
+                <option value="<?php echo intval($u->ID); ?>"><?php echo esc_html($u->display_name); ?></option>
+                <?php endforeach; ?>
+            </select>
+            <select id="crm-activity-contact-filter" style="min-width:180px;">
+                <option value="">All Contacts</option>
+                <?php foreach ($contacts as $c): ?>
+                <option value="<?php echo intval($c->id); ?>"><?php echo esc_html(trim($c->first_name . ' ' . $c->last_name)); ?></option>
+                <?php endforeach; ?>
+            </select>
+            <input type="date" id="crm-activity-date-from" style="width:auto;">
+            <input type="date" id="crm-activity-date-to" style="width:auto;">
+            <div class="filter-actions">
+                <button class="bntm-btn-secondary bntm-btn-small" id="crm-activities-apply-filters">Filter</button>
+                <button class="bntm-btn-secondary bntm-btn-small" id="crm-activities-reset-filters">Reset</button>
+            </div>
         </div>
-        <button class="bntm-btn-primary" onclick="crmOpenModal('add-interaction-modal')">
-            <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="vertical-align:-3px;margin-right:4px;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
-            Log Interaction
-        </button>
+
+        <!-- Overdue alert -->
+        <div id="crm-overdue-alert" style="display:none;padding:10px 14px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;margin-bottom:14px;font-size:13px;color:#dc2626;display:flex;align-items:center;gap:8px;">
+            <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+            </svg>
+            <span id="crm-overdue-text"></span>
+        </div>
+
+        <!-- Activities table -->
+        <div class="bntm-table-wrapper">
+            <table class="bntm-table">
+                <thead>
+                    <tr>
+                        <th style="width:40px;">Type</th>
+                        <th>Subject</th>
+                        <th>Contact</th>
+                        <th>Deal</th>
+                        <th>Logged By</th>
+                        <th>Date</th>
+                        <th>Duration</th>
+                        <th style="width:100px;">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="crm-activities-tbody">
+                    <tr><td colspan="8" style="text-align:center;padding:30px;color:#9ca3af;">Loading activities…</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <div class="crm-pagination" id="crm-activities-pagination"></div>
     </div>
 
-    <div class="bntm-table-wrapper">
-        <table class="bntm-table" id="interactions-table">
-            <thead><tr><th>Subject</th><th>Contact</th><th>Type</th><th>Date</th><th>Details</th><th>Actions</th></tr></thead>
-            <tbody>
-            <?php if (empty($interactions)): ?>
-            <tr><td colspan="6" style="text-align:center;color:#9ca3af;padding:32px;">No interactions logged yet.</td></tr>
-            <?php else: ?>
-            <?php foreach ($interactions as $i): ?>
-            <tr data-type="<?php echo esc_attr($i->type); ?>">
-                <td style="font-weight:500;color:#111827;"><?php echo esc_html($i->subject); ?></td>
-                <td><?php echo esc_html($i->first_name . ' ' . $i->last_name); ?></td>
-                <td><span class="crm-badge crm-badge-<?php echo esc_attr($i->type); ?>"><?php echo esc_html($i->type); ?></span></td>
-                <td style="font-size:13px;color:#6b7280;"><?php echo date('M j, Y g:i A', strtotime($i->interaction_date)); ?></td>
-                <td style="font-size:13px;color:#6b7280;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="<?php echo esc_attr($i->details); ?>"><?php echo esc_html($i->details ?: '—'); ?></td>
-                <td>
-                    <button class="bntm-btn-icon" title="Delete" onclick="crmDeleteInteraction('<?php echo esc_attr($i->rand_id); ?>', this)" style="color:#ef4444;">
-                        <svg width="15" height="15" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
-                    </button>
-                </td>
-            </tr>
-            <?php endforeach; ?>
-            <?php endif; ?>
-            </tbody>
-        </table>
+    <!-- Upcoming Scheduled -->
+    <div class="bntm-form-section">
+        <h3>Upcoming Scheduled Activities</h3>
+        <div id="crm-upcoming-activities">
+            <div style="text-align:center;padding:20px;color:#9ca3af;font-size:13px;">Loading…</div>
+        </div>
     </div>
 
-    <!-- Add Interaction Modal -->
-    <div class="crm-modal-overlay" id="add-interaction-modal">
-        <div class="crm-modal">
+    <!-- Log / Edit Activity Modal -->
+    <div class="crm-modal-overlay" id="crm-activity-modal">
+        <div class="crm-modal crm-modal-lg">
             <div class="crm-modal-header">
-                <h3>Log Interaction</h3>
-                <button class="bntm-btn-icon" onclick="crmCloseModal('add-interaction-modal')"><svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
+                <h3 id="crm-activity-modal-title">Log Activity</h3>
+                <button class="crm-modal-close" type="button">
+                    <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                </button>
             </div>
             <div class="crm-modal-body">
-                <div class="crm-form-row">
-                    <div class="crm-form-group"><label>Contact *</label>
-                        <select id="add-int-contact" class="crm-select">
-                            <option value="">— Select Contact —</option>
-                            <?php foreach ($contacts as $c): ?><option value="<?php echo esc_attr($c->id); ?>"><?php echo esc_html($c->first_name . ' ' . $c->last_name); ?></option><?php endforeach; ?>
+                <input type="hidden" id="crm-activity-id" value="">
+                <div class="form-grid-2">
+                    <div class="form-row">
+                        <label>Activity Type <span style="color:#dc2626;">*</span></label>
+                        <select id="crm-act-type">
+                            <option value="call">Call</option>
+                            <option value="email">Email</option>
+                            <option value="meeting">Meeting</option>
+                            <option value="note">Note</option>
                         </select>
                     </div>
-                    <div class="crm-form-group"><label>Type *</label>
-                        <select id="add-int-type" class="crm-select"><option value="note">Note</option><option value="call">Call</option><option value="email">Email</option><option value="meeting">Meeting</option></select>
+                    <div class="form-row">
+                        <label>Date &amp; Time</label>
+                        <input type="datetime-local" id="crm-act-datetime">
                     </div>
                 </div>
-                <div class="crm-form-row single">
-                    <div class="crm-form-group"><label>Subject *</label><input type="text" id="add-int-subject" class="crm-input" placeholder="Brief description of the interaction"></div>
+                <div class="form-row">
+                    <label>Subject</label>
+                    <input type="text" id="crm-act-subject" placeholder="Brief subject line">
                 </div>
-                <div class="crm-form-row single">
-                    <div class="crm-form-group"><label>Date &amp; Time</label><input type="datetime-local" id="add-int-date" class="crm-input"></div>
+                <div class="form-grid-2">
+                    <div class="form-row">
+                        <label>Contact</label>
+                        <select id="crm-act-contact">
+                            <option value="">No contact</option>
+                            <?php foreach ($contacts as $c): ?>
+                            <option value="<?php echo intval($c->id); ?>"><?php echo esc_html(trim($c->first_name . ' ' . $c->last_name)); ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div class="form-row">
+                        <label>Deal</label>
+                        <select id="crm-act-deal">
+                            <option value="">No deal</option>
+                            <?php foreach ($deals as $d): ?>
+                            <option value="<?php echo intval($d->id); ?>"><?php echo esc_html($d->title); ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
                 </div>
-                <div class="crm-form-row single">
-                    <div class="crm-form-group"><label>Details</label><textarea id="add-int-details" class="crm-textarea" placeholder="Full notes about this interaction..."></textarea></div>
+                <div class="form-row">
+                    <label>Notes</label>
+                    <textarea id="crm-act-body" rows="4" placeholder="Detailed notes…"></textarea>
                 </div>
-                <div id="add-int-msg"></div>
+                <div class="form-grid-2">
+                    <div class="form-row">
+                        <label>Outcome</label>
+                        <input type="text" id="crm-act-outcome" placeholder="e.g. Positive, No answer">
+                    </div>
+                    <div class="form-row">
+                        <label>Duration (minutes)</label>
+                        <input type="number" id="crm-act-duration" min="0" placeholder="0">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <label style="display:inline-flex;align-items:center;gap:8px;font-weight:400;">
+                        <input type="checkbox" id="crm-act-visible">
+                        Visible to customer in portal
+                    </label>
+                </div>
             </div>
             <div class="crm-modal-footer">
-                <button class="bntm-btn-secondary" onclick="crmCloseModal('add-interaction-modal')">Cancel</button>
-                <button class="bntm-btn-primary" id="add-int-btn" onclick="crmSubmitAddInteraction()">Log Interaction</button>
+                <button class="bntm-btn-secondary" onclick="crmCloseModal('crm-activity-modal')">Cancel</button>
+                <button class="bntm-btn-primary" id="crm-activity-save-btn">Save Activity</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Delete Activity Modal -->
+    <div class="crm-modal-overlay" id="crm-activity-delete-modal">
+        <div class="crm-modal" style="max-width:420px;">
+            <div class="crm-modal-header">
+                <h3>Delete Activity</h3>
+                <button class="crm-modal-close" type="button">
+                    <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="crm-modal-body">
+                <p style="font-size:14px;color:#374151;margin:0;">Are you sure you want to delete this activity? This cannot be undone.</p>
+                <input type="hidden" id="crm-activity-delete-id">
+            </div>
+            <div class="crm-modal-footer">
+                <button class="bntm-btn-secondary" onclick="crmCloseModal('crm-activity-delete-modal')">Cancel</button>
+                <button class="bntm-btn-danger" id="crm-activity-confirm-delete-btn">Delete</button>
             </div>
         </div>
     </div>
 
     <script>
     (function() {
-        // Set default datetime
-        var dtInput = document.getElementById('add-int-date');
-        if (dtInput) {
-            var now = new Date();
-            now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
-            dtInput.value = now.toISOString().slice(0,16);
+        var currentPage = 1;
+        var perPage     = 20;
+
+        function getFilters() {
+            return {
+                type:       document.getElementById('crm-activity-type-filter').value,
+                user_id:    document.getElementById('crm-activity-user-filter').value,
+                contact_id: document.getElementById('crm-activity-contact-filter').value,
+                date_from:  document.getElementById('crm-activity-date-from').value,
+                date_to:    document.getElementById('crm-activity-date-to').value,
+                page:       currentPage,
+                per_page:   perPage,
+            };
         }
 
-        // Filter by type
-        var typeFilter = document.getElementById('int-type-filter');
-        if (typeFilter) {
-            typeFilter.addEventListener('change', function() {
-                var v = this.value;
-                document.querySelectorAll('#interactions-table tbody tr[data-type]').forEach(function(r){
-                    r.style.display = (!v || r.getAttribute('data-type') === v) ? '' : 'none';
+        function loadActivities() {
+            var tbody = document.getElementById('crm-activities-tbody');
+            tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:30px;color:#9ca3af;">Loading…</td></tr>';
+            crmAjax('bntm_crm_get_activities', getFilters(), function(err, res) {
+                if (err || !res.success) {
+                    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:30px;color:#dc2626;">Failed to load activities.</td></tr>';
+                    return;
+                }
+                renderActivities(res.data.activities, res.data.total, res.data.overdue_count);
+            });
+        }
+
+        function renderActivities(activities, total, overdueCount) {
+            var tbody = document.getElementById('crm-activities-tbody');
+            var overdueEl = document.getElementById('crm-overdue-alert');
+            if (overdueCount > 0) {
+                document.getElementById('crm-overdue-text').textContent = overdueCount + ' overdue scheduled activit' + (overdueCount === 1 ? 'y' : 'ies') + ' require attention.';
+                overdueEl.style.display = 'flex';
+            } else {
+                overdueEl.style.display = 'none';
+            }
+            if (!activities || activities.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:30px;color:#9ca3af;">No activities found.</td></tr>';
+                renderActPagination(0);
+                return;
+            }
+            var typeColors = { call:'#dbeafe', email:'#fce7f3', meeting:'#d1fae5', note:'#fef9c3', task_completion:'#ede9fe', stage_change:'#f0fdf4', deal_view:'#f3f4f6', unsubscribe:'#fee2e2', callback_request:'#fff7ed' };
+            var html = '';
+            activities.forEach(function(a) {
+                var bg = typeColors[a.type] || '#f3f4f6';
+                html += '<tr>' +
+                    '<td><span style="display:inline-flex;width:32px;height:32px;border-radius:50%;background:' + bg + ';align-items:center;justify-content:center;" title="' + escHtml(a.type) + '">' +
+                        crm_activity_icon_svg(a.type) +
+                    '</span></td>' +
+                    '<td style="max-width:200px;"><strong style="font-size:13px;">' + escHtml(a.subject || ucFirst(a.type)) + '</strong>' +
+                        (a.body ? '<div style="font-size:12px;color:#6b7280;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px;">' + escHtml(a.body) + '</div>' : '') +
+                    '</td>' +
+                    '<td>' + (a.contact_name ? '<a href="?tab=contacts&contact_id=' + a.contact_id + '" class="crm-contact-link" style="font-size:13px;">' + escHtml(a.contact_name) + '</a>' : '<span style="color:#9ca3af;font-size:13px;">—</span>') + '</td>' +
+                    '<td style="font-size:13px;color:#374151;">' + escHtml(a.deal_title || '—') + '</td>' +
+                    '<td style="font-size:13px;color:#374151;">' + escHtml(a.logged_by_name || '—') + '</td>' +
+                    '<td style="font-size:13px;color:#374151;white-space:nowrap;">' + escHtml(a.logged_at ? a.logged_at.substring(0,16).replace('T',' ') : '') + '</td>' +
+                    '<td style="font-size:13px;color:#374151;">' + (a.duration_minutes ? a.duration_minutes + ' min' : '—') + '</td>' +
+                    '<td style="white-space:nowrap;">' +
+                        '<button class="bntm-btn-secondary bntm-btn-small crm-edit-activity-btn" data-id="' + a.id + '" style="margin-right:4px;">Edit</button>' +
+                        '<button class="bntm-btn-danger bntm-btn-small crm-delete-activity-btn" data-id="' + a.id + '">Delete</button>' +
+                    '</td>' +
+                '</tr>';
+            });
+            tbody.innerHTML = html;
+            bindActivityRowEvents();
+            renderActPagination(total);
+        }
+
+        function renderActPagination(total) {
+            var pages = Math.ceil(total / perPage);
+            var el    = document.getElementById('crm-activities-pagination');
+            if (pages <= 1) { el.innerHTML = '<span>' + total + ' activit' + (total !== 1 ? 'ies' : 'y') + '</span>'; return; }
+            var btns = '<button ' + (currentPage === 1 ? 'disabled' : '') + ' id="crm-act-prev">&larr;</button>';
+            for (var p = 1; p <= pages; p++) {
+                btns += '<button class="' + (p === currentPage ? 'active' : '') + '" data-page="' + p + '">' + p + '</button>';
+            }
+            btns += '<button ' + (currentPage === pages ? 'disabled' : '') + ' id="crm-act-next">&rarr;</button>';
+            el.innerHTML = '<span>' + total + ' activit' + (total !== 1 ? 'ies' : 'y') + '</span><div class="crm-pagination-btns">' + btns + '</div>';
+            el.querySelectorAll('[data-page]').forEach(function(btn) {
+                btn.addEventListener('click', function() { currentPage = parseInt(this.dataset.page); loadActivities(); });
+            });
+            var prev = document.getElementById('crm-act-prev');
+            var next = document.getElementById('crm-act-next');
+            if (prev) prev.addEventListener('click', function() { currentPage--; loadActivities(); });
+            if (next) next.addEventListener('click', function() { currentPage++; loadActivities(); });
+        }
+
+        function bindActivityRowEvents() {
+            document.querySelectorAll('.crm-edit-activity-btn').forEach(function(btn) {
+                btn.addEventListener('click', function() { openEditActivity(parseInt(this.dataset.id)); });
+            });
+            document.querySelectorAll('.crm-delete-activity-btn').forEach(function(btn) {
+                btn.addEventListener('click', function() {
+                    document.getElementById('crm-activity-delete-id').value = this.dataset.id;
+                    crmOpenModal('crm-activity-delete-modal');
                 });
             });
         }
 
-        window.crmSubmitAddInteraction = function() {
-            var btn  = document.getElementById('add-int-btn');
-            var con  = document.getElementById('add-int-contact').value;
-            var subj = document.getElementById('add-int-subject').value.trim();
-            if (!con || !subj) { document.getElementById('add-int-msg').innerHTML = '<div class="bntm-notice bntm-notice-error">Contact and subject are required.</div>'; return; }
-            btn.disabled = true;
-            var fd = new FormData();
-            fd.append('action', 'crm_add_interaction');
-            fd.append('nonce', crm_nonce);
-            fd.append('contact_id', con);
-            fd.append('type',       document.getElementById('add-int-type').value);
-            fd.append('subject',    subj);
-            fd.append('details',    document.getElementById('add-int-details').value.trim());
-            fd.append('interaction_date', document.getElementById('add-int-date').value);
-            fetch(ajaxurl,{method:'POST',body:fd}).then(r=>r.json()).then(function(d){
-                btn.disabled=false;
-                if(d.success){crmShowToast('Interaction logged!','success');crmCloseModal('add-interaction-modal');location.reload();}
-                else{document.getElementById('add-int-msg').innerHTML='<div class="bntm-notice bntm-notice-error">'+d.data.message+'</div>';}
-            }).catch(function(){btn.disabled=false;crmShowToast('Request failed.','error');});
-        };
-
-        window.crmDeleteInteraction = function(rand_id, btn) {
-            if (!confirm('Delete this interaction?')) return;
-            btn.disabled = true;
-            var fd = new FormData();
-            fd.append('action', 'crm_delete_interaction');
-            fd.append('nonce', crm_nonce);
-            fd.append('rand_id', rand_id);
-            fetch(ajaxurl,{method:'POST',body:fd}).then(r=>r.json()).then(function(d){
-                btn.disabled=false;
-                if(d.success){crmShowToast('Interaction deleted.','success');btn.closest('tr').remove();}
-                else{crmShowToast(d.data.message,'error');}
-            }).catch(function(){btn.disabled=false;crmShowToast('Request failed.','error');});
-        };
-    })();
-    </script>
-    <?php
-    return ob_get_clean();
-}
-
-// ============================================================
-// TAB: SETTINGS
-// ============================================================
-
-/**
- * Render the settings tab content for the CRM dashboard.
- * @param int $business_id Business ID to scope the CRM data.
- * @return array
- */
-function crm_settings_tab($business_id) {
-    $currency = bntm_get_setting('crm_currency', 'USD');
-    $pipeline_types = crm_get_pipeline_types();
-    $selected_pipeline = isset($_GET['pipeline']) && array_key_exists($_GET['pipeline'], $pipeline_types) ? sanitize_text_field($_GET['pipeline']) : 'subscription';
-    $stages   = crm_get_pipeline_stages($business_id, $selected_pipeline);
-    $int_types = ['call', 'email', 'meeting', 'note'];
-
-    ob_start();
-    ?>
-    <div class="bntm-form-section">
-        <h3>General Settings</h3>
-        <div class="crm-form-row" style="max-width:400px;">
-            <div class="crm-form-group">
-                <label>Currency</label>
-                <select id="settings-currency" class="crm-select">
-                    <option value="USD" <?php selected($currency,'USD'); ?>>USD — US Dollar ($)</option>
-                    <option value="EUR" <?php selected($currency,'EUR'); ?>>EUR — Euro (€)</option>
-                    <option value="GBP" <?php selected($currency,'GBP'); ?>>GBP — British Pound (£)</option>
-                    <option value="PHP" <?php selected($currency,'PHP'); ?>>PHP — Philippine Peso (₱)</option>
-                    <option value="AED" <?php selected($currency,'AED'); ?>>AED — UAE Dirham (AED)</option>
-                    <option value="SAR" <?php selected($currency,'SAR'); ?>>SAR — Saudi Riyal (SAR)</option>
-                </select>
-            </div>
-        </div>
-    </div>
-
-    <div class="bntm-form-section">
-        <h3>Pipeline Stages</h3>
-        <p style="font-size:14px;color:#6b7280;margin-bottom:16px;">Manage the stages of your sales pipeline. Stages are applied in order.</p>
-        <div class="crm-form-row" style="margin-bottom:16px;">
-            <div class="crm-form-group" style="flex:1;min-width:240px;">
-                <label>Pipeline Type</label>
-                <select id="settings-pipeline-type" class="crm-select" onchange="crmLoadPipelineStages(this.value)">
-                    <?php foreach ($pipeline_types as $key => $label): ?>
-                        <option value="<?php echo esc_attr($key); ?>" <?php selected($selected_pipeline, $key); ?>><?php echo esc_html($label); ?></option>
-                    <?php endforeach; ?>
-                </select>
-            </div>
-        </div>
-        <div id="pipeline-stages-list">
-            <?php foreach ($stages as $index => $stage): ?>
-            <div class="crm-stage-item" data-index="<?php echo $index; ?>" style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
-                <div style="color:#9ca3af;">
-                    <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
-                </div>
-                <input type="text" class="crm-input stage-name-input" value="<?php echo esc_attr($stage); ?>" style="flex:1;max-width:300px;">
-                <button class="bntm-btn-icon" style="color:#ef4444;" onclick="crmRemoveStage(this)" title="Remove stage">
-                    <svg width="15" height="15" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
-                </button>
-            </div>
-            <?php endforeach; ?>
-        </div>
-        <button class="bntm-btn-secondary bntm-btn-small" style="margin-top:8px;" onclick="crmAddStageRow()">
-            <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="vertical-align:-2px;margin-right:4px;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
-            Add Stage
-        </button>
-    </div>
-
-    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
-        <button class="bntm-btn-primary" id="save-settings-btn" onclick="crmSaveSettings()">Save Settings</button>
-        <div id="settings-msg" style="flex:1;"></div>
-    </div>
-
-    <script>
-    (function() {
-        window.crmAddStageRow = function() {
-            var list = document.getElementById('pipeline-stages-list');
-            var div  = document.createElement('div');
-            div.className = 'crm-stage-item';
-            div.style.cssText = 'display:flex;align-items:center;gap:10px;margin-bottom:8px;';
-            div.innerHTML = '<div style="color:#9ca3af;"><svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg></div>'
-                + '<input type="text" class="crm-input stage-name-input" placeholder="Stage name" style="flex:1;max-width:300px;">'
-                + '<button class="bntm-btn-icon" style="color:#ef4444;" onclick="crmRemoveStage(this)" title="Remove"><svg width="15" height="15" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button>';
-            list.appendChild(div);
-        };
-
-        window.crmRemoveStage = function(btn) {
-            btn.closest('.crm-stage-item').remove();
-        };
-
-        window.crmSaveSettings = function() {
-            var btn = document.getElementById('save-settings-btn');
-            var stageInputs = document.querySelectorAll('.stage-name-input');
-            var stages = [];
-            stageInputs.forEach(function(i){ var v=i.value.trim(); if(v) stages.push(v); });
-            if (!stages.length) { document.getElementById('settings-msg').innerHTML='<div class="bntm-notice bntm-notice-error">At least one pipeline stage is required.</div>'; return; }
-            btn.disabled = true;
-            var fd = new FormData();
-            fd.append('action', 'crm_save_settings');
-            fd.append('nonce', crm_nonce);
-            fd.append('currency', document.getElementById('settings-currency').value);
-            fd.append('stages', JSON.stringify(stages));
-            fetch(ajaxurl,{method:'POST',body:fd}).then(r=>r.json()).then(function(d){
-                btn.disabled=false;
-                if(d.success){crmShowToast('Settings saved!','success');document.getElementById('settings-msg').innerHTML='<div class="bntm-notice bntm-notice-success">Settings saved successfully.</div>';}
-                else{document.getElementById('settings-msg').innerHTML='<div class="bntm-notice bntm-notice-error">'+d.data.message+'</div>';}
-            }).catch(function(){btn.disabled=false;crmShowToast('Request failed.','error');});
-        };
-    })();
-    </script>
-    <?php
-    return ob_get_clean();
-}
-
-// ============================================================
-// PUBLIC CONTACT PAGE ROUTE + RENDERER
-// ============================================================
-
-add_action('init', 'bntm_crm_register_contact_route');
-add_filter('query_vars', 'bntm_crm_query_vars');
-add_action('template_redirect', 'bntm_crm_template_redirect');
-
-/**
- * Register the CRM contact page rewrite route.
- * @return void
- */
-function bntm_crm_register_contact_route() {
-    add_rewrite_tag('%crm_contact%', '([^&]+)');
-    add_rewrite_rule('^crm/contact/([^/]+)/?$', 'index.php?crm_contact=$matches[1]', 'top');
-
-    // Flush once after registering the rule (do not flush on every request)
-    if (!get_option('bntm_crm_rewrites_flushed')) {
-        flush_rewrite_rules(false);
-        update_option('bntm_crm_rewrites_flushed', 1);
-    }
-}
-
-/**
- * Add CRM-specific query vars to WordPress.
- * @param array $vars Query vars passed by WordPress.
- * @return void
- */
-function bntm_crm_query_vars($vars) {
-    $vars[] = 'crm_contact';
-    return $vars;
-}
-
-/**
- * Intercept requests and render CRM contact pages when appropriate.
- * @return void
- */
-function bntm_crm_template_redirect() {
-    $rand = get_query_var('crm_contact');
-    if (!$rand) return;
-    // Render contact page and exit
-    echo bntm_render_contact_page($rand);
-    exit;
-}
-
-/**
- * Render the public contact page from the CRM route.
- * @param string $rand_id Random identifier for the selected contact or lead.
- * @return string
- */
-function bntm_render_contact_page($rand_id) {
-    global $wpdb;
-    $rand_id = sanitize_text_field($rand_id);
-    $contact = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}crm_contacts WHERE rand_id = %s", $rand_id), ARRAY_A);
-    if (!$contact) {
-        status_header(404);
-        return '<h2>Contact not found</h2>';
-    }
-
-    // Simple permission: ensure current user owns the business record
-    if (!is_user_logged_in() || get_current_user_id() != intval($contact['business_id'])) {
-        status_header(403);
-        return '<h2>Not authorized</h2>';
-    }
-
-    $leads = $wpdb->get_results($wpdb->prepare("SELECT * FROM {$wpdb->prefix}crm_leads WHERE contact_id = %d AND business_id = %d ORDER BY created_at DESC", $contact['id'], $contact['business_id']));
-    $interactions = $wpdb->get_results($wpdb->prepare("SELECT * FROM {$wpdb->prefix}crm_interactions WHERE contact_id = %d AND business_id = %d AND status = 'active' ORDER BY interaction_date DESC", $contact['id'], $contact['business_id']));
-
-    ob_start();
-    ?>
-    <div class="bntm-crm-contact-page" style="padding:24px;max-width:1200px;margin:0 auto;">
-        <style>
-        .bntm-contact-grid { display:grid; grid-template-columns:260px 1fr 300px; gap:18px; align-items:start; }
-        .bntm-contact-panel { background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:16px; }
-        .contact-avatar { width:64px;height:64px;border-radius:12px;background:var(--bntm-primary,#6366f1);display:inline-flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:20px;margin-right:12px; }
-        .contact-meta { display:flex;align-items:center;margin-bottom:12px; }
-        .contact-detail { font-size:13px;color:#374151;margin-bottom:8px; }
-        .contact-label { font-size:11px;color:#9ca3af;text-transform:uppercase;font-weight:700;margin-bottom:6px; }
-        .feed-item { border-bottom:1px solid #f3f4f6;padding:12px 0; }
-        .feed-item:last-child { border-bottom:none; }
-        </style>
-
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;">
-            <div style="display:flex;align-items:center;gap:12px;">
-                <div class="contact-avatar"><?php echo esc_html(substr($contact['first_name'],0,1) . substr($contact['last_name'],0,1)); ?></div>
-                <div>
-                    <div style="font-size:20px;font-weight:700;color:#111827;"><?php echo esc_html($contact['first_name'] . ' ' . $contact['last_name']); ?></div>
-                    <div style="color:#6b7280;font-size:13px;"><?php echo esc_html($contact['company']); ?></div>
-                </div>
-            </div>
-            <div>
-                <a class="bntm-btn-secondary" href="<?php echo esc_url(admin_url('crm-dashboard/?tab=contacts')); ?>">Back to contacts</a>
-            </div>
-        </div>
-
-        <div class="bntm-contact-grid">
-            <!-- Left: Contact details -->
-            <div class="bntm-contact-panel">
-                <div class="contact-label">Contact Details</div>
-                <div class="contact-detail"><strong>Email:</strong> <?php echo esc_html($contact['email'] ?: '—'); ?></div>
-                <div class="contact-detail"><strong>Phone:</strong> <?php echo esc_html($contact['phone'] ?: '—'); ?></div>
-                <div class="contact-detail"><strong>Lead Status:</strong> <span class="crm-badge crm-badge-<?php echo esc_attr($contact['status']); ?>"><?php echo esc_html($contact['status']); ?></span></div>
-                <div class="contact-detail"><strong>Lead Owner:</strong> <?php $owner = get_userdata(intval($contact['business_id'])); echo $owner ? esc_html($owner->display_name) : esc_html('—'); ?></div>
-                <?php if ($contact['notes']): ?><div style="margin-top:12px;"><div class="contact-label">Notes</div><div style="font-size:13px;color:#374151;"><?php echo nl2br(esc_html($contact['notes'])); ?></div></div><?php endif; ?>
-            </div>
-
-            <!-- Middle: Main feed -->
-            <div class="bntm-contact-panel">
-                <div class="contact-label">Activity Feed</div>
-                <div style="margin-bottom:12px;display:flex;gap:8px;flex-wrap:wrap;">
-                    <button class="bntm-btn-primary">Add Note</button>
-                    <button class="bntm-btn-secondary">Log Interaction</button>
-                    <button class="bntm-btn-secondary">Upload File</button>
-                </div>
-                <div>
-                    <?php if (empty($interactions)): ?>
-                        <p style="color:#9ca3af">No activity yet.</p>
-                    <?php else: ?>
-                        <?php foreach ($interactions as $it): ?>
-                        <div class="feed-item">
-                            <div style="font-weight:600;color:#111827;"><?php echo esc_html($it->subject); ?></div>
-                            <div style="font-size:12px;color:#9ca3af;margin-top:6px;"><?php echo esc_html(ucfirst($it->type)); ?> &middot; <?php echo date('M j, Y g:i A', strtotime($it->interaction_date)); ?></div>
-                            <?php if ($it->details): ?><div style="margin-top:8px;color:#374151;font-size:13px;"><?php echo nl2br(esc_html($it->details)); ?></div><?php endif; ?>
-                        </div>
-                        <?php endforeach; ?>
-                    <?php endif; ?>
-                </div>
-            </div>
-
-            <!-- Right: Active deals & pinned notes -->
-            <div class="bntm-contact-panel">
-                <div class="contact-label">Active Deals</div>
-                <?php if (empty($leads)): ?>
-                    <p style="color:#9ca3af">No active deals.</p>
-                <?php else: ?>
-                    <?php foreach ($leads as $l): if ($l->status !== 'open') continue; ?>
-                        <div style="padding:10px;border-radius:8px;border:1px solid #f3f4f6;margin-bottom:8px;">
-                            <div style="font-weight:600;color:#111827"><?php echo esc_html($l->title); ?></div>
-                            <div style="font-size:13px;color:#6b7280;margin-top:6px;"><?php echo crm_format_price($l->value); ?> &middot; <span class="crm-badge crm-badge-<?php echo esc_attr($l->stage); ?>"><?php echo esc_html($l->stage); ?></span></div>
-                        </div>
-                    <?php endforeach; ?>
-                <?php endif; ?>
-
-                <div style="margin-top:18px;"><div class="contact-label">Pinned Notes</div>
-                    <?php // show up to 3 recent notes as pinned
-                    $pinned = array_filter($interactions, function($x){ return $x->type === 'note'; });
-                    $pinned = array_slice($pinned, 0, 3);
-                    if (empty($pinned)): ?><p style="color:#9ca3af">No pinned notes.</p><?php else: ?>
-                        <?php foreach ($pinned as $pn): ?>
-                            <div style="padding:8px;border-radius:8px;border:1px solid #f3f4f6;margin-bottom:8px;font-size:13px;color:#374151;"><?php echo nl2br(esc_html($pn->details ?: $pn->subject)); ?></div>
-                        <?php endforeach; ?>
-                    <?php endif; ?>
-                </div>
-            </div>
-        </div>
-    </div>
-    <?php
-    return ob_get_clean();
-}
-
-// ============================================================
-// AJAX HANDLERS
-// ============================================================
-
-/**
- * Handle AJAX requests for crm add contact.
- * @return void
- */
-function bntm_ajax_crm_add_contact() {
-    check_ajax_referer('crm_nonce', 'nonce');
-    if (!is_user_logged_in()) { wp_send_json_error(['message' => 'Unauthorized']); }
-
-    global $wpdb;
-    $business_id = get_current_user_id();
-    $first_name  = sanitize_text_field($_POST['first_name'] ?? '');
-    $last_name   = sanitize_text_field($_POST['last_name'] ?? '');
-    $email       = sanitize_email($_POST['email'] ?? '');
-    $phone       = sanitize_text_field($_POST['phone'] ?? '');
-    $company     = sanitize_text_field($_POST['company'] ?? '');
-    $notes       = sanitize_textarea_field($_POST['notes'] ?? '');
-
-    if (!$first_name || !$last_name) {
-        wp_send_json_error(['message' => 'First and last name are required.']);
-    }
-
-    $result = $wpdb->insert(
-        $wpdb->prefix . 'crm_contacts',
-        [
-            'rand_id'     => bntm_rand_id(),
-            'business_id' => $business_id,
-            'first_name'  => $first_name,
-            'last_name'   => $last_name,
-            'email'       => $email,
-            'phone'       => $phone,
-            'company'     => $company,
-            'notes'       => $notes,
-            'status'      => 'active',
-        ],
-        ['%s','%d','%s','%s','%s','%s','%s','%s','%s']
-    );
-
-    if ($result) {
-        wp_send_json_success(['message' => 'Contact added successfully!', 'id' => $wpdb->insert_id]);
-    } else {
-        wp_send_json_error(['message' => 'Failed to add contact. Please try again.']);
-    }
-}
-
-/**
- * Handle AJAX requests for crm edit contact.
- * @return void
- */
-function bntm_ajax_crm_edit_contact() {
-    check_ajax_referer('crm_nonce', 'nonce');
-    if (!is_user_logged_in()) { wp_send_json_error(['message' => 'Unauthorized']); }
-
-    global $wpdb;
-    $business_id = get_current_user_id();
-    $rand_id     = sanitize_text_field($_POST['rand_id'] ?? '');
-    $first_name  = sanitize_text_field($_POST['first_name'] ?? '');
-    $last_name   = sanitize_text_field($_POST['last_name'] ?? '');
-    $email       = sanitize_email($_POST['email'] ?? '');
-    $phone       = sanitize_text_field($_POST['phone'] ?? '');
-    $company     = sanitize_text_field($_POST['company'] ?? '');
-    $status      = sanitize_text_field($_POST['status'] ?? 'active');
-    $notes       = sanitize_textarea_field($_POST['notes'] ?? '');
-
-    if (!$first_name || !$last_name) {
-        wp_send_json_error(['message' => 'First and last name are required.']);
-    }
-
-    $result = $wpdb->update(
-        $wpdb->prefix . 'crm_contacts',
-        ['first_name'=>$first_name,'last_name'=>$last_name,'email'=>$email,'phone'=>$phone,'company'=>$company,'status'=>$status,'notes'=>$notes],
-        ['rand_id'=>$rand_id,'business_id'=>$business_id],
-        ['%s','%s','%s','%s','%s','%s','%s'],
-        ['%s','%d']
-    );
-
-    if ($result !== false) {
-        wp_send_json_success(['message' => 'Contact updated successfully!']);
-    } else {
-        wp_send_json_error(['message' => 'Failed to update contact.']);
-    }
-}
-
-/**
- * Handle AJAX requests for crm delete contact.
- * @return void
- */
-function bntm_ajax_crm_delete_contact() {
-    check_ajax_referer('crm_nonce', 'nonce');
-    if (!is_user_logged_in()) { wp_send_json_error(['message' => 'Unauthorized']); }
-
-    global $wpdb;
-    $business_id = get_current_user_id();
-    $rand_id     = sanitize_text_field($_POST['rand_id'] ?? '');
-
-    $contact = $wpdb->get_row($wpdb->prepare(
-        "SELECT id FROM {$wpdb->prefix}crm_contacts WHERE rand_id = %s AND business_id = %d",
-        $rand_id, $business_id
-    ));
-
-    if (!$contact) { wp_send_json_error(['message' => 'Contact not found.']); }
-
-    $wpdb->query('START TRANSACTION');
-    try {
-        $wpdb->delete($wpdb->prefix . 'crm_interactions', ['contact_id'=>$contact->id,'business_id'=>$business_id], ['%d','%d']);
-        $wpdb->delete($wpdb->prefix . 'crm_leads',        ['contact_id'=>$contact->id,'business_id'=>$business_id], ['%d','%d']);
-        $wpdb->delete($wpdb->prefix . 'crm_contacts',     ['id'=>$contact->id,'business_id'=>$business_id],         ['%d','%d']);
-        $wpdb->query('COMMIT');
-        wp_send_json_success(['message' => 'Contact deleted.']);
-    } catch (Exception $e) {
-        $wpdb->query('ROLLBACK');
-        wp_send_json_error(['message' => 'Failed to delete contact.']);
-    }
-}
-
-/**
- * Handle AJAX requests for crm get contact.
- * @return void
- */
-function bntm_ajax_crm_get_contact() {
-    check_ajax_referer('crm_nonce', 'nonce');
-    if (!is_user_logged_in()) { wp_send_json_error(['message' => 'Unauthorized']); }
-
-    global $wpdb;
-    $business_id = get_current_user_id();
-    $rand_id     = sanitize_text_field($_POST['rand_id'] ?? '');
-
-    $contact = $wpdb->get_row($wpdb->prepare(
-        "SELECT * FROM {$wpdb->prefix}crm_contacts WHERE rand_id = %s AND business_id = %d",
-        $rand_id, $business_id
-    ), ARRAY_A);
-
-    if (!$contact) { wp_send_json_error(['message' => 'Contact not found.']); }
-
-    $leads = $wpdb->get_results($wpdb->prepare(
-        "SELECT title, stage, value FROM {$wpdb->prefix}crm_leads WHERE contact_id = %d AND business_id = %d ORDER BY created_at DESC LIMIT 10",
-        $contact['id'], $business_id
-    ), ARRAY_A);
-
-    $interactions = $wpdb->get_results($wpdb->prepare(
-        "SELECT type, subject, interaction_date FROM {$wpdb->prefix}crm_interactions WHERE contact_id = %d AND business_id = %d AND status = 'active' ORDER BY interaction_date DESC LIMIT 10",
-        $contact['id'], $business_id
-    ), ARRAY_A);
-
-    wp_send_json_success(['contact' => $contact, 'leads' => $leads, 'interactions' => $interactions]);
-}
-
-// Resolve rand_id → id if passed from the contacts drawer
-if (!empty($_POST['contact_rand_id'])) {
-    $resolved = $wpdb->get_var($wpdb->prepare(
-        "SELECT id FROM {$wpdb->prefix}crm_contacts 
-         WHERE rand_id = %s AND business_id = %d",
-        sanitize_text_field($_POST['contact_rand_id']),
-        get_current_user_id()
-    ));
-    if ($resolved) $_POST['contact_id'] = $resolved;
-}
-
-/**
- * Handle AJAX requests for crm add lead.
- * @return void
- */
-function bntm_ajax_crm_add_lead() {
-    check_ajax_referer('crm_nonce', 'nonce');
-    if (!is_user_logged_in()) { wp_send_json_error(['message' => 'Unauthorized']); }
-
-    global $wpdb;
-    $business_id    = get_current_user_id();
-    $title          = sanitize_text_field($_POST['title'] ?? '');
-    $contact_id     = intval($_POST['contact_id'] ?? 0);
-    $value          = floatval($_POST['value'] ?? 0);
-    $pipeline_type  = sanitize_text_field($_POST['pipeline_type'] ?? 'subscription');
-    if (!in_array($pipeline_type, ['subscription', 'enterprise'])) {
-        $pipeline_type = 'subscription';
-    }
-    $product_type   = sanitize_text_field($_POST['product_type'] ?? '');
-    $service_type   = sanitize_text_field($_POST['service_type'] ?? '');
-    $lead_source    = sanitize_text_field($_POST['lead_source'] ?? '');
-    $motm_uploaded  = intval($_POST['motm_uploaded'] ?? 0) ? 1 : 0;
-    $ended_reason   = sanitize_text_field($_POST['ended_reason'] ?? '');
-    $stage          = sanitize_text_field($_POST['stage'] ?? 'new');
-    $priority       = sanitize_text_field($_POST['priority'] ?? 'medium');
-    $expected_close = sanitize_text_field($_POST['expected_close'] ?? '');
-    $notes          = sanitize_textarea_field($_POST['notes'] ?? '');
-
-    if (!$title) { wp_send_json_error(['message' => 'Lead title is required.']); }
-
-    $close_date = $expected_close ? date('Y-m-d', strtotime($expected_close)) : null;
-
-    $result = $wpdb->insert(
-        $wpdb->prefix . 'crm_leads',
-        [
-            'rand_id'        => bntm_rand_id(),
-            'business_id'    => $business_id,
-            'contact_id'     => $contact_id,
-            'title'          => $title,
-            'value'          => $value,
-            'pipeline_type'  => $pipeline_type,
-            'product_type'   => $product_type,
-            'service_type'   => $service_type,
-            'lead_source'    => $lead_source,
-            'motm_uploaded'  => $motm_uploaded,
-            'ended_reason'   => $ended_reason,
-            'stage'          => $stage,
-            'priority'       => $priority,
-            'expected_close' => $close_date,
-            'notes'          => $notes,
-            'status'         => 'open',
-        ],
-        ['%s','%d','%d','%s','%f','%s','%s','%s','%s','%d','%s','%s','%s','%s','%s']
-    );
-
-    if ($result) {
-        wp_send_json_success(['message' => 'Lead added successfully!', 'id' => $wpdb->insert_id]);
-    } else {
-        wp_send_json_error(['message' => 'Failed to add lead. Please try again.']);
-    }
-}
-
-/**
- * Handle AJAX requests for crm edit lead.
- * @return void
- */
-function bntm_ajax_crm_edit_lead() {
-    check_ajax_referer('crm_nonce', 'nonce');
-    if (!is_user_logged_in()) { wp_send_json_error(['message' => 'Unauthorized']); }
-
-    global $wpdb;
-    $business_id    = get_current_user_id();
-    $rand_id        = sanitize_text_field($_POST['rand_id'] ?? '');
-    $title          = sanitize_text_field($_POST['title'] ?? '');
-    $contact_id     = intval($_POST['contact_id'] ?? 0);
-    $value          = floatval($_POST['value'] ?? 0);
-    $pipeline_type  = sanitize_text_field($_POST['pipeline_type'] ?? 'subscription');
-    if (!in_array($pipeline_type, ['subscription', 'enterprise'])) {
-        $pipeline_type = 'subscription';
-    }
-    $product_type   = sanitize_text_field($_POST['product_type'] ?? '');
-    $service_type   = sanitize_text_field($_POST['service_type'] ?? '');
-    $lead_source    = sanitize_text_field($_POST['lead_source'] ?? '');
-    $motm_uploaded  = intval($_POST['motm_uploaded'] ?? 0) ? 1 : 0;
-    $ended_reason   = sanitize_text_field($_POST['ended_reason'] ?? '');
-    $stage          = sanitize_text_field($_POST['stage'] ?? 'new');
-    $priority       = sanitize_text_field($_POST['priority'] ?? 'medium');
-    $expected_close = sanitize_text_field($_POST['expected_close'] ?? '');
-    $status         = sanitize_text_field($_POST['status'] ?? 'open');
-    $notes          = sanitize_textarea_field($_POST['notes'] ?? '');
-
-    if (!$title) { wp_send_json_error(['message' => 'Lead title is required.']); }
-
-    $close_date = $expected_close ? date('Y-m-d', strtotime($expected_close)) : null;
-
-    $result = $wpdb->update(
-        $wpdb->prefix . 'crm_leads',
-        [
-            'title'         => $title,
-            'contact_id'    => $contact_id,
-            'value'         => $value,
-            'pipeline_type' => $pipeline_type,
-            'product_type'  => $product_type,
-            'service_type'  => $service_type,
-            'lead_source'   => $lead_source,
-            'motm_uploaded' => $motm_uploaded,
-            'ended_reason'  => $ended_reason,
-            'stage'         => $stage,
-            'priority'      => $priority,
-            'expected_close'=> $close_date,
-            'status'        => $status,
-            'notes'         => $notes,
-        ],
-        ['rand_id'=>$rand_id,'business_id'=>$business_id],
-        ['%s','%d','%f','%s','%s','%s','%s','%d','%s','%s','%s','%s','%s','%s'],
-        ['%s','%d']
-    );
-
-    if ($result !== false) {
-        wp_send_json_success(['message' => 'Lead updated successfully!']);
-    } else {
-        wp_send_json_error(['message' => 'Failed to update lead.']);
-    }
-}
-
-/**
- * Handle AJAX requests for crm delete lead.
- * @return void
- */
-function bntm_ajax_crm_delete_lead() {
-    check_ajax_referer('crm_nonce', 'nonce');
-    if (!is_user_logged_in()) { wp_send_json_error(['message' => 'Unauthorized']); }
-
-    global $wpdb;
-    $business_id = get_current_user_id();
-    $rand_id     = sanitize_text_field($_POST['rand_id'] ?? '');
-
-    $result = $wpdb->delete(
-        $wpdb->prefix . 'crm_leads',
-        ['rand_id'=>$rand_id,'business_id'=>$business_id],
-        ['%s','%d']
-    );
-
-    if ($result) {
-        wp_send_json_success(['message' => 'Lead deleted.']);
-    } else {
-        wp_send_json_error(['message' => 'Failed to delete lead.']);
-    }
-}
-
-/**
- * Handle AJAX requests for crm update lead stage.
- * @return void
- */
-function bntm_ajax_crm_update_lead_stage() {
-    check_ajax_referer('crm_nonce', 'nonce');
-    if (!is_user_logged_in()) { wp_send_json_error(['message' => 'Unauthorized']); }
-
-    global $wpdb;
-    $business_id = get_current_user_id();
-    $rand_id     = sanitize_text_field($_POST['rand_id'] ?? '');
-    $stage       = sanitize_text_field($_POST['stage'] ?? '');
-
-    if (!$stage) { wp_send_json_error(['message' => 'Stage is required.']); }
-
-    $result = $wpdb->update(
-        $wpdb->prefix . 'crm_leads',
-        ['stage' => $stage],
-        ['rand_id'=>$rand_id,'business_id'=>$business_id],
-        ['%s'],
-        ['%s','%d']
-    );
-
-    if ($result !== false) {
-        wp_send_json_success(['message' => 'Lead stage updated.']);
-    } else {
-        wp_send_json_error(['message' => 'Failed to update stage.']);
-    }
-}
-
-/**
- * Handle AJAX requests for crm add interaction.
- * @return void
- */
-function bntm_ajax_crm_add_interaction() {
-    check_ajax_referer('crm_nonce', 'nonce');
-    if (!is_user_logged_in()) { wp_send_json_error(['message' => 'Unauthorized']); }
-
-    global $wpdb;
-    $business_id       = get_current_user_id();
-    $contact_id        = intval($_POST['contact_id'] ?? 0);
-    $type              = sanitize_text_field($_POST['type'] ?? 'note');
-    $subject           = sanitize_text_field($_POST['subject'] ?? '');
-    $details           = sanitize_textarea_field($_POST['details'] ?? '');
-    $interaction_date  = sanitize_text_field($_POST['interaction_date'] ?? '');
-
-    if (!$contact_id || !$subject) { wp_send_json_error(['message' => 'Contact and subject are required.']); }
-
-    // Verify contact belongs to this business
-    $contact = $wpdb->get_var($wpdb->prepare(
-        "SELECT id FROM {$wpdb->prefix}crm_contacts WHERE id = %d AND business_id = %d",
-        $contact_id, $business_id
-    ));
-    if (!$contact) { wp_send_json_error(['message' => 'Invalid contact.']); }
-
-    $int_dt = $interaction_date ? date('Y-m-d H:i:s', strtotime($interaction_date)) : current_time('mysql');
-
-    $result = $wpdb->insert(
-        $wpdb->prefix . 'crm_interactions',
-        [
-            'rand_id'          => bntm_rand_id(),
-            'business_id'      => $business_id,
-            'contact_id'       => $contact_id,
-            'type'             => $type,
-            'subject'          => $subject,
-            'details'          => $details,
-            'interaction_date' => $int_dt,
-            'status'           => 'active',
-        ],
-        ['%s','%d','%d','%s','%s','%s','%s','%s']
-    );
-
-    if ($result) {
-        wp_send_json_success(['message' => 'Interaction logged successfully!']);
-    } else {
-        wp_send_json_error(['message' => 'Failed to log interaction.']);
-    }
-}
-
-/**
- * Handle AJAX requests for crm delete interaction.
- * @return void
- */
-function bntm_ajax_crm_delete_interaction() {
-    check_ajax_referer('crm_nonce', 'nonce');
-    if (!is_user_logged_in()) { wp_send_json_error(['message' => 'Unauthorized']); }
-
-    global $wpdb;
-    $business_id = get_current_user_id();
-    $rand_id     = sanitize_text_field($_POST['rand_id'] ?? '');
-
-    $result = $wpdb->delete(
-        $wpdb->prefix . 'crm_interactions',
-        ['rand_id'=>$rand_id,'business_id'=>$business_id],
-        ['%s','%d']
-    );
-
-    if ($result) {
-        wp_send_json_success(['message' => 'Interaction deleted.']);
-    } else {
-        wp_send_json_error(['message' => 'Failed to delete interaction.']);
-    }
-}
-
-/**
- * Handle AJAX requests for crm save settings.
- * @return void
- */
-function bntm_ajax_crm_save_settings() {
-    check_ajax_referer('crm_nonce', 'nonce');
-    if (!is_user_logged_in()) { wp_send_json_error(['message' => 'Unauthorized']); }
-
-    $business_id = get_current_user_id();
-    $currency    = sanitize_text_field($_POST['currency'] ?? 'USD');
-    $stages_json = sanitize_text_field($_POST['stages'] ?? '[]');
-
-    $allowed_currencies = ['USD','EUR','GBP','PHP','AED','SAR'];
-    if (!in_array($currency, $allowed_currencies)) { $currency = 'USD'; }
-
-    $stages = json_decode(stripslashes($stages_json), true);
-    if (!is_array($stages)) { $stages = ['new','contacted','qualified','won','lost']; }
-    $stages = array_values(array_filter(array_map('sanitize_text_field', $stages)));
-
-    bntm_set_setting('crm_currency', $currency);
-    bntm_set_setting('crm_pipeline_stages_' . $business_id, json_encode($stages));
-
-    wp_send_json_success(['message' => 'Settings saved successfully!']);
-}
-
-// ============================================================
-// FRONTEND SHORTCODE: CONTACT FORM
-// ============================================================
-
-/**
- * Render the CRM shortcode output.
- * @return string
- */
-function bntm_shortcode_crm_contact_form() {
-    ob_start();
-    ?>
-    <div class="crm-public-page">
-        <div class="crm-public-form-card">
-            <div class="crm-public-form-header">
-                <div class="crm-public-form-icon">
-                    <svg width="32" height="32" fill="none" stroke="white" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-                </div>
-                <h2>Get In Touch</h2>
-                <p>Fill out the form below and we'll get back to you shortly.</p>
-            </div>
-            <div class="crm-public-form-body">
-                <div id="crm-public-success" style="display:none;" class="crm-public-success-msg">
-                    <svg width="40" height="40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                    <h3>Thank you!</h3>
-                    <p>Your message has been received. We'll be in touch soon.</p>
-                </div>
-                <div id="crm-public-form-inner">
-                    <div class="crm-pub-row">
-                        <div class="crm-pub-group"><label>First Name *</label><input type="text" id="pub-first-name" class="crm-pub-input" placeholder="John"></div>
-                        <div class="crm-pub-group"><label>Last Name *</label><input type="text" id="pub-last-name" class="crm-pub-input" placeholder="Doe"></div>
-                    </div>
-                    <div class="crm-pub-row">
-                        <div class="crm-pub-group"><label>Email *</label><input type="email" id="pub-email" class="crm-pub-input" placeholder="john@example.com"></div>
-                        <div class="crm-pub-group"><label>Phone</label><input type="text" id="pub-phone" class="crm-pub-input" placeholder="+1 555 000 0000"></div>
-                    </div>
-                    <div class="crm-pub-row single">
-                        <div class="crm-pub-group"><label>Company</label><input type="text" id="pub-company" class="crm-pub-input" placeholder="Your company (optional)"></div>
-                    </div>
-                    <div class="crm-pub-row single">
-                        <div class="crm-pub-group"><label>Message</label><textarea id="pub-message" class="crm-pub-textarea" placeholder="How can we help you?"></textarea></div>
-                    </div>
-                    <div id="crm-pub-error" class="crm-pub-error" style="display:none;"></div>
-                    <button class="crm-pub-submit" id="crm-pub-submit-btn" onclick="crmPublicSubmit()">
-                        <span id="crm-pub-btn-text">Send Message</span>
-                        <span id="crm-pub-btn-spinner" style="display:none;">
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:crmSpin 1s linear infinite;"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
-                        </span>
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <script>
-    var ajaxurl_crm_pub = '<?php echo admin_url('admin-ajax.php'); ?>';
-    var crm_pub_nonce   = '<?php echo wp_create_nonce('crm_nonce'); ?>';
-
-    function crmPublicSubmit() {
-        var btn   = document.getElementById('crm-pub-submit-btn');
-        var errEl = document.getElementById('crm-pub-error');
-        var fn    = document.getElementById('pub-first-name').value.trim();
-        var ln    = document.getElementById('pub-last-name').value.trim();
-        var em    = document.getElementById('pub-email').value.trim();
-
-        errEl.style.display = 'none';
-        if (!fn || !ln || !em) {
-            errEl.textContent = 'First name, last name, and email are required.';
-            errEl.style.display = 'block';
-            return;
-        }
-
-        btn.disabled = true;
-        document.getElementById('crm-pub-btn-text').style.display    = 'none';
-        document.getElementById('crm-pub-btn-spinner').style.display = 'inline-flex';
-
-        var fd = new FormData();
-        fd.append('action',     'crm_submit_contact_form');
-        fd.append('nonce',      crm_pub_nonce);
-        fd.append('first_name', fn);
-        fd.append('last_name',  ln);
-        fd.append('email',      em);
-        fd.append('phone',      document.getElementById('pub-phone').value.trim());
-        fd.append('company',    document.getElementById('pub-company').value.trim());
-        fd.append('message',    document.getElementById('pub-message').value.trim());
-
-        fetch(ajaxurl_crm_pub, { method:'POST', body:fd })
-            .then(r => r.json())
-            .then(function(d) {
-                btn.disabled = false;
-                document.getElementById('crm-pub-btn-text').style.display    = 'inline';
-                document.getElementById('crm-pub-btn-spinner').style.display = 'none';
-                if (d.success) {
-                    document.getElementById('crm-public-form-inner').style.display = 'none';
-                    document.getElementById('crm-public-success').style.display    = 'block';
-                } else {
-                    errEl.textContent   = d.data.message || 'Submission failed.';
-                    errEl.style.display = 'block';
+        function loadUpcoming() {
+            crmAjax('bntm_crm_get_activities', { upcoming: 1, per_page: 6 }, function(err, res) {
+                var el = document.getElementById('crm-upcoming-activities');
+                if (err || !res.success || !res.data.activities.length) {
+                    el.innerHTML = '<div class="crm-empty-state" style="padding:20px 0;"><p>No upcoming scheduled activities.</p></div>';
+                    return;
                 }
-            })
-            .catch(function() {
-                btn.disabled = false;
-                document.getElementById('crm-pub-btn-text').style.display    = 'inline';
-                document.getElementById('crm-pub-btn-spinner').style.display = 'none';
-                errEl.textContent   = 'Network error. Please try again.';
-                errEl.style.display = 'block';
+                var html = '<ul class="crm-activity-feed">';
+                res.data.activities.forEach(function(a) {
+                    html += '<li class="crm-activity-item">' +
+                        '<div class="crm-activity-icon type-' + escHtml(a.type) + '">' + crm_activity_icon_svg(a.type) + '</div>' +
+                        '<div class="crm-activity-body">' +
+                            '<strong>' + escHtml(ucFirst(a.type)) + '</strong>' +
+                            (a.subject ? ' — ' + escHtml(a.subject) : '') +
+                            '<p style="font-size:12px;color:#9ca3af;margin:3px 0 0;">' +
+                                (a.contact_name ? escHtml(a.contact_name) + ' &mdash; ' : '') +
+                                escHtml(a.scheduled_at ? a.scheduled_at.substring(0,16).replace('T',' ') : '') +
+                            '</p>' +
+                        '</div>' +
+                    '</li>';
+                });
+                html += '</ul>';
+                el.innerHTML = html;
             });
-    }
+        }
+
+        function openLogActivity() {
+            document.getElementById('crm-activity-modal-title').textContent = 'Log Activity';
+            document.getElementById('crm-activity-id').value  = '';
+            document.getElementById('crm-act-type').value     = 'call';
+            document.getElementById('crm-act-subject').value  = '';
+            document.getElementById('crm-act-body').value     = '';
+            document.getElementById('crm-act-outcome').value  = '';
+            document.getElementById('crm-act-duration').value = '';
+            document.getElementById('crm-act-contact').value  = '';
+            document.getElementById('crm-act-deal').value     = '';
+            document.getElementById('crm-act-visible').checked = false;
+            var now = new Date();
+            var pad = function(n) { return n < 10 ? '0' + n : n; };
+            document.getElementById('crm-act-datetime').value = now.getFullYear() + '-' + pad(now.getMonth()+1) + '-' + pad(now.getDate()) + 'T' + pad(now.getHours()) + ':' + pad(now.getMinutes());
+            crmOpenModal('crm-activity-modal');
+        }
+
+        function openEditActivity(id) {
+            crmAjax('bntm_crm_get_activities', { activity_id: id }, function(err, res) {
+                if (err || !res.success || !res.data.activities.length) { crmToast('Failed to load activity.', 'error'); return; }
+                var a = res.data.activities[0];
+                document.getElementById('crm-activity-modal-title').textContent = 'Edit Activity';
+                document.getElementById('crm-activity-id').value   = a.id;
+                document.getElementById('crm-act-type').value      = a.type || 'call';
+                document.getElementById('crm-act-subject').value   = a.subject || '';
+                document.getElementById('crm-act-body').value      = a.body || '';
+                document.getElementById('crm-act-outcome').value   = a.outcome || '';
+                document.getElementById('crm-act-duration').value  = a.duration_minutes || '';
+                document.getElementById('crm-act-contact').value   = a.contact_id || '';
+                document.getElementById('crm-act-deal').value      = a.deal_id || '';
+                document.getElementById('crm-act-visible').checked = parseInt(a.visible_to_customer) === 1;
+                document.getElementById('crm-act-datetime').value  = a.scheduled_at ? a.scheduled_at.substring(0,16) : '';
+                crmOpenModal('crm-activity-modal');
+            });
+        }
+
+        document.getElementById('crm-log-activity-btn').addEventListener('click', openLogActivity);
+
+        document.getElementById('crm-activity-save-btn').addEventListener('click', function() {
+            var btn = this;
+            btn.disabled = true;
+            crmAjax('bntm_crm_save_activity', {
+                activity_id:      document.getElementById('crm-activity-id').value,
+                type:             document.getElementById('crm-act-type').value,
+                subject:          document.getElementById('crm-act-subject').value,
+                body:             document.getElementById('crm-act-body').value,
+                outcome:          document.getElementById('crm-act-outcome').value,
+                duration_minutes: document.getElementById('crm-act-duration').value,
+                contact_id:       document.getElementById('crm-act-contact').value,
+                deal_id:          document.getElementById('crm-act-deal').value,
+                scheduled_at:     document.getElementById('crm-act-datetime').value,
+                visible_to_customer: document.getElementById('crm-act-visible').checked ? 1 : 0,
+            }, function(err, res) {
+                btn.disabled = false;
+                if (err || !res.success) { crmToast(res ? res.data.message : 'Save failed.', 'error'); return; }
+                crmToast('Activity saved.', 'success');
+                crmCloseModal('crm-activity-modal');
+                loadActivities();
+                loadUpcoming();
+            });
+        });
+
+        document.getElementById('crm-activity-confirm-delete-btn').addEventListener('click', function() {
+            var btn = this;
+            btn.disabled = true;
+            crmAjax('bntm_crm_delete_activity', { activity_id: document.getElementById('crm-activity-delete-id').value }, function(err, res) {
+                btn.disabled = false;
+                if (err || !res.success) { crmToast(res ? res.data.message : 'Delete failed.', 'error'); return; }
+                crmToast('Activity deleted.', 'success');
+                crmCloseModal('crm-activity-delete-modal');
+                loadActivities();
+                loadUpcoming();
+            });
+        });
+
+        document.getElementById('crm-activities-apply-filters').addEventListener('click', function() { currentPage = 1; loadActivities(); });
+        document.getElementById('crm-activities-reset-filters').addEventListener('click', function() {
+            document.getElementById('crm-activity-type-filter').value    = '';
+            document.getElementById('crm-activity-user-filter').value    = '';
+            document.getElementById('crm-activity-contact-filter').value = '';
+            document.getElementById('crm-activity-date-from').value      = '';
+            document.getElementById('crm-activity-date-to').value        = '';
+            currentPage = 1;
+            loadActivities();
+        });
+
+        function crm_activity_icon_svg(type) {
+            var icons = {
+                call:    '<svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"/></svg>',
+                email:   '<svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>',
+                meeting: '<svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>',
+                note:    '<svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>',
+                task_completion: '<svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>',
+            };
+            return icons[type] || icons.note;
+        }
+
+        function escHtml(str) {
+            if (str === null || str === undefined) return '';
+            return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+        }
+        function ucFirst(str) { return str ? str.charAt(0).toUpperCase() + str.slice(1) : ''; }
+
+        loadActivities();
+        loadUpcoming();
+    })();
     </script>
-
-    <style>
-    @keyframes crmSpin { to { transform: rotate(360deg); } }
-
-    .crm-public-page {
-        min-height: 60vh;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        padding: 40px 16px;
-        box-sizing: border-box;
-    }
-
-    .crm-public-form-card {
-        background: #fff;
-        border: 1px solid #e5e7eb;
-        border-radius: 20px;
-        box-shadow: 0 8px 40px rgba(0,0,0,.1);
-        width: 100%;
-        max-width: 540px;
-        overflow: hidden;
-    }
-
-    .crm-public-form-header {
-        background: var(--bntm-primary, #6366f1);
-        padding: 36px 36px 28px;
-        text-align: center;
-        color: #fff;
-    }
-
-    .crm-public-form-icon {
-        width: 64px;
-        height: 64px;
-        background: rgba(255,255,255,.2);
-        border-radius: 50%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        margin: 0 auto 16px;
-    }
-
-    .crm-public-form-header h2 {
-        margin: 0 0 8px;
-        font-size: 26px;
-        font-weight: 700;
-        color: #fff;
-    }
-
-    .crm-public-form-header p {
-        margin: 0;
-        font-size: 15px;
-        color: rgba(255,255,255,.8);
-    }
-
-    .crm-public-form-body {
-        padding: 32px 36px;
-    }
-
-    .crm-pub-row {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 14px;
-        margin-bottom: 14px;
-    }
-
-    .crm-pub-row.single { grid-template-columns: 1fr; }
-
-    .crm-pub-group {
-        display: flex;
-        flex-direction: column;
-        gap: 5px;
-    }
-
-    .crm-pub-group label {
-        font-size: 13px;
-        font-weight: 500;
-        color: #374151;
-    }
-
-    .crm-pub-input, .crm-pub-textarea {
-        padding: 10px 14px;
-        border: 1px solid #d1d5db;
-        border-radius: 10px;
-        font-size: 14px;
-        color: #111827;
-        transition: border-color .15s, box-shadow .15s;
-        box-sizing: border-box;
-        width: 100%;
-    }
-
-    .crm-pub-input:focus, .crm-pub-textarea:focus {
-        outline: none;
-        border-color: var(--bntm-primary, #6366f1);
-        box-shadow: 0 0 0 3px rgba(99,102,241,.12);
-    }
-
-    .crm-pub-textarea {
-        resize: vertical;
-        min-height: 100px;
-    }
-
-    .crm-pub-submit {
-        width: 100%;
-        padding: 13px;
-        background: var(--bntm-primary, #6366f1);
-        color: #fff;
-        border: none;
-        border-radius: 10px;
-        font-size: 15px;
-        font-weight: 600;
-        cursor: pointer;
-        transition: background .15s, opacity .15s;
-        margin-top: 8px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 8px;
-    }
-
-    .crm-pub-submit:hover:not(:disabled) { background: var(--bntm-primary-hover, #4f46e5); }
-    .crm-pub-submit:disabled { opacity: .6; cursor: not-allowed; }
-
-    .crm-pub-error {
-        background: #fef2f2;
-        color: #991b1b;
-        border: 1px solid #fecaca;
-        border-radius: 8px;
-        padding: 10px 14px;
-        font-size: 14px;
-        margin-bottom: 12px;
-    }
-
-    .crm-public-success-msg {
-        text-align: center;
-        padding: 20px 0;
-        color: #059669;
-    }
-
-    .crm-public-success-msg svg { margin-bottom: 12px; }
-    .crm-public-success-msg h3 { margin: 0 0 8px; font-size: 22px; font-weight: 700; color: #111827; }
-    .crm-public-success-msg p  { margin: 0; font-size: 15px; color: #6b7280; }
-
-    @media (max-width: 480px) {
-        .crm-pub-row { grid-template-columns: 1fr; }
-        .crm-public-form-body { padding: 24px 20px; }
-        .crm-public-form-header { padding: 28px 20px 20px; }
-    }
-    </style>
     <?php
     return ob_get_clean();
-}
-
-// ============================================================
-// AJAX: PUBLIC CONTACT FORM SUBMISSION
-// ============================================================
-
-/**
- * Handle AJAX requests for crm submit contact form.
- * @return void
- */
-function bntm_ajax_crm_submit_contact_form() {
-    check_ajax_referer('crm_nonce', 'nonce');
-
-    global $wpdb;
-
-    $first_name = sanitize_text_field($_POST['first_name'] ?? '');
-    $last_name  = sanitize_text_field($_POST['last_name'] ?? '');
-    $email      = sanitize_email($_POST['email'] ?? '');
-    $phone      = sanitize_text_field($_POST['phone'] ?? '');
-    $company    = sanitize_text_field($_POST['company'] ?? '');
-    $message    = sanitize_textarea_field($_POST['message'] ?? '');
-
-    if (!$first_name || !$last_name || !$email) {
-        wp_send_json_error(['message' => 'First name, last name, and email are required.']);
-    }
-
-    if (!is_email($email)) {
-        wp_send_json_error(['message' => 'Please enter a valid email address.']);
-    }
-
-    // Assign to a default business (first admin user)
-    $admin_users = get_users(['role' => 'administrator', 'number' => 1]);
-    $business_id = !empty($admin_users) ? $admin_users[0]->ID : 1;
-
-    $wpdb->query('START TRANSACTION');
-    try {
-        // Check for existing contact by email for this business
-        $existing = $wpdb->get_var($wpdb->prepare(
-            "SELECT id FROM {$wpdb->prefix}crm_contacts WHERE email = %s AND business_id = %d LIMIT 1",
-            $email, $business_id
-        ));
-
-        $contact_id = $existing;
-
-        if (!$existing) {
-            $wpdb->insert(
-                $wpdb->prefix . 'crm_contacts',
-                ['rand_id'=>bntm_rand_id(),'business_id'=>$business_id,'first_name'=>$first_name,'last_name'=>$last_name,'email'=>$email,'phone'=>$phone,'company'=>$company,'notes'=>$message,'status'=>'active'],
-                ['%s','%d','%s','%s','%s','%s','%s','%s','%s']
-            );
-            $contact_id = $wpdb->insert_id;
-        }
-
-        // Create lead
-        $lead_title = 'Enquiry from ' . $first_name . ' ' . $last_name;
-        $wpdb->insert(
-            $wpdb->prefix . 'crm_leads',
-            ['rand_id'=>bntm_rand_id(),'business_id'=>$business_id,'contact_id'=>$contact_id,'title'=>$lead_title,'value'=>0,'stage'=>'new','priority'=>'medium','notes'=>$message,'status'=>'open'],
-            ['%s','%d','%d','%s','%f','%s','%s','%s','%s']
-        );
-
-        // Log interaction
-        if ($message) {
-            $wpdb->insert(
-                $wpdb->prefix . 'crm_interactions',
-                ['rand_id'=>bntm_rand_id(),'business_id'=>$business_id,'contact_id'=>$contact_id,'type'=>'note','subject'=>'Contact form submission','details'=>$message,'interaction_date'=>current_time('mysql'),'status'=>'active'],
-                ['%s','%d','%d','%s','%s','%s','%s','%s']
-            );
-        }
-
-        $wpdb->query('COMMIT');
-        wp_send_json_success(['message' => 'Thank you! Your message has been received.']);
-    } catch (Exception $e) {
-        $wpdb->query('ROLLBACK');
-        wp_send_json_error(['message' => 'Submission failed. Please try again.']);
-    }
-}
-
-// ============================================================
-// HELPER FUNCTIONS
-// ============================================================
-
-/**
- * Format a numeric amount as a CRM currency string.
- * @param float $amount Numeric amount to format.
- * @return string
- */
-function crm_format_price($amount) {
-    $currency = bntm_get_setting('crm_currency', 'USD');
-    $symbols  = [
-        'USD' => '$',
-        'EUR' => '&euro;',
-        'GBP' => '&pound;',
-        'PHP' => '&#8369;',
-        'AED' => 'AED ',
-        'SAR' => 'SAR ',
-    ];
-    $symbol = $symbols[$currency] ?? '$';
-    return $symbol . number_format((float)$amount, 2);
-}
-
-/**
- * Execute the crm get pipeline types routine.
- * @return array
- */
-function crm_get_pipeline_types() {
-    return [
-        'subscription' => 'Subscription',
-        'enterprise'   => 'Enterprise',
-    ];
-}
-
-/**
- * Return the human-readable label for a pipeline type.
- * @param string $type Type key to describe or label.
- * @return string
- */
-function crm_pipeline_type_label($type) {
-    $types = crm_get_pipeline_types();
-    return $types[$type] ?? ucfirst($type);
-}
-
-/**
- * Execute the crm get default pipeline stages routine.
- * @param mixed $pipeline_type = 'subscription' Parameter for pipeline_type = 'subscription'.
- * @return array
- */
-function crm_get_default_pipeline_stages($pipeline_type = 'subscription') {
-    if ($pipeline_type !== 'enterprise') {
-        $pipeline_type = 'subscription';
-    }
-
-    $defaults = [
-        'subscription' => [
-            'New Lead',
-            'Qualified Lead',
-            'Exploratory Meeting / Demo',
-            'Proposal Sent',
-            'Negotiation / Revision',
-            'Terms Agreed',
-            'Onboarding',
-            'Active Client',
-            'Subscription Ended',
-        ],
-        'enterprise' => [
-            'New Lead',
-            'Qualified Lead',
-            'Exploratory Meeting',
-            'Proposal Sent',
-            'Negotiation / Revision',
-            'Contract Signed',
-            'Initial Payment Received',
-            'Handoff to Operations',
-            'Project Completion',
-            'Final Payment Received',
-            'Lost',
-        ],
-    ];
-
-    return $defaults[$pipeline_type];
-}
-
-/**
- * Execute the crm get pipeline stages routine.
- * @param int $business_id Business ID to scope the CRM data.
- * @param mixed $pipeline_type = 'subscription' Parameter for pipeline_type = 'subscription'.
- * @return array
- */
-function crm_get_pipeline_stages($business_id, $pipeline_type = 'subscription') {
-    $pipeline_type = in_array($pipeline_type, ['subscription', 'enterprise']) ? $pipeline_type : 'subscription';
-    $setting_key = 'crm_pipeline_stages_' . $business_id . '_' . $pipeline_type;
-    $saved = bntm_get_setting($setting_key, '');
-    if ($saved) {
-        $stages = json_decode($saved, true);
-        if (is_array($stages) && !empty($stages)) {
-            return $stages;
-        }
-    }
-
-    $legacy = bntm_get_setting('crm_pipeline_stages_' . $business_id, '');
-    if ($legacy) {
-        $stages = json_decode($legacy, true);
-        if (is_array($stages) && !empty($stages)) {
-            return $stages;
-        }
-    }
-
-    return crm_get_default_pipeline_stages($pipeline_type);
-}
-
-/**
- * Execute the crm get lead sources routine.
- * @return array
- */
-function crm_get_lead_sources() {
-    return [
-        'Website'       => 'Website',
-        'Referral'      => 'Referral',
-        'Email'         => 'Email',
-        'Social Media'  => 'Social Media',
-        'Partner'       => 'Partner',
-        'Event'         => 'Event',
-        'Other'         => 'Other',
-    ];
-}
-
-/**
- * Execute the crm get product types routine.
- * @return array
- */
-function crm_get_product_types() {
-    return [
-        'Hub'   => 'Hub',
-        'Spree' => 'Spree',
-    ];
-}
-
-/**
- * Execute the crm get ended reasons routine.
- * @return array
- */
-function crm_get_ended_reasons() {
-    return [
-        'Cancelled'    => 'Cancelled',
-        'Churned'      => 'Churned',
-        'Expired'      => 'Expired',
-        'Completed'    => 'Completed',
-        'Paused'       => 'Paused',
-        'Non-Renewal'  => 'Non-Renewal',
-    ];
-}
-
-/**
- * Return aggregated CRM statistics for the given business.
- * @param int $business_id Business ID to scope the CRM data.
- * @return array
- */
-function crm_get_stats($business_id) {
-    global $wpdb;
-
-    $contacts_table     = $wpdb->prefix . 'crm_contacts';
-    $leads_table        = $wpdb->prefix . 'crm_leads';
-    $interactions_table = $wpdb->prefix . 'crm_interactions';
-
-    $total_contacts         = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$contacts_table} WHERE business_id = %d", $business_id));
-    $active_contacts        = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$contacts_table} WHERE business_id = %d AND status = 'active'", $business_id));
-    $total_leads            = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$leads_table} WHERE business_id = %d", $business_id));
-    $active_opportunities   = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$leads_table} WHERE business_id = %d AND status = 'open'", $business_id));
-    $pipeline_value         = (float) $wpdb->get_var($wpdb->prepare("SELECT SUM(value) FROM {$leads_table} WHERE business_id = %d AND status = 'open'", $business_id));
-    $won_leads              = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$leads_table} WHERE business_id = %d AND status = 'won'", $business_id));
-    $won_value              = (float) $wpdb->get_var($wpdb->prepare("SELECT SUM(value) FROM {$leads_table} WHERE business_id = %d AND status = 'won'", $business_id));
-    $lost_deals             = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$leads_table} WHERE business_id = %d AND (status = 'lost' OR stage = 'Subscription Ended')", $business_id));
-    $motm_uploaded          = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$leads_table} WHERE business_id = %d AND motm_uploaded = 1", $business_id));
-    $motm_total             = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$leads_table} WHERE business_id = %d", $business_id));
-    $pipeline_type_breakdown = $wpdb->get_results($wpdb->prepare("SELECT pipeline_type, COUNT(*) AS total FROM {$leads_table} WHERE business_id = %d GROUP BY pipeline_type", $business_id), ARRAY_A);
-    $lead_source_breakdown  = $wpdb->get_results($wpdb->prepare("SELECT lead_source, COUNT(*) AS total FROM {$leads_table} WHERE business_id = %d GROUP BY lead_source", $business_id), ARRAY_A);
-    $product_service_breakdown = $wpdb->get_results($wpdb->prepare(
-        "SELECT COALESCE(NULLIF(product_type, ''), NULLIF(service_type, ''), 'Other') AS item, COUNT(*) AS total FROM {$leads_table} WHERE business_id = %d GROUP BY item",
-        $business_id
-    ), ARRAY_A);
-    $total_interactions      = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$interactions_table} WHERE business_id = %d AND status = 'active'", $business_id));
-    $monthly_interactions    = (int) $wpdb->get_var($wpdb->prepare(
-        "SELECT COUNT(*) FROM {$interactions_table} WHERE business_id = %d AND status = 'active' AND interaction_date >= %s",
-        $business_id, date('Y-m-01')
-    ));
-
-    return [
-        'total_contacts'          => $total_contacts,
-        'active_contacts'         => $active_contacts,
-        'total_leads'             => $total_leads,
-        'active_opportunities'    => $active_opportunities,
-        'pipeline_value'          => $pipeline_value ?: 0,
-        'won_leads'               => $won_leads,
-        'won_value'               => $won_value ?: 0,
-        'lost_deals'              => $lost_deals,
-        'motm_uploaded'           => $motm_uploaded,
-        'motm_completion'         => $motm_total ? round($motm_uploaded / $motm_total * 100) : 0,
-        'pipeline_type_breakdown' => $pipeline_type_breakdown,
-        'lead_source_breakdown'   => $lead_source_breakdown,
-        'product_service_breakdown' => $product_service_breakdown,
-        'total_interactions'      => $total_interactions,
-        'monthly_interactions'    => $monthly_interactions,
-    ];
 }
 
