@@ -3726,3 +3726,2963 @@ function crm_tasks_tab( $business_id ) {
 }
 
 //Last marker: Tab 5. Continue to Tab 6 in claude Ayano
+// =============================================================================
+// TAB 6 — SETTINGS
+// =============================================================================
+
+function crm_settings_tab( $business_id ) {
+    global $wpdb;
+
+    if ( ! current_user_can( 'manage_options' ) ) {
+        return '<div class="bntm-notice bntm-notice-error">You do not have permission to access settings.</div>';
+    }
+
+    $stages = $wpdb->get_results( $wpdb->prepare(
+        "SELECT * FROM {$wpdb->prefix}crm_pipeline_stages
+         WHERE business_id = %d AND pipeline_id = 1 AND status = 'active'
+         ORDER BY sort_order ASC",
+        $business_id
+    ) );
+
+    $custom_props = $wpdb->get_results( $wpdb->prepare(
+        "SELECT * FROM {$wpdb->prefix}crm_custom_properties
+         WHERE business_id = %d AND status = 'active'
+         ORDER BY object_type ASC, sort_order ASC",
+        $business_id
+    ) );
+
+    $lifecycle_statuses = [
+        'lead'     => 'Lead',
+        'prospect' => 'Prospect',
+        'customer' => 'Customer',
+        'churned'  => 'Churned',
+    ];
+
+    ob_start();
+    ?>
+
+    <div class="crm-settings-grid">
+
+        <!-- LEFT COLUMN -->
+        <div class="crm-settings-col">
+
+            <!-- Pipeline Stages -->
+            <div class="bntm-form-section">
+                <div style="display:flex;align-items:center;justify-content:space-between;
+                            margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid #f3f4f6;">
+                    <div>
+                        <h3 style="margin:0;padding:0;border:none;">Pipeline Stages</h3>
+                        <p style="font-size:13px;color:#6b7280;margin:4px 0 0;">
+                            Drag to reorder. Changes are saved automatically.
+                        </p>
+                    </div>
+                    <button class="bntm-btn-primary bntm-btn-small" id="crm-stage-add-btn">
+                        <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                  d="M12 4v16m8-8H4"/>
+                        </svg>
+                        Add Stage
+                    </button>
+                </div>
+
+                <ul class="crm-stage-list" id="crm-stage-sortable">
+                    <?php if ( empty( $stages ) ) : ?>
+                        <li id="crm-stage-empty-msg"
+                            style="text-align:center;padding:24px;color:#9ca3af;font-size:13px;list-style:none;">
+                            No stages yet. Add your first pipeline stage.
+                        </li>
+                    <?php else : ?>
+                        <?php foreach ( $stages as $stage ) : ?>
+                        <li class="crm-stage-item"
+                            data-id="<?php echo intval( $stage->id ); ?>"
+                            draggable="true">
+                            <span class="crm-stage-drag-handle">
+                                <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                          d="M4 8h16M4 16h16"/>
+                                </svg>
+                            </span>
+                            <span class="crm-stage-color-dot"
+                                  style="background:<?php echo esc_attr( $stage->color ); ?>;"></span>
+                            <span class="crm-stage-name">
+                                <?php echo esc_html( $stage->name ); ?>
+                            </span>
+                            <button class="bntm-btn-secondary bntm-btn-small crm-stage-edit-btn"
+                                    data-id="<?php echo intval( $stage->id ); ?>"
+                                    data-name="<?php echo esc_attr( $stage->name ); ?>"
+                                    data-color="<?php echo esc_attr( $stage->color ); ?>">
+                                Edit
+                            </button>
+                            <button class="bntm-btn-danger bntm-btn-small crm-stage-delete-btn"
+                                    data-id="<?php echo intval( $stage->id ); ?>"
+                                    data-name="<?php echo esc_attr( $stage->name ); ?>">
+                                Delete
+                            </button>
+                        </li>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </ul>
+            </div>
+
+            <!-- Lifecycle Status Labels -->
+            <div class="bntm-form-section">
+                <h3>Lifecycle Status Labels</h3>
+                <p style="font-size:13px;color:#6b7280;margin:-8px 0 16px;">
+                    These are the default contact lifecycle stages used across the CRM.
+                </p>
+                <div class="bntm-table-wrapper">
+                    <table class="bntm-table">
+                        <thead>
+                            <tr>
+                                <th>Key</th>
+                                <th>Label</th>
+                                <th>Badge Preview</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ( $lifecycle_statuses as $key => $label ) : ?>
+                            <tr>
+                                <td>
+                                    <code style="background:#f3f4f6;padding:2px 7px;
+                                                 border-radius:4px;font-size:12px;">
+                                        <?php echo esc_html( $key ); ?>
+                                    </code>
+                                </td>
+                                <td style="font-weight:500;"><?php echo esc_html( $label ); ?></td>
+                                <td>
+                                    <span class="crm-badge crm-badge-<?php echo esc_attr( $key ); ?>">
+                                        <?php echo esc_html( $label ); ?>
+                                    </span>
+                                </td>
+                            </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+                <p style="font-size:12px;color:#9ca3af;margin-top:12px;">
+                    Lifecycle status labels are fixed in v1. Custom label editing will be available in a future update.
+                </p>
+            </div>
+
+        </div>
+
+        <!-- RIGHT COLUMN -->
+        <div class="crm-settings-col">
+
+            <!-- Custom Properties -->
+            <div class="bntm-form-section">
+                <div style="display:flex;align-items:center;justify-content:space-between;
+                            margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid #f3f4f6;">
+                    <div>
+                        <h3 style="margin:0;padding:0;border:none;">Custom Properties</h3>
+                        <p style="font-size:13px;color:#6b7280;margin:4px 0 0;">
+                            Add extra fields to contacts, companies, or deals.
+                        </p>
+                    </div>
+                    <button class="bntm-btn-primary bntm-btn-small" id="crm-prop-add-btn">
+                        <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                  d="M12 4v16m8-8H4"/>
+                        </svg>
+                        Add Property
+                    </button>
+                </div>
+
+                <!-- Props grouped by object type -->
+                <?php
+                $grouped = [ 'contact' => [], 'company' => [], 'deal' => [] ];
+                foreach ( $custom_props as $prop ) {
+                    if ( isset( $grouped[ $prop->object_type ] ) ) {
+                        $grouped[ $prop->object_type ][] = $prop;
+                    }
+                }
+                $group_labels = [
+                    'contact' => 'Contact Properties',
+                    'company' => 'Company Properties',
+                    'deal'    => 'Deal Properties',
+                ];
+                $group_colors = [
+                    'contact' => '#eff6ff',
+                    'company' => '#f0fdf4',
+                    'deal'    => '#fdf4ff',
+                ];
+                $group_text = [
+                    'contact' => '#2563eb',
+                    'company' => '#16a34a',
+                    'deal'    => '#9333ea',
+                ];
+                ?>
+
+                <?php foreach ( $grouped as $type => $props ) : ?>
+                <div style="margin-bottom:20px;" id="crm-props-group-<?php echo esc_attr( $type ); ?>">
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+                        <span style="display:inline-block;background:<?php echo $group_colors[$type]; ?>;
+                                     color:<?php echo $group_text[$type]; ?>;font-size:11px;
+                                     font-weight:700;text-transform:uppercase;letter-spacing:.5px;
+                                     padding:3px 10px;border-radius:20px;">
+                            <?php echo esc_html( $group_labels[$type] ); ?>
+                        </span>
+                        <span style="font-size:12px;color:#9ca3af;">
+                            <?php echo count($props); ?> propert<?php echo count($props) === 1 ? 'y' : 'ies'; ?>
+                        </span>
+                    </div>
+
+                    <?php if ( empty( $props ) ) : ?>
+                        <p style="font-size:13px;color:#9ca3af;padding:8px 0;">
+                            No custom properties for <?php echo esc_html( $type ); ?>s yet.
+                        </p>
+                    <?php else : ?>
+                        <div class="bntm-table-wrapper">
+                            <table class="bntm-table">
+                                <thead>
+                                    <tr>
+                                        <th>Label</th>
+                                        <th>Field Name</th>
+                                        <th>Type</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="crm-props-tbody-<?php echo esc_attr( $type ); ?>">
+                                    <?php foreach ( $props as $prop ) : ?>
+                                    <tr data-prop-id="<?php echo intval( $prop->id ); ?>">
+                                        <td style="font-weight:500;">
+                                            <?php echo esc_html( $prop->field_label ); ?>
+                                        </td>
+                                        <td>
+                                            <code style="background:#f3f4f6;padding:2px 7px;
+                                                         border-radius:4px;font-size:12px;">
+                                                <?php echo esc_html( $prop->field_name ); ?>
+                                            </code>
+                                        </td>
+                                        <td>
+                                            <span class="crm-prop-type-badge">
+                                                <?php echo esc_html( $prop->field_type ); ?>
+                                            </span>
+                                        </td>
+                                        <td style="white-space:nowrap;">
+                                            <button class="bntm-btn-secondary bntm-btn-small
+                                                           crm-prop-edit-btn"
+                                                    data-id="<?php echo intval( $prop->id ); ?>"
+                                                    data-label="<?php echo esc_attr( $prop->field_label ); ?>"
+                                                    data-name="<?php echo esc_attr( $prop->field_name ); ?>"
+                                                    data-type="<?php echo esc_attr( $prop->field_type ); ?>"
+                                                    data-object="<?php echo esc_attr( $prop->object_type ); ?>"
+                                                    data-options="<?php echo esc_attr( $prop->field_options ?: '' ); ?>">
+                                                Edit
+                                            </button>
+                                            <button class="bntm-btn-danger bntm-btn-small
+                                                           crm-prop-delete-btn"
+                                                    data-id="<?php echo intval( $prop->id ); ?>"
+                                                    data-label="<?php echo esc_attr( $prop->field_label ); ?>">
+                                                Delete
+                                            </button>
+                                        </td>
+                                    </tr>
+                                    <?php endforeach; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                    <?php endif; ?>
+                </div>
+                <?php endforeach; ?>
+
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Add / Edit Stage Modal -->
+    <div class="crm-modal-overlay" id="crm-stage-modal">
+        <div class="crm-modal" style="max-width:420px;">
+            <div class="crm-modal-header">
+                <h3 data-default="Add Stage">Add Stage</h3>
+                <button class="crm-modal-close" onclick="crmCloseModal('crm-stage-modal')">
+                    <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                              d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="crm-modal-body">
+                <input type="hidden" id="crm-stage-id" value="">
+                <div class="crm-field-group">
+                    <label>Stage Name <span style="color:#ef4444;">*</span></label>
+                    <input type="text" id="crm-stage-name" placeholder="e.g. Qualified">
+                </div>
+                <div class="crm-field-group">
+                    <label>Color</label>
+                    <div style="display:flex;align-items:center;gap:12px;">
+                        <input type="color" id="crm-stage-color" value="#6366f1"
+                               style="width:48px;height:36px;padding:2px;border:1px solid #d1d5db;
+                                      border-radius:8px;cursor:pointer;">
+                        <div class="crm-stage-color-swatches">
+                            <?php
+                            $swatches = [
+                                '#6366f1','#8b5cf6','#ec4899','#ef4444',
+                                '#f59e0b','#10b981','#06b6d4','#3b82f6',
+                                '#64748b','#1f2937',
+                            ];
+                            foreach ( $swatches as $sw ) :
+                            ?>
+                                <button class="crm-color-swatch"
+                                        data-color="<?php echo esc_attr( $sw ); ?>"
+                                        style="background:<?php echo esc_attr( $sw ); ?>;"
+                                        title="<?php echo esc_attr( $sw ); ?>">
+                                </button>
+                            <?php endforeach; ?>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="crm-modal-footer">
+                <button class="bntm-btn-secondary" onclick="crmCloseModal('crm-stage-modal')">
+                    Cancel
+                </button>
+                <button class="bntm-btn-primary" id="crm-stage-save-btn">Save Stage</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add / Edit Custom Property Modal -->
+    <div class="crm-modal-overlay" id="crm-prop-modal">
+        <div class="crm-modal" style="max-width:480px;">
+            <div class="crm-modal-header">
+                <h3 data-default="Add Custom Property">Add Custom Property</h3>
+                <button class="crm-modal-close" onclick="crmCloseModal('crm-prop-modal')">
+                    <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                              d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="crm-modal-body">
+                <input type="hidden" id="crm-prop-id" value="">
+
+                <div class="crm-field-row">
+                    <div class="crm-field-group">
+                        <label>Field Label <span style="color:#ef4444;">*</span></label>
+                        <input type="text" id="crm-prop-label"
+                               placeholder="e.g. LinkedIn URL">
+                    </div>
+                    <div class="crm-field-group">
+                        <label>
+                            Field Name
+                            <span style="font-weight:400;color:#9ca3af;">(auto)</span>
+                        </label>
+                        <input type="text" id="crm-prop-name"
+                               placeholder="e.g. linkedin_url"
+                               style="font-family:monospace;font-size:13px;">
+                    </div>
+                </div>
+
+                <div class="crm-field-row">
+                    <div class="crm-field-group">
+                        <label>Object Type <span style="color:#ef4444;">*</span></label>
+                        <select id="crm-prop-object">
+                            <option value="contact">Contact</option>
+                            <option value="company">Company</option>
+                            <option value="deal">Deal</option>
+                        </select>
+                    </div>
+                    <div class="crm-field-group">
+                        <label>Field Type <span style="color:#ef4444;">*</span></label>
+                        <select id="crm-prop-type">
+                            <option value="text">Text</option>
+                            <option value="number">Number</option>
+                            <option value="date">Date</option>
+                            <option value="textarea">Textarea</option>
+                            <option value="select">Select (dropdown)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="crm-field-group" id="crm-prop-options-group" style="display:none;">
+                    <label>
+                        Dropdown Options
+                        <span style="font-weight:400;color:#9ca3af;">(one per line)</span>
+                    </label>
+                    <textarea id="crm-prop-options" rows="4"
+                              placeholder="Option 1&#10;Option 2&#10;Option 3"></textarea>
+                </div>
+
+                <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;
+                            padding:12px;margin-top:4px;">
+                    <p style="font-size:12px;color:#6b7280;margin:0;">
+                        <svg width="14" height="14" fill="none" stroke="currentColor"
+                             viewBox="0 0 24 24" style="display:inline;vertical-align:middle;margin-right:4px;">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                  d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                        </svg>
+                        Custom property values are stored as JSON on each record and displayed
+                        in the create/edit form for the selected object type.
+                    </p>
+                </div>
+            </div>
+            <div class="crm-modal-footer">
+                <button class="bntm-btn-secondary" onclick="crmCloseModal('crm-prop-modal')">
+                    Cancel
+                </button>
+                <button class="bntm-btn-primary" id="crm-prop-save-btn">Save Property</button>
+            </div>
+        </div>
+    </div>
+
+    <style>
+    .crm-settings-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 20px;
+        align-items: start;
+    }
+    @media (max-width: 900px) {
+        .crm-settings-grid { grid-template-columns: 1fr; }
+    }
+    .crm-settings-col { display: flex; flex-direction: column; gap: 20px; }
+    .crm-stage-color-swatches {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+    }
+    .crm-color-swatch {
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        border: 2px solid transparent;
+        cursor: pointer;
+        transition: transform .15s, border-color .15s;
+        padding: 0;
+    }
+    .crm-color-swatch:hover        { transform: scale(1.2); }
+    .crm-color-swatch.selected     { border-color: #111827; transform: scale(1.15); }
+    </style>
+
+    <script>
+    (function() {
+
+        // ====================================================================
+        // PIPELINE STAGES
+        // ====================================================================
+
+        var stageList    = document.getElementById('crm-stage-sortable');
+        var draggedStage = null;
+
+        // ── Stage drag-and-drop reorder ──
+        stageList.addEventListener('dragstart', function(e) {
+            var li = e.target.closest('.crm-stage-item');
+            if ( ! li ) return;
+            draggedStage = li;
+            li.style.opacity = '.45';
+            e.dataTransfer.effectAllowed = 'move';
+        });
+
+        stageList.addEventListener('dragend', function(e) {
+            var li = e.target.closest('.crm-stage-item');
+            if ( li ) li.style.opacity = '1';
+            document.querySelectorAll('.crm-stage-item').forEach(function(el) {
+                el.classList.remove('drag-over');
+            });
+            draggedStage = null;
+            saveStageOrder();
+        });
+
+        stageList.addEventListener('dragover', function(e) {
+            e.preventDefault();
+            var li = e.target.closest('.crm-stage-item');
+            if ( ! li || li === draggedStage ) return;
+            document.querySelectorAll('.crm-stage-item').forEach(function(el) {
+                el.classList.remove('drag-over');
+            });
+            li.classList.add('drag-over');
+            var rect     = li.getBoundingClientRect();
+            var midpoint = rect.top + rect.height / 2;
+            if ( e.clientY < midpoint ) {
+                stageList.insertBefore( draggedStage, li );
+            } else {
+                stageList.insertBefore( draggedStage, li.nextSibling );
+            }
+        });
+
+        stageList.addEventListener('dragleave', function(e) {
+            var li = e.target.closest('.crm-stage-item');
+            if ( li ) li.classList.remove('drag-over');
+        });
+
+        function saveStageOrder() {
+            var ids = [];
+            stageList.querySelectorAll('.crm-stage-item[data-id]').forEach(function(li) {
+                ids.push( li.dataset.id );
+            });
+            if ( ids.length === 0 ) return;
+            crmPost( 'crm_reorder_stages', { stage_ids: ids.join(',') }, function() {
+                crmToast('Stage order saved.', 'success');
+            });
+        }
+
+        // ── Add stage button ──
+        document.getElementById('crm-stage-add-btn').addEventListener('click', function() {
+            document.getElementById('crm-stage-id').value   = '';
+            document.getElementById('crm-stage-name').value = '';
+            document.getElementById('crm-stage-color').value = '#6366f1';
+            document.querySelectorAll('.crm-color-swatch').forEach(function(s) {
+                s.classList.remove('selected');
+            });
+            document.querySelector('#crm-stage-modal .crm-modal-header h3').textContent = 'Add Stage';
+            crmOpenModal('crm-stage-modal');
+        });
+
+        // ── Edit stage buttons ──
+        document.addEventListener('click', function(e) {
+            var btn = e.target.closest('.crm-stage-edit-btn');
+            if ( ! btn ) return;
+            document.getElementById('crm-stage-id').value    = btn.dataset.id;
+            document.getElementById('crm-stage-name').value  = btn.dataset.name;
+            document.getElementById('crm-stage-color').value = btn.dataset.color;
+            document.querySelectorAll('.crm-color-swatch').forEach(function(s) {
+                s.classList.toggle('selected', s.dataset.color === btn.dataset.color);
+            });
+            document.querySelector('#crm-stage-modal .crm-modal-header h3').textContent = 'Edit Stage';
+            crmOpenModal('crm-stage-modal');
+        });
+
+        // ── Delete stage buttons ──
+        document.addEventListener('click', function(e) {
+            var btn = e.target.closest('.crm-stage-delete-btn');
+            if ( ! btn ) return;
+            crmConfirm(
+                'Delete stage "' + btn.dataset.name + '"? Deals in this stage will need reassignment.',
+                function() {
+                    crmPost( 'crm_delete_stage', { stage_id: btn.dataset.id }, function(data) {
+                        crmToast(data.message || 'Stage deleted.', 'success');
+                        var li = stageList.querySelector('.crm-stage-item[data-id="' + btn.dataset.id + '"]');
+                        if ( li ) {
+                            li.style.transition = 'opacity .3s';
+                            li.style.opacity    = '0';
+                            setTimeout(function() { li.remove(); }, 300);
+                        }
+                    });
+                }
+            );
+        });
+
+        // ── Color swatches ──
+        document.querySelectorAll('.crm-color-swatch').forEach(function(swatch) {
+            swatch.addEventListener('click', function() {
+                document.querySelectorAll('.crm-color-swatch').forEach(function(s) {
+                    s.classList.remove('selected');
+                });
+                this.classList.add('selected');
+                document.getElementById('crm-stage-color').value = this.dataset.color;
+            });
+        });
+
+        // ── Save stage ──
+        document.getElementById('crm-stage-save-btn').addEventListener('click', function() {
+            var btn     = this;
+            var stageId = document.getElementById('crm-stage-id').value;
+            var name    = document.getElementById('crm-stage-name').value.trim();
+            var color   = document.getElementById('crm-stage-color').value;
+
+            if ( ! name ) { crmToast('Stage name is required.', 'error'); return; }
+
+            var action      = stageId ? 'crm_save_stage' : 'crm_save_stage';
+            btn.disabled    = true;
+            btn.textContent = 'Saving...';
+
+            crmPost( action, {
+                stage_id: stageId,
+                name:     name,
+                color:    color
+            }, function(data) {
+                crmToast(data.message || 'Stage saved.', 'success');
+                crmCloseModal('crm-stage-modal');
+                btn.disabled    = false;
+                btn.textContent = 'Save Stage';
+
+                if ( stageId ) {
+                    var li     = stageList.querySelector('.crm-stage-item[data-id="' + stageId + '"]');
+                    var dotEl  = li  ? li.querySelector('.crm-stage-color-dot') : null;
+                    var nameEl = li  ? li.querySelector('.crm-stage-name')      : null;
+                    var editBtn = li ? li.querySelector('.crm-stage-edit-btn')  : null;
+                    if ( dotEl )  dotEl.style.background = color;
+                    if ( nameEl ) nameEl.textContent     = name;
+                    if ( editBtn ) {
+                        editBtn.dataset.name  = name;
+                        editBtn.dataset.color = color;
+                    }
+                } else {
+                    var newId   = data.stage_id || 0;
+                    var emptyMsg = document.getElementById('crm-stage-empty-msg');
+                    if ( emptyMsg ) emptyMsg.remove();
+
+                    var li = document.createElement('li');
+                    li.className   = 'crm-stage-item';
+                    li.dataset.id  = newId;
+                    li.draggable   = true;
+                    li.innerHTML   =
+                        '<span class="crm-stage-drag-handle">'
+                        + '<svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">'
+                        + '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8h16M4 16h16"/>'
+                        + '</svg></span>'
+                        + '<span class="crm-stage-color-dot" style="background:' + crmEsc(color) + ';"></span>'
+                        + '<span class="crm-stage-name">' + crmEsc(name) + '</span>'
+                        + '<button class="bntm-btn-secondary bntm-btn-small crm-stage-edit-btn" '
+                        + 'data-id="' + newId + '" data-name="' + crmEsc(name) + '" '
+                        + 'data-color="' + crmEsc(color) + '">Edit</button>'
+                        + '<button class="bntm-btn-danger bntm-btn-small crm-stage-delete-btn" '
+                        + 'data-id="' + newId + '" data-name="' + crmEsc(name) + '">Delete</button>';
+                    stageList.appendChild(li);
+                }
+            }, function() {
+                btn.disabled    = false;
+                btn.textContent = 'Save Stage';
+            });
+        });
+
+        // ====================================================================
+        // CUSTOM PROPERTIES
+        // ====================================================================
+
+        var propTypeEl    = document.getElementById('crm-prop-type');
+        var propOptGroup  = document.getElementById('crm-prop-options-group');
+        var propLabelEl   = document.getElementById('crm-prop-label');
+        var propNameEl    = document.getElementById('crm-prop-name');
+
+        // ── Show/hide options textarea based on type ──
+        propTypeEl.addEventListener('change', function() {
+            propOptGroup.style.display = this.value === 'select' ? 'block' : 'none';
+        });
+
+        // ── Auto-generate field name from label ──
+        propLabelEl.addEventListener('input', function() {
+            if ( document.getElementById('crm-prop-id').value ) return;
+            propNameEl.value = this.value
+                .toLowerCase()
+                .trim()
+                .replace(/[^a-z0-9\s_]/g, '')
+                .replace(/\s+/g, '_')
+                .substring(0, 60);
+        });
+
+        // ── Add property button ──
+        document.getElementById('crm-prop-add-btn').addEventListener('click', function() {
+            document.getElementById('crm-prop-id').value      = '';
+            propLabelEl.value                                  = '';
+            propNameEl.value                                   = '';
+            document.getElementById('crm-prop-object').value  = 'contact';
+            propTypeEl.value                                   = 'text';
+            document.getElementById('crm-prop-options').value = '';
+            propOptGroup.style.display                         = 'none';
+            document.querySelector('#crm-prop-modal .crm-modal-header h3').textContent = 'Add Custom Property';
+            crmOpenModal('crm-prop-modal');
+        });
+
+        // ── Edit property buttons ──
+        document.addEventListener('click', function(e) {
+            var btn = e.target.closest('.crm-prop-edit-btn');
+            if ( ! btn ) return;
+
+            document.getElementById('crm-prop-id').value     = btn.dataset.id;
+            propLabelEl.value                                  = btn.dataset.label  || '';
+            propNameEl.value                                   = btn.dataset.name   || '';
+            document.getElementById('crm-prop-object').value  = btn.dataset.object || 'contact';
+            propTypeEl.value                                   = btn.dataset.type   || 'text';
+            propOptGroup.style.display                         = btn.dataset.type === 'select' ? 'block' : 'none';
+
+            var rawOpts = btn.dataset.options || '';
+            var opts    = [];
+            try { opts = JSON.parse(rawOpts) || []; } catch(e) {}
+            document.getElementById('crm-prop-options').value = opts.join('\n');
+
+            document.querySelector('#crm-prop-modal .crm-modal-header h3').textContent = 'Edit Custom Property';
+            crmOpenModal('crm-prop-modal');
+        });
+
+        // ── Delete property buttons ──
+        document.addEventListener('click', function(e) {
+            var btn = e.target.closest('.crm-prop-delete-btn');
+            if ( ! btn ) return;
+            crmConfirm(
+                'Delete property "' + btn.dataset.label + '"? '
+                + 'Existing values stored on records will no longer display.',
+                function() {
+                    crmPost( 'crm_delete_custom_property', { prop_id: btn.dataset.id }, function(data) {
+                        crmToast(data.message || 'Property deleted.', 'success');
+                        var row = document.querySelector('tr[data-prop-id="' + btn.dataset.id + '"]');
+                        if ( row ) {
+                            row.style.transition = 'opacity .3s';
+                            row.style.opacity    = '0';
+                            setTimeout(function() { row.remove(); }, 300);
+                        }
+                    });
+                }
+            );
+        });
+
+        // ── Save property ──
+        document.getElementById('crm-prop-save-btn').addEventListener('click', function() {
+            var btn    = this;
+            var propId = document.getElementById('crm-prop-id').value;
+            var label  = propLabelEl.value.trim();
+            var name   = propNameEl.value.trim();
+            var object = document.getElementById('crm-prop-object').value;
+            var type   = propTypeEl.value;
+
+            if ( ! label )  { crmToast('Field label is required.',  'error'); return; }
+            if ( ! name )   { crmToast('Field name is required.',   'error'); return; }
+            if ( ! /^[a-z0-9_]+$/.test(name) ) {
+                crmToast('Field name must be lowercase letters, numbers, or underscores only.', 'error');
+                return;
+            }
+
+            var options = '';
+            if ( type === 'select' ) {
+                var rawLines = document.getElementById('crm-prop-options').value
+                    .split('\n')
+                    .map(function(l){ return l.trim(); })
+                    .filter(function(l){ return l.length > 0; });
+                if ( rawLines.length === 0 ) {
+                    crmToast('Please add at least one dropdown option.', 'error');
+                    return;
+                }
+                options = JSON.stringify(rawLines);
+            }
+
+            btn.disabled    = true;
+            btn.textContent = 'Saving...';
+
+            crmPost( 'crm_save_custom_property', {
+                prop_id:      propId,
+                field_label:  label,
+                field_name:   name,
+                object_type:  object,
+                field_type:   type,
+                field_options: options
+            }, function(data) {
+                crmToast(data.message || 'Property saved.', 'success');
+                crmCloseModal('crm-prop-modal');
+                btn.disabled    = false;
+                btn.textContent = 'Save Property';
+                setTimeout(function() { window.location.reload(); }, 900);
+            }, function() {
+                btn.disabled    = false;
+                btn.textContent = 'Save Property';
+            });
+        });
+
+    })();
+    </script>
+    <?php
+    return ob_get_clean();
+}
+
+// =============================================================================
+// AJAX HANDLERS — DASHBOARD
+// =============================================================================
+
+function bntm_ajax_crm_get_dashboard_stats() {
+    check_ajax_referer( 'crm_nonce', 'nonce' );
+
+    if ( ! is_user_logged_in() ) {
+        wp_send_json_error( [ 'message' => 'Unauthorized.' ] );
+    }
+
+    global $wpdb;
+    $business_id = get_current_user_id();
+    $today       = current_time( 'Y-m-d' );
+
+    $total_contacts = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(*) FROM {$wpdb->prefix}crm_contacts
+         WHERE business_id = %d AND status = 'active'",
+        $business_id
+    ) );
+
+    $total_companies = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(*) FROM {$wpdb->prefix}crm_companies
+         WHERE business_id = %d AND status = 'active'",
+        $business_id
+    ) );
+
+    $total_open_deals = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(*) FROM {$wpdb->prefix}crm_deals
+         WHERE business_id = %d AND status = 'open'",
+        $business_id
+    ) );
+
+    $pipeline_value = (float) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COALESCE(SUM(amount), 0) FROM {$wpdb->prefix}crm_deals
+         WHERE business_id = %d AND status = 'open'",
+        $business_id
+    ) );
+
+    $overdue_tasks = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(*) FROM {$wpdb->prefix}crm_tasks
+         WHERE business_id = %d AND status = 'pending' AND due_date < %s",
+        $business_id, $today
+    ) );
+
+    $this_month_contacts = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(*) FROM {$wpdb->prefix}crm_contacts
+         WHERE business_id = %d AND status = 'active'
+           AND MONTH(created_at) = MONTH(%s)
+           AND YEAR(created_at)  = YEAR(%s)",
+        $business_id, $today, $today
+    ) );
+
+    $stage_breakdown = $wpdb->get_results( $wpdb->prepare(
+        "SELECT ps.id, ps.name, ps.color,
+                COUNT(d.id)                   AS deal_count,
+                COALESCE(SUM(d.amount), 0)    AS stage_value
+         FROM {$wpdb->prefix}crm_pipeline_stages ps
+         LEFT JOIN {$wpdb->prefix}crm_deals d
+           ON d.stage_id    = ps.id
+           AND d.business_id = %d
+           AND d.status      = 'open'
+         WHERE ps.business_id = %d
+           AND ps.pipeline_id = 1
+           AND ps.status      = 'active'
+         GROUP BY ps.id, ps.name, ps.color, ps.sort_order
+         ORDER BY ps.sort_order ASC",
+        $business_id, $business_id
+    ) );
+
+    wp_send_json_success( [
+        'total_contacts'      => $total_contacts,
+        'total_companies'     => $total_companies,
+        'total_open_deals'    => $total_open_deals,
+        'pipeline_value'      => $pipeline_value,
+        'overdue_tasks'       => $overdue_tasks,
+        'this_month_contacts' => $this_month_contacts,
+        'stage_breakdown'     => $stage_breakdown,
+    ] );
+}
+
+function bntm_ajax_crm_get_recent_activity() {
+    check_ajax_referer( 'crm_nonce', 'nonce' );
+
+    if ( ! is_user_logged_in() ) {
+        wp_send_json_error( [ 'message' => 'Unauthorized.' ] );
+    }
+
+    global $wpdb;
+    $business_id = get_current_user_id();
+    $limit       = min( intval( $_POST['limit'] ?? 10 ), 50 );
+
+    $activities = $wpdb->get_results( $wpdb->prepare(
+        "SELECT a.*, u.display_name AS author_name
+         FROM {$wpdb->prefix}crm_activities a
+         LEFT JOIN {$wpdb->users} u ON u.ID = a.author_id
+         WHERE a.business_id = %d AND a.status = 'active'
+         ORDER BY a.created_at DESC
+         LIMIT %d",
+        $business_id, $limit
+    ) );
+
+    wp_send_json_success( [ 'activities' => $activities ] );
+}
+
+// =============================================================================
+// AJAX HANDLERS — CONTACTS
+// =============================================================================
+
+function bntm_ajax_crm_get_contacts() {
+    check_ajax_referer( 'crm_nonce', 'nonce' );
+
+    if ( ! is_user_logged_in() ) {
+        wp_send_json_error( [ 'message' => 'Unauthorized.' ] );
+    }
+
+    global $wpdb;
+    $business_id     = get_current_user_id();
+    $search          = sanitize_text_field( $_POST['search']           ?? '' );
+    $lifecycle       = sanitize_text_field( $_POST['lifecycle_status'] ?? '' );
+    $owner_id        = intval( $_POST['owner_id']                      ?? 0 );
+    $page            = max( 1, intval( $_POST['page']                  ?? 1 ) );
+    $per_page        = min( intval( $_POST['per_page']                 ?? 20 ), 100 );
+    $offset          = ( $page - 1 ) * $per_page;
+
+    $where  = [ $wpdb->prepare( 'c.business_id = %d', $business_id ) ];
+    $where[] = "c.status = 'active'";
+
+    if ( $search !== '' ) {
+        $like    = '%' . $wpdb->esc_like( $search ) . '%';
+        $where[] = $wpdb->prepare(
+            "(c.first_name LIKE %s OR c.last_name LIKE %s OR c.email LIKE %s OR c.phone LIKE %s)",
+            $like, $like, $like, $like
+        );
+    }
+    if ( $lifecycle !== '' ) {
+        $where[] = $wpdb->prepare( 'c.lifecycle_status = %s', $lifecycle );
+    }
+    if ( $owner_id > 0 ) {
+        $where[] = $wpdb->prepare( 'c.owner_id = %d', $owner_id );
+    }
+
+    $where_sql = 'WHERE ' . implode( ' AND ', $where );
+
+    $total = (int) $wpdb->get_var(
+        "SELECT COUNT(*) FROM {$wpdb->prefix}crm_contacts c {$where_sql}"
+    );
+
+    $contacts = $wpdb->get_results( $wpdb->prepare(
+        "SELECT c.*,
+                u.display_name  AS owner_name,
+                co.name         AS company_name
+         FROM {$wpdb->prefix}crm_contacts c
+         LEFT JOIN {$wpdb->users} u          ON u.ID   = c.owner_id
+         LEFT JOIN {$wpdb->prefix}crm_companies co ON co.id  = c.company_id
+         {$where_sql}
+         ORDER BY c.created_at DESC
+         LIMIT %d OFFSET %d",
+        $per_page, $offset
+    ) );
+
+    wp_send_json_success( [
+        'contacts'    => $contacts,
+        'total'       => $total,
+        'total_pages' => $per_page > 0 ? ceil( $total / $per_page ) : 1,
+    ] );
+}
+
+function bntm_ajax_crm_create_contact() {
+    check_ajax_referer( 'crm_nonce', 'nonce' );
+
+    if ( ! is_user_logged_in() ) {
+        wp_send_json_error( [ 'message' => 'Unauthorized.' ] );
+    }
+
+    global $wpdb;
+    $business_id = get_current_user_id();
+
+    $first_name       = sanitize_text_field( $_POST['first_name']        ?? '' );
+    $last_name        = sanitize_text_field( $_POST['last_name']         ?? '' );
+    $email            = sanitize_email(      $_POST['email']             ?? '' );
+    $phone            = sanitize_text_field( $_POST['phone']             ?? '' );
+    $lifecycle_status = sanitize_text_field( $_POST['lifecycle_status']  ?? 'lead' );
+    $owner_id         = intval(              $_POST['owner_id']          ?? 0 );
+    $company_id       = intval(              $_POST['company_id']        ?? 0 );
+    $tags             = sanitize_text_field( $_POST['tags']              ?? '' );
+    $custom_raw       = sanitize_textarea_field( $_POST['custom_properties'] ?? '' );
+
+    if ( $first_name === '' ) {
+        wp_send_json_error( [ 'message' => 'First name is required.' ] );
+    }
+
+    $allowed_statuses = [ 'lead', 'prospect', 'customer', 'churned' ];
+    if ( ! in_array( $lifecycle_status, $allowed_statuses, true ) ) {
+        $lifecycle_status = 'lead';
+    }
+
+    $custom_props = '{}';
+    if ( $custom_raw !== '' ) {
+        $decoded = json_decode( $custom_raw, true );
+        if ( is_array( $decoded ) ) {
+            $sanitized = [];
+            foreach ( $decoded as $k => $v ) {
+                $sanitized[ sanitize_key( $k ) ] = sanitize_text_field( $v );
+            }
+            $custom_props = wp_json_encode( $sanitized );
+        }
+    }
+
+    $wpdb->query( 'START TRANSACTION' );
+
+    $inserted = $wpdb->insert(
+        $wpdb->prefix . 'crm_contacts',
+        [
+            'rand_id'           => bntm_rand_id(),
+            'business_id'       => $business_id,
+            'owner_id'          => $owner_id,
+            'company_id'        => $company_id,
+            'first_name'        => $first_name,
+            'last_name'         => $last_name,
+            'email'             => $email,
+            'phone'             => $phone,
+            'lifecycle_status'  => $lifecycle_status,
+            'tags'              => $tags,
+            'custom_properties' => $custom_props,
+            'status'            => 'active',
+        ],
+        [ '%s','%d','%d','%d','%s','%s','%s','%s','%s','%s','%s','%s' ]
+    );
+
+    if ( ! $inserted ) {
+        $wpdb->query( 'ROLLBACK' );
+        wp_send_json_error( [ 'message' => 'Failed to create contact. Please try again.' ] );
+    }
+
+    $contact_id = $wpdb->insert_id;
+
+    crm_log_activity(
+        $business_id,
+        $business_id,
+        'contact',
+        $contact_id,
+        'note',
+        'Contact created: ' . trim( $first_name . ' ' . $last_name )
+    );
+
+    $wpdb->query( 'COMMIT' );
+
+    wp_send_json_success( [
+        'message'    => 'Contact created successfully.',
+        'contact_id' => $contact_id,
+    ] );
+}
+
+function bntm_ajax_crm_update_contact() {
+    check_ajax_referer( 'crm_nonce', 'nonce' );
+
+    if ( ! is_user_logged_in() ) {
+        wp_send_json_error( [ 'message' => 'Unauthorized.' ] );
+    }
+
+    global $wpdb;
+    $business_id = get_current_user_id();
+
+    $contact_id       = intval(              $_POST['contact_id']       ?? 0 );
+    $first_name       = sanitize_text_field( $_POST['first_name']       ?? '' );
+    $last_name        = sanitize_text_field( $_POST['last_name']        ?? '' );
+    $email            = sanitize_email(      $_POST['email']            ?? '' );
+    $phone            = sanitize_text_field( $_POST['phone']            ?? '' );
+    $lifecycle_status = sanitize_text_field( $_POST['lifecycle_status'] ?? 'lead' );
+    $owner_id         = intval(              $_POST['owner_id']         ?? 0 );
+    $company_id       = intval(              $_POST['company_id']       ?? 0 );
+    $tags             = sanitize_text_field( $_POST['tags']             ?? '' );
+    $custom_raw       = sanitize_textarea_field( $_POST['custom_properties'] ?? '' );
+
+    if ( $contact_id <= 0 ) {
+        wp_send_json_error( [ 'message' => 'Invalid contact.' ] );
+    }
+    if ( $first_name === '' ) {
+        wp_send_json_error( [ 'message' => 'First name is required.' ] );
+    }
+
+    $exists = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(*) FROM {$wpdb->prefix}crm_contacts
+         WHERE id = %d AND business_id = %d",
+        $contact_id, $business_id
+    ) );
+
+    if ( ! $exists ) {
+        wp_send_json_error( [ 'message' => 'Contact not found.' ] );
+    }
+
+    $allowed_statuses = [ 'lead', 'prospect', 'customer', 'churned' ];
+    if ( ! in_array( $lifecycle_status, $allowed_statuses, true ) ) {
+        $lifecycle_status = 'lead';
+    }
+
+    $custom_props = '{}';
+    if ( $custom_raw !== '' ) {
+        $decoded = json_decode( $custom_raw, true );
+        if ( is_array( $decoded ) ) {
+            $sanitized = [];
+            foreach ( $decoded as $k => $v ) {
+                $sanitized[ sanitize_key( $k ) ] = sanitize_text_field( $v );
+            }
+            $custom_props = wp_json_encode( $sanitized );
+        }
+    }
+
+    $wpdb->query( 'START TRANSACTION' );
+
+    $updated = $wpdb->update(
+        $wpdb->prefix . 'crm_contacts',
+        [
+            'owner_id'          => $owner_id,
+            'company_id'        => $company_id,
+            'first_name'        => $first_name,
+            'last_name'         => $last_name,
+            'email'             => $email,
+            'phone'             => $phone,
+            'lifecycle_status'  => $lifecycle_status,
+            'tags'              => $tags,
+            'custom_properties' => $custom_props,
+        ],
+        [ 'id' => $contact_id, 'business_id' => $business_id ],
+        [ '%d','%d','%s','%s','%s','%s','%s','%s','%s' ],
+        [ '%d','%d' ]
+    );
+
+    if ( $updated === false ) {
+        $wpdb->query( 'ROLLBACK' );
+        wp_send_json_error( [ 'message' => 'Failed to update contact. Please try again.' ] );
+    }
+
+    crm_log_activity(
+        $business_id,
+        $business_id,
+        'contact',
+        $contact_id,
+        'status_changed',
+        'Contact updated: ' . trim( $first_name . ' ' . $last_name )
+    );
+
+    $wpdb->query( 'COMMIT' );
+
+    wp_send_json_success( [ 'message' => 'Contact updated successfully.' ] );
+}
+
+function bntm_ajax_crm_delete_contact() {
+    check_ajax_referer( 'crm_nonce', 'nonce' );
+
+    if ( ! is_user_logged_in() ) {
+        wp_send_json_error( [ 'message' => 'Unauthorized.' ] );
+    }
+
+    global $wpdb;
+    $business_id = get_current_user_id();
+    $contact_id  = intval( $_POST['contact_id'] ?? 0 );
+
+    if ( $contact_id <= 0 ) {
+        wp_send_json_error( [ 'message' => 'Invalid contact.' ] );
+    }
+
+    $open_deals = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(*) FROM {$wpdb->prefix}crm_deals
+         WHERE contact_id = %d AND business_id = %d AND status = 'open'",
+        $contact_id, $business_id
+    ) );
+
+    if ( $open_deals > 0 ) {
+        wp_send_json_error( [
+            'message' => 'Cannot delete contact with ' . $open_deals . ' open deal(s). Close or reassign deals first.',
+        ] );
+    }
+
+    $wpdb->query( 'START TRANSACTION' );
+
+    $deleted = $wpdb->update(
+        $wpdb->prefix . 'crm_contacts',
+        [ 'status' => 'deleted' ],
+        [ 'id' => $contact_id, 'business_id' => $business_id ],
+        [ '%s' ],
+        [ '%d', '%d' ]
+    );
+
+    if ( $deleted === false ) {
+        $wpdb->query( 'ROLLBACK' );
+        wp_send_json_error( [ 'message' => 'Failed to delete contact. Please try again.' ] );
+    }
+
+    $wpdb->update(
+        $wpdb->prefix . 'crm_tasks',
+        [ 'status' => 'deleted' ],
+        [ 'linked_type' => 'contact', 'linked_id' => $contact_id, 'business_id' => $business_id ],
+        [ '%s' ],
+        [ '%s', '%d', '%d' ]
+    );
+
+    $wpdb->query( 'COMMIT' );
+
+    wp_send_json_success( [ 'message' => 'Contact deleted successfully.' ] );
+}
+
+// =============================================================================
+// AJAX HANDLERS — COMPANIES
+// =============================================================================
+
+function bntm_ajax_crm_get_companies() {
+    check_ajax_referer( 'crm_nonce', 'nonce' );
+
+    if ( ! is_user_logged_in() ) {
+        wp_send_json_error( [ 'message' => 'Unauthorized.' ] );
+    }
+
+    global $wpdb;
+    $business_id = get_current_user_id();
+    $search      = sanitize_text_field( $_POST['search']     ?? '' );
+    $owner_id    = intval(              $_POST['owner_id']   ?? 0 );
+    $company_id  = intval(              $_POST['company_id'] ?? 0 );
+    $detail      = sanitize_text_field( $_POST['detail']     ?? '' );
+    $page        = max( 1, intval( $_POST['page']     ?? 1 ) );
+    $per_page    = min( intval( $_POST['per_page']    ?? 20 ), 999 );
+    $offset      = ( $page - 1 ) * $per_page;
+
+    if ( $detail === '1' && $company_id > 0 ) {
+        $detail_row = $wpdb->get_row( $wpdb->prepare(
+            "SELECT * FROM {$wpdb->prefix}crm_companies
+             WHERE id = %d AND business_id = %d",
+            $company_id, $business_id
+        ) );
+
+        $contacts = $wpdb->get_results( $wpdb->prepare(
+            "SELECT id, first_name, last_name, email, lifecycle_status
+             FROM {$wpdb->prefix}crm_contacts
+             WHERE company_id = %d AND business_id = %d AND status = 'active'
+             ORDER BY first_name ASC",
+            $company_id, $business_id
+        ) );
+
+        $deals = $wpdb->get_results( $wpdb->prepare(
+            "SELECT d.*, ps.name AS stage_name
+             FROM {$wpdb->prefix}crm_deals d
+             LEFT JOIN {$wpdb->prefix}crm_pipeline_stages ps ON ps.id = d.stage_id
+             WHERE d.company_id = %d AND d.business_id = %d
+             ORDER BY d.created_at DESC",
+            $company_id, $business_id
+        ) );
+
+        wp_send_json_success( [
+            'detail'   => $detail_row,
+            'contacts' => $contacts,
+            'deals'    => $deals,
+        ] );
+    }
+
+    $where   = [ $wpdb->prepare( 'co.business_id = %d', $business_id ) ];
+    $where[] = "co.status = 'active'";
+
+    if ( $search !== '' ) {
+        $like    = '%' . $wpdb->esc_like( $search ) . '%';
+        $where[] = $wpdb->prepare(
+            "(co.name LIKE %s OR co.industry LIKE %s OR co.website LIKE %s)",
+            $like, $like, $like
+        );
+    }
+    if ( $owner_id > 0 ) {
+        $where[] = $wpdb->prepare( 'co.owner_id = %d', $owner_id );
+    }
+
+    $where_sql = 'WHERE ' . implode( ' AND ', $where );
+
+    $total = (int) $wpdb->get_var(
+        "SELECT COUNT(*) FROM {$wpdb->prefix}crm_companies co {$where_sql}"
+    );
+
+    $companies = $wpdb->get_results( $wpdb->prepare(
+        "SELECT co.*,
+                u.display_name AS owner_name,
+                (SELECT COUNT(*) FROM {$wpdb->prefix}crm_contacts c
+                 WHERE c.company_id = co.id AND c.status = 'active') AS contact_count,
+                (SELECT COUNT(*) FROM {$wpdb->prefix}crm_deals d
+                 WHERE d.company_id = co.id) AS deal_count
+         FROM {$wpdb->prefix}crm_companies co
+         LEFT JOIN {$wpdb->users} u ON u.ID = co.owner_id
+         {$where_sql}
+         ORDER BY co.created_at DESC
+         LIMIT %d OFFSET %d",
+        $per_page, $offset
+    ) );
+
+    wp_send_json_success( [
+        'companies'   => $companies,
+        'total'       => $total,
+        'total_pages' => $per_page > 0 ? ceil( $total / $per_page ) : 1,
+    ] );
+}
+
+function bntm_ajax_crm_create_company() {
+    check_ajax_referer( 'crm_nonce', 'nonce' );
+
+    if ( ! is_user_logged_in() ) {
+        wp_send_json_error( [ 'message' => 'Unauthorized.' ] );
+    }
+
+    global $wpdb;
+    $business_id = get_current_user_id();
+
+    $name       = sanitize_text_field( $_POST['name']     ?? '' );
+    $industry   = sanitize_text_field( $_POST['industry'] ?? '' );
+    $phone      = sanitize_text_field( $_POST['phone']    ?? '' );
+    $website    = esc_url_raw(         $_POST['website']  ?? '' );
+    $owner_id   = intval(              $_POST['owner_id'] ?? 0 );
+    $tags       = sanitize_text_field( $_POST['tags']     ?? '' );
+    $custom_raw = sanitize_textarea_field( $_POST['custom_properties'] ?? '' );
+
+    if ( $name === '' ) {
+        wp_send_json_error( [ 'message' => 'Company name is required.' ] );
+    }
+
+    $custom_props = '{}';
+    if ( $custom_raw !== '' ) {
+        $decoded = json_decode( $custom_raw, true );
+        if ( is_array( $decoded ) ) {
+            $sanitized = [];
+            foreach ( $decoded as $k => $v ) {
+                $sanitized[ sanitize_key( $k ) ] = sanitize_text_field( $v );
+            }
+            $custom_props = wp_json_encode( $sanitized );
+        }
+    }
+
+    $wpdb->query( 'START TRANSACTION' );
+
+    $inserted = $wpdb->insert(
+        $wpdb->prefix . 'crm_companies',
+        [
+            'rand_id'           => bntm_rand_id(),
+            'business_id'       => $business_id,
+            'owner_id'          => $owner_id,
+            'name'              => $name,
+            'industry'          => $industry,
+            'phone'             => $phone,
+            'website'           => $website,
+            'tags'              => $tags,
+            'custom_properties' => $custom_props,
+            'status'            => 'active',
+        ],
+        [ '%s','%d','%d','%s','%s','%s','%s','%s','%s','%s' ]
+    );
+
+    if ( ! $inserted ) {
+        $wpdb->query( 'ROLLBACK' );
+        wp_send_json_error( [ 'message' => 'Failed to create company. Please try again.' ] );
+    }
+
+    $company_id = $wpdb->insert_id;
+
+    crm_log_activity(
+        $business_id,
+        $business_id,
+        'company',
+        $company_id,
+        'note',
+        'Company created: ' . $name
+    );
+
+    $wpdb->query( 'COMMIT' );
+
+    wp_send_json_success( [
+        'message'    => 'Company created successfully.',
+        'company_id' => $company_id,
+    ] );
+}
+
+function bntm_ajax_crm_update_company() {
+    check_ajax_referer( 'crm_nonce', 'nonce' );
+
+    if ( ! is_user_logged_in() ) {
+        wp_send_json_error( [ 'message' => 'Unauthorized.' ] );
+    }
+
+    global $wpdb;
+    $business_id = get_current_user_id();
+
+    $company_id = intval(              $_POST['company_id'] ?? 0 );
+    $name       = sanitize_text_field( $_POST['name']       ?? '' );
+    $industry   = sanitize_text_field( $_POST['industry']   ?? '' );
+    $phone      = sanitize_text_field( $_POST['phone']      ?? '' );
+    $website    = esc_url_raw(         $_POST['website']    ?? '' );
+    $owner_id   = intval(              $_POST['owner_id']   ?? 0 );
+    $tags       = sanitize_text_field( $_POST['tags']       ?? '' );
+    $custom_raw = sanitize_textarea_field( $_POST['custom_properties'] ?? '' );
+
+    if ( $company_id <= 0 ) {
+        wp_send_json_error( [ 'message' => 'Invalid company.' ] );
+    }
+    if ( $name === '' ) {
+        wp_send_json_error( [ 'message' => 'Company name is required.' ] );
+    }
+
+    $exists = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(*) FROM {$wpdb->prefix}crm_companies
+         WHERE id = %d AND business_id = %d",
+        $company_id, $business_id
+    ) );
+
+    if ( ! $exists ) {
+        wp_send_json_error( [ 'message' => 'Company not found.' ] );
+    }
+
+    $custom_props = '{}';
+    if ( $custom_raw !== '' ) {
+        $decoded = json_decode( $custom_raw, true );
+        if ( is_array( $decoded ) ) {
+            $sanitized = [];
+            foreach ( $decoded as $k => $v ) {
+                $sanitized[ sanitize_key( $k ) ] = sanitize_text_field( $v );
+            }
+            $custom_props = wp_json_encode( $sanitized );
+        }
+    }
+
+    $wpdb->query( 'START TRANSACTION' );
+
+    $updated = $wpdb->update(
+        $wpdb->prefix . 'crm_companies',
+        [
+            'owner_id'          => $owner_id,
+            'name'              => $name,
+            'industry'          => $industry,
+            'phone'             => $phone,
+            'website'           => $website,
+            'tags'              => $tags,
+            'custom_properties' => $custom_props,
+        ],
+        [ 'id' => $company_id, 'business_id' => $business_id ],
+        [ '%d','%s','%s','%s','%s','%s','%s' ],
+        [ '%d','%d' ]
+    );
+
+    if ( $updated === false ) {
+        $wpdb->query( 'ROLLBACK' );
+        wp_send_json_error( [ 'message' => 'Failed to update company. Please try again.' ] );
+    }
+
+    crm_log_activity(
+        $business_id,
+        $business_id,
+        'company',
+        $company_id,
+        'status_changed',
+        'Company updated: ' . $name
+    );
+
+    $wpdb->query( 'COMMIT' );
+
+    wp_send_json_success( [ 'message' => 'Company updated successfully.' ] );
+}
+
+function bntm_ajax_crm_delete_company() {
+    check_ajax_referer( 'crm_nonce', 'nonce' );
+
+    if ( ! is_user_logged_in() ) {
+        wp_send_json_error( [ 'message' => 'Unauthorized.' ] );
+    }
+
+    global $wpdb;
+    $business_id = get_current_user_id();
+    $company_id  = intval( $_POST['company_id'] ?? 0 );
+
+    if ( $company_id <= 0 ) {
+        wp_send_json_error( [ 'message' => 'Invalid company.' ] );
+    }
+
+    $open_deals = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(*) FROM {$wpdb->prefix}crm_deals
+         WHERE company_id = %d AND business_id = %d AND status = 'open'",
+        $company_id, $business_id
+    ) );
+
+    if ( $open_deals > 0 ) {
+        wp_send_json_error( [
+            'message' => 'Cannot delete company with ' . $open_deals . ' open deal(s). Close or reassign deals first.',
+        ] );
+    }
+
+    $wpdb->query( 'START TRANSACTION' );
+
+    $deleted = $wpdb->update(
+        $wpdb->prefix . 'crm_companies',
+        [ 'status' => 'deleted' ],
+        [ 'id' => $company_id, 'business_id' => $business_id ],
+        [ '%s' ],
+        [ '%d', '%d' ]
+    );
+
+    if ( $deleted === false ) {
+        $wpdb->query( 'ROLLBACK' );
+        wp_send_json_error( [ 'message' => 'Failed to delete company. Please try again.' ] );
+    }
+
+    $wpdb->update(
+        $wpdb->prefix . 'crm_contacts',
+        [ 'company_id' => 0 ],
+        [ 'company_id' => $company_id, 'business_id' => $business_id ],
+        [ '%d' ],
+        [ '%d', '%d' ]
+    );
+
+    $wpdb->update(
+        $wpdb->prefix . 'crm_tasks',
+        [ 'status' => 'deleted' ],
+        [ 'linked_type' => 'company', 'linked_id' => $company_id, 'business_id' => $business_id ],
+        [ '%s' ],
+        [ '%s', '%d', '%d' ]
+    );
+
+    $wpdb->query( 'COMMIT' );
+
+    wp_send_json_success( [ 'message' => 'Company deleted successfully.' ] );
+}
+
+// =============================================================================
+// AJAX HANDLERS — DEALS
+// =============================================================================
+
+function bntm_ajax_crm_get_deals() {
+    check_ajax_referer( 'crm_nonce', 'nonce' );
+
+    if ( ! is_user_logged_in() ) {
+        wp_send_json_error( [ 'message' => 'Unauthorized.' ] );
+    }
+
+    global $wpdb;
+    $business_id = get_current_user_id();
+    $search      = sanitize_text_field( $_POST['search']   ?? '' );
+    $stage_id    = intval(              $_POST['stage_id'] ?? 0 );
+    $owner_id    = intval(              $_POST['owner_id'] ?? 0 );
+    $deal_id     = intval(              $_POST['deal_id']  ?? 0 );
+    $status      = sanitize_text_field( $_POST['status']   ?? '' );
+    $page        = max( 1, intval( $_POST['page']          ?? 1 ) );
+    $per_page    = min( intval( $_POST['per_page']         ?? 20 ), 500 );
+    $offset      = ( $page - 1 ) * $per_page;
+
+    $where   = [ $wpdb->prepare( 'd.business_id = %d', $business_id ) ];
+
+    if ( $deal_id > 0 ) {
+        $where[] = $wpdb->prepare( 'd.id = %d', $deal_id );
+    }
+    if ( $search !== '' ) {
+        $like    = '%' . $wpdb->esc_like( $search ) . '%';
+        $where[] = $wpdb->prepare( 'd.name LIKE %s', $like );
+    }
+    if ( $stage_id > 0 ) {
+        $where[] = $wpdb->prepare( 'd.stage_id = %d', $stage_id );
+    }
+    if ( $owner_id > 0 ) {
+        $where[] = $wpdb->prepare( 'd.owner_id = %d', $owner_id );
+    }
+    if ( $status !== '' ) {
+        $allowed_statuses = [ 'open', 'closed' ];
+        if ( in_array( $status, $allowed_statuses, true ) ) {
+            $where[] = $wpdb->prepare( 'd.status = %s', $status );
+        }
+    }
+
+    $where_sql = 'WHERE ' . implode( ' AND ', $where );
+
+    $total = (int) $wpdb->get_var(
+        "SELECT COUNT(*) FROM {$wpdb->prefix}crm_deals d {$where_sql}"
+    );
+
+    $deals = $wpdb->get_results( $wpdb->prepare(
+        "SELECT d.*,
+                ps.name            AS stage_name,
+                ps.color           AS stage_color,
+                u.display_name     AS owner_name,
+                CONCAT(c.first_name, ' ', c.last_name) AS contact_name,
+                co.name            AS company_name
+         FROM {$wpdb->prefix}crm_deals d
+         LEFT JOIN {$wpdb->prefix}crm_pipeline_stages ps ON ps.id  = d.stage_id
+         LEFT JOIN {$wpdb->users}                     u  ON u.ID   = d.owner_id
+         LEFT JOIN {$wpdb->prefix}crm_contacts        c  ON c.id   = d.contact_id
+         LEFT JOIN {$wpdb->prefix}crm_companies       co ON co.id  = d.company_id
+         {$where_sql}
+         ORDER BY d.created_at DESC
+         LIMIT %d OFFSET %d",
+        $per_page, $offset
+    ) );
+
+    wp_send_json_success( [
+        'deals'       => $deals,
+        'total'       => $total,
+        'total_pages' => $per_page > 0 ? ceil( $total / $per_page ) : 1,
+    ] );
+}
+
+function bntm_ajax_crm_create_deal() {
+    check_ajax_referer( 'crm_nonce', 'nonce' );
+
+    if ( ! is_user_logged_in() ) {
+        wp_send_json_error( [ 'message' => 'Unauthorized.' ] );
+    }
+
+    global $wpdb;
+    $business_id        = get_current_user_id();
+    $name               = sanitize_text_field( $_POST['name']                ?? '' );
+    $amount             = floatval(            $_POST['amount']               ?? 0 );
+    $expected_close_date = sanitize_text_field( $_POST['expected_close_date'] ?? '' );
+    $stage_id           = intval(              $_POST['stage_id']             ?? 0 );
+    $owner_id           = intval(              $_POST['owner_id']             ?? 0 );
+    $contact_id         = intval(              $_POST['contact_id']           ?? 0 );
+    $company_id         = intval(              $_POST['company_id']           ?? 0 );
+    $custom_raw         = sanitize_textarea_field( $_POST['custom_properties'] ?? '' );
+
+    if ( $name === '' ) {
+        wp_send_json_error( [ 'message' => 'Deal name is required.' ] );
+    }
+    if ( $stage_id <= 0 ) {
+        wp_send_json_error( [ 'message' => 'A pipeline stage is required.' ] );
+    }
+    if ( $contact_id <= 0 ) {
+        wp_send_json_error( [ 'message' => 'A contact is required.' ] );
+    }
+    if ( $amount < 0 ) {
+        wp_send_json_error( [ 'message' => 'Amount cannot be negative.' ] );
+    }
+
+    $stage_exists = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(*) FROM {$wpdb->prefix}crm_pipeline_stages
+         WHERE id = %d AND business_id = %d AND status = 'active'",
+        $stage_id, $business_id
+    ) );
+    if ( ! $stage_exists ) {
+        wp_send_json_error( [ 'message' => 'Selected pipeline stage does not exist.' ] );
+    }
+
+    $contact_exists = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(*) FROM {$wpdb->prefix}crm_contacts
+         WHERE id = %d AND business_id = %d AND status = 'active'",
+        $contact_id, $business_id
+    ) );
+    if ( ! $contact_exists ) {
+        wp_send_json_error( [ 'message' => 'Selected contact does not exist.' ] );
+    }
+
+    $close_date = '';
+    if ( $expected_close_date !== '' ) {
+        $parsed = date_create( $expected_close_date );
+        $close_date = $parsed ? date_format( $parsed, 'Y-m-d' ) : '';
+    }
+
+    $custom_props = '{}';
+    if ( $custom_raw !== '' ) {
+        $decoded = json_decode( $custom_raw, true );
+        if ( is_array( $decoded ) ) {
+            $sanitized = [];
+            foreach ( $decoded as $k => $v ) {
+                $sanitized[ sanitize_key( $k ) ] = sanitize_text_field( $v );
+            }
+            $custom_props = wp_json_encode( $sanitized );
+        }
+    }
+
+    $wpdb->query( 'START TRANSACTION' );
+
+    $inserted = $wpdb->insert(
+        $wpdb->prefix . 'crm_deals',
+        [
+            'rand_id'              => bntm_rand_id(),
+            'business_id'          => $business_id,
+            'owner_id'             => $owner_id,
+            'contact_id'           => $contact_id,
+            'company_id'           => $company_id,
+            'pipeline_id'          => 1,
+            'stage_id'             => $stage_id,
+            'name'                 => $name,
+            'amount'               => $amount,
+            'expected_close_date'  => $close_date !== '' ? $close_date : null,
+            'custom_properties'    => $custom_props,
+            'status'               => 'open',
+        ],
+        [ '%s','%d','%d','%d','%d','%d','%d','%s','%f','%s','%s','%s' ]
+    );
+
+    if ( ! $inserted ) {
+        $wpdb->query( 'ROLLBACK' );
+        wp_send_json_error( [ 'message' => 'Failed to create deal. Please try again.' ] );
+    }
+
+    $deal_id = $wpdb->insert_id;
+
+    $stage_name = $wpdb->get_var( $wpdb->prepare(
+        "SELECT name FROM {$wpdb->prefix}crm_pipeline_stages WHERE id = %d",
+        $stage_id
+    ) );
+
+    crm_log_activity(
+        $business_id,
+        $business_id,
+        'deal',
+        $deal_id,
+        'note',
+        'Deal created: ' . $name . ' — Stage: ' . $stage_name
+    );
+
+    $wpdb->query( 'COMMIT' );
+
+    wp_send_json_success( [
+        'message' => 'Deal created successfully.',
+        'deal_id' => $deal_id,
+    ] );
+}
+
+function bntm_ajax_crm_update_deal() {
+    check_ajax_referer( 'crm_nonce', 'nonce' );
+
+    if ( ! is_user_logged_in() ) {
+        wp_send_json_error( [ 'message' => 'Unauthorized.' ] );
+    }
+
+    global $wpdb;
+    $business_id         = get_current_user_id();
+    $deal_id             = intval(              $_POST['deal_id']             ?? 0 );
+    $name                = sanitize_text_field( $_POST['name']                ?? '' );
+    $amount              = floatval(            $_POST['amount']               ?? 0 );
+    $expected_close_date = sanitize_text_field( $_POST['expected_close_date'] ?? '' );
+    $stage_id            = intval(              $_POST['stage_id']             ?? 0 );
+    $owner_id            = intval(              $_POST['owner_id']             ?? 0 );
+    $contact_id          = intval(              $_POST['contact_id']           ?? 0 );
+    $company_id          = intval(              $_POST['company_id']           ?? 0 );
+    $custom_raw          = sanitize_textarea_field( $_POST['custom_properties'] ?? '' );
+
+    if ( $deal_id <= 0 ) {
+        wp_send_json_error( [ 'message' => 'Invalid deal.' ] );
+    }
+    if ( $name === '' ) {
+        wp_send_json_error( [ 'message' => 'Deal name is required.' ] );
+    }
+    if ( $stage_id <= 0 ) {
+        wp_send_json_error( [ 'message' => 'A pipeline stage is required.' ] );
+    }
+    if ( $contact_id <= 0 ) {
+        wp_send_json_error( [ 'message' => 'A contact is required.' ] );
+    }
+
+    $existing = $wpdb->get_row( $wpdb->prepare(
+        "SELECT id, stage_id, name FROM {$wpdb->prefix}crm_deals
+         WHERE id = %d AND business_id = %d",
+        $deal_id, $business_id
+    ) );
+
+    if ( ! $existing ) {
+        wp_send_json_error( [ 'message' => 'Deal not found.' ] );
+    }
+
+    $stage_exists = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(*) FROM {$wpdb->prefix}crm_pipeline_stages
+         WHERE id = %d AND business_id = %d AND status = 'active'",
+        $stage_id, $business_id
+    ) );
+    if ( ! $stage_exists ) {
+        wp_send_json_error( [ 'message' => 'Selected pipeline stage does not exist.' ] );
+    }
+
+    $close_date = null;
+    if ( $expected_close_date !== '' ) {
+        $parsed     = date_create( $expected_close_date );
+        $close_date = $parsed ? date_format( $parsed, 'Y-m-d' ) : null;
+    }
+
+    $custom_props = '{}';
+    if ( $custom_raw !== '' ) {
+        $decoded = json_decode( $custom_raw, true );
+        if ( is_array( $decoded ) ) {
+            $sanitized = [];
+            foreach ( $decoded as $k => $v ) {
+                $sanitized[ sanitize_key( $k ) ] = sanitize_text_field( $v );
+            }
+            $custom_props = wp_json_encode( $sanitized );
+        }
+    }
+
+    $stage_changed = ( (int) $existing->stage_id !== $stage_id );
+
+    $wpdb->query( 'START TRANSACTION' );
+
+    $updated = $wpdb->update(
+        $wpdb->prefix . 'crm_deals',
+        [
+            'owner_id'            => $owner_id,
+            'contact_id'          => $contact_id,
+            'company_id'          => $company_id,
+            'stage_id'            => $stage_id,
+            'name'                => $name,
+            'amount'              => $amount,
+            'expected_close_date' => $close_date,
+            'custom_properties'   => $custom_props,
+        ],
+        [ 'id' => $deal_id, 'business_id' => $business_id ],
+        [ '%d','%d','%d','%d','%s','%f','%s','%s' ],
+        [ '%d','%d' ]
+    );
+
+    if ( $updated === false ) {
+        $wpdb->query( 'ROLLBACK' );
+        wp_send_json_error( [ 'message' => 'Failed to update deal. Please try again.' ] );
+    }
+
+    $activity_body = 'Deal updated: ' . $name;
+    $activity_type = 'status_changed';
+
+    if ( $stage_changed ) {
+        $new_stage_name = $wpdb->get_var( $wpdb->prepare(
+            "SELECT name FROM {$wpdb->prefix}crm_pipeline_stages WHERE id = %d",
+            $stage_id
+        ) );
+        $old_stage_name = $wpdb->get_var( $wpdb->prepare(
+            "SELECT name FROM {$wpdb->prefix}crm_pipeline_stages WHERE id = %d",
+            $existing->stage_id
+        ) );
+        $activity_body  = 'Deal moved from "' . $old_stage_name . '" to "' . $new_stage_name . '"';
+        $activity_type  = 'deal_moved';
+    }
+
+    crm_log_activity(
+        $business_id,
+        $business_id,
+        'deal',
+        $deal_id,
+        $activity_type,
+        $activity_body
+    );
+
+    $wpdb->query( 'COMMIT' );
+
+    wp_send_json_success( [ 'message' => 'Deal updated successfully.' ] );
+}
+
+function bntm_ajax_crm_delete_deal() {
+    check_ajax_referer( 'crm_nonce', 'nonce' );
+
+    if ( ! is_user_logged_in() ) {
+        wp_send_json_error( [ 'message' => 'Unauthorized.' ] );
+    }
+
+    global $wpdb;
+    $business_id = get_current_user_id();
+    $deal_id     = intval( $_POST['deal_id'] ?? 0 );
+
+    if ( $deal_id <= 0 ) {
+        wp_send_json_error( [ 'message' => 'Invalid deal.' ] );
+    }
+
+    $exists = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(*) FROM {$wpdb->prefix}crm_deals
+         WHERE id = %d AND business_id = %d",
+        $deal_id, $business_id
+    ) );
+
+    if ( ! $exists ) {
+        wp_send_json_error( [ 'message' => 'Deal not found.' ] );
+    }
+
+    $wpdb->query( 'START TRANSACTION' );
+
+    $deleted = $wpdb->update(
+        $wpdb->prefix . 'crm_deals',
+        [ 'status' => 'deleted' ],
+        [ 'id' => $deal_id, 'business_id' => $business_id ],
+        [ '%s' ],
+        [ '%d', '%d' ]
+    );
+
+    if ( $deleted === false ) {
+        $wpdb->query( 'ROLLBACK' );
+        wp_send_json_error( [ 'message' => 'Failed to delete deal. Please try again.' ] );
+    }
+
+    $wpdb->update(
+        $wpdb->prefix . 'crm_tasks',
+        [ 'status' => 'deleted' ],
+        [ 'linked_type' => 'deal', 'linked_id' => $deal_id, 'business_id' => $business_id ],
+        [ '%s' ],
+        [ '%s', '%d', '%d' ]
+    );
+
+    $wpdb->query( 'COMMIT' );
+
+    wp_send_json_success( [ 'message' => 'Deal deleted successfully.' ] );
+}
+
+function bntm_ajax_crm_move_deal_stage() {
+    check_ajax_referer( 'crm_nonce', 'nonce' );
+
+    if ( ! is_user_logged_in() ) {
+        wp_send_json_error( [ 'message' => 'Unauthorized.' ] );
+    }
+
+    global $wpdb;
+    $business_id = get_current_user_id();
+    $deal_id     = intval( $_POST['deal_id']  ?? 0 );
+    $stage_id    = intval( $_POST['stage_id'] ?? 0 );
+
+    if ( $deal_id <= 0 || $stage_id <= 0 ) {
+        wp_send_json_error( [ 'message' => 'Invalid deal or stage.' ] );
+    }
+
+    $deal = $wpdb->get_row( $wpdb->prepare(
+        "SELECT id, name, stage_id FROM {$wpdb->prefix}crm_deals
+         WHERE id = %d AND business_id = %d",
+        $deal_id, $business_id
+    ) );
+
+    if ( ! $deal ) {
+        wp_send_json_error( [ 'message' => 'Deal not found.' ] );
+    }
+
+    $stage = $wpdb->get_row( $wpdb->prepare(
+        "SELECT id, name FROM {$wpdb->prefix}crm_pipeline_stages
+         WHERE id = %d AND business_id = %d AND status = 'active'",
+        $stage_id, $business_id
+    ) );
+
+    if ( ! $stage ) {
+        wp_send_json_error( [ 'message' => 'Stage not found.' ] );
+    }
+
+    if ( (int) $deal->stage_id === $stage_id ) {
+        wp_send_json_success( [ 'message' => 'Deal already in this stage.' ] );
+    }
+
+    $old_stage_name = $wpdb->get_var( $wpdb->prepare(
+        "SELECT name FROM {$wpdb->prefix}crm_pipeline_stages WHERE id = %d",
+        $deal->stage_id
+    ) );
+
+    $closed_keywords = [ 'won', 'lost' ];
+    $stage_name_lower = strtolower( $stage->name );
+    $is_closing_stage = false;
+    foreach ( $closed_keywords as $kw ) {
+        if ( strpos( $stage_name_lower, $kw ) !== false ) {
+            $is_closing_stage = true;
+            break;
+        }
+    }
+    $new_deal_status = $is_closing_stage ? 'closed' : 'open';
+
+    $wpdb->query( 'START TRANSACTION' );
+
+    $updated = $wpdb->update(
+        $wpdb->prefix . 'crm_deals',
+        [
+            'stage_id' => $stage_id,
+            'status'   => $new_deal_status,
+        ],
+        [ 'id' => $deal_id, 'business_id' => $business_id ],
+        [ '%d', '%s' ],
+        [ '%d', '%d' ]
+    );
+
+    if ( $updated === false ) {
+        $wpdb->query( 'ROLLBACK' );
+        wp_send_json_error( [ 'message' => 'Failed to move deal. Please try again.' ] );
+    }
+
+    crm_log_activity(
+        $business_id,
+        $business_id,
+        'deal',
+        $deal_id,
+        'deal_moved',
+        'Deal "' . $deal->name . '" moved from "' . $old_stage_name . '" to "' . $stage->name . '"'
+    );
+
+    $wpdb->query( 'COMMIT' );
+
+    wp_send_json_success( [
+        'message'    => 'Deal moved to ' . $stage->name . '.',
+        'new_status' => $new_deal_status,
+    ] );
+}
+
+// =============================================================================
+// AJAX HANDLERS — TASKS
+// =============================================================================
+
+function bntm_ajax_crm_get_tasks() {
+    check_ajax_referer( 'crm_nonce', 'nonce' );
+
+    if ( ! is_user_logged_in() ) {
+        wp_send_json_error( [ 'message' => 'Unauthorized.' ] );
+    }
+
+    global $wpdb;
+    $business_id  = get_current_user_id();
+    $assignee_id  = intval(              $_POST['assignee_id']  ?? 0 );
+    $linked_type  = sanitize_text_field( $_POST['linked_type']  ?? '' );
+    $linked_id    = intval(              $_POST['linked_id']     ?? 0 );
+    $status       = sanitize_text_field( $_POST['status']        ?? '' );
+    $today        = current_time( 'Y-m-d' );
+
+    $where   = [ $wpdb->prepare( 't.business_id = %d', $business_id ) ];
+    $where[] = "t.status != 'deleted'";
+
+    if ( $assignee_id > 0 ) {
+        $where[] = $wpdb->prepare( 't.assignee_id = %d', $assignee_id );
+    }
+    if ( $linked_type !== '' ) {
+        $allowed_types = [ 'contact', 'company', 'deal' ];
+        if ( in_array( $linked_type, $allowed_types, true ) ) {
+            $where[] = $wpdb->prepare( 't.linked_type = %s', $linked_type );
+        }
+    }
+    if ( $linked_id > 0 ) {
+        $where[] = $wpdb->prepare( 't.linked_id = %d', $linked_id );
+    }
+    if ( $status !== '' ) {
+        $allowed_statuses = [ 'pending', 'complete' ];
+        if ( in_array( $status, $allowed_statuses, true ) ) {
+            $where[] = $wpdb->prepare( 't.status = %s', $status );
+        }
+    }
+
+    $where_sql = 'WHERE ' . implode( ' AND ', $where );
+
+    $tasks = $wpdb->get_results(
+        "SELECT t.*,
+                u.display_name AS assignee_name,
+                DATEDIFF(t.due_date, '{$today}') AS days_until,
+                DATEDIFF('{$today}', t.due_date) AS days_overdue
+         FROM {$wpdb->prefix}crm_tasks t
+         LEFT JOIN {$wpdb->users} u ON u.ID = t.assignee_id
+         {$where_sql}
+         ORDER BY t.due_date ASC"
+    );
+
+    $overdue  = [];
+    $upcoming = [];
+
+    foreach ( $tasks as $task ) {
+        if ( $task->status === 'pending' && $task->due_date < $today ) {
+            $overdue[] = $task;
+        } else {
+            $upcoming[] = $task;
+        }
+    }
+
+    wp_send_json_success( [
+        'tasks'    => $tasks,
+        'overdue'  => $overdue,
+        'upcoming' => $upcoming,
+        'total'    => count( $tasks ),
+    ] );
+}
+
+function bntm_ajax_crm_create_task() {
+    check_ajax_referer( 'crm_nonce', 'nonce' );
+
+    if ( ! is_user_logged_in() ) {
+        wp_send_json_error( [ 'message' => 'Unauthorized.' ] );
+    }
+
+    global $wpdb;
+    $business_id   = get_current_user_id();
+    $title         = sanitize_text_field( $_POST['title']         ?? '' );
+    $assignee_id   = intval(              $_POST['assignee_id']   ?? 0 );
+    $due_date      = sanitize_text_field( $_POST['due_date']      ?? '' );
+    $reminder_days = intval(              $_POST['reminder_days'] ?? 0 );
+    $linked_type   = sanitize_text_field( $_POST['linked_type']   ?? '' );
+    $linked_id     = intval(              $_POST['linked_id']      ?? 0 );
+
+    if ( $title === '' ) {
+        wp_send_json_error( [ 'message' => 'Task title is required.' ] );
+    }
+
+    $allowed_types = [ '', 'contact', 'company', 'deal' ];
+    if ( ! in_array( $linked_type, $allowed_types, true ) ) {
+        $linked_type = '';
+    }
+
+    $parsed_date = '';
+    if ( $due_date !== '' ) {
+        $parsed      = date_create( $due_date );
+        $parsed_date = $parsed ? date_format( $parsed, 'Y-m-d' ) : '';
+    }
+
+    if ( $reminder_days < 0 ) {
+        $reminder_days = 0;
+    }
+
+    $wpdb->query( 'START TRANSACTION' );
+
+    $inserted = $wpdb->insert(
+        $wpdb->prefix . 'crm_tasks',
+        [
+            'rand_id'       => bntm_rand_id(),
+            'business_id'   => $business_id,
+            'assignee_id'   => $assignee_id,
+            'linked_type'   => $linked_type,
+            'linked_id'     => $linked_id,
+            'title'         => $title,
+            'due_date'      => $parsed_date !== '' ? $parsed_date : null,
+            'reminder_days' => $reminder_days,
+            'status'        => 'pending',
+        ],
+        [ '%s','%d','%d','%s','%d','%s','%s','%d','%s' ]
+    );
+
+    if ( ! $inserted ) {
+        $wpdb->query( 'ROLLBACK' );
+        wp_send_json_error( [ 'message' => 'Failed to create task. Please try again.' ] );
+    }
+
+    $task_id = $wpdb->insert_id;
+
+    if ( $linked_type !== '' && $linked_id > 0 ) {
+        crm_log_activity(
+            $business_id,
+            $business_id,
+            $linked_type,
+            $linked_id,
+            'task_created',
+            'Task created: ' . $title . ( $parsed_date ? ' — Due: ' . $parsed_date : '' )
+        );
+    }
+
+    $wpdb->query( 'COMMIT' );
+
+    wp_send_json_success( [
+        'message' => 'Task created successfully.',
+        'task_id' => $task_id,
+    ] );
+}
+
+function bntm_ajax_crm_update_task() {
+    check_ajax_referer( 'crm_nonce', 'nonce' );
+
+    if ( ! is_user_logged_in() ) {
+        wp_send_json_error( [ 'message' => 'Unauthorized.' ] );
+    }
+
+    global $wpdb;
+    $business_id   = get_current_user_id();
+    $task_id       = intval(              $_POST['task_id']       ?? 0 );
+    $title         = sanitize_text_field( $_POST['title']         ?? '' );
+    $assignee_id   = intval(              $_POST['assignee_id']   ?? 0 );
+    $due_date      = sanitize_text_field( $_POST['due_date']      ?? '' );
+    $reminder_days = intval(              $_POST['reminder_days'] ?? 0 );
+    $linked_type   = sanitize_text_field( $_POST['linked_type']   ?? '' );
+    $linked_id     = intval(              $_POST['linked_id']      ?? 0 );
+
+    if ( $task_id <= 0 ) {
+        wp_send_json_error( [ 'message' => 'Invalid task.' ] );
+    }
+    if ( $title === '' ) {
+        wp_send_json_error( [ 'message' => 'Task title is required.' ] );
+    }
+
+    $exists = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(*) FROM {$wpdb->prefix}crm_tasks
+         WHERE id = %d AND business_id = %d",
+        $task_id, $business_id
+    ) );
+
+    if ( ! $exists ) {
+        wp_send_json_error( [ 'message' => 'Task not found.' ] );
+    }
+
+    $allowed_types = [ '', 'contact', 'company', 'deal' ];
+    if ( ! in_array( $linked_type, $allowed_types, true ) ) {
+        $linked_type = '';
+    }
+
+    $parsed_date = null;
+    if ( $due_date !== '' ) {
+        $parsed      = date_create( $due_date );
+        $parsed_date = $parsed ? date_format( $parsed, 'Y-m-d' ) : null;
+    }
+
+    if ( $reminder_days < 0 ) {
+        $reminder_days = 0;
+    }
+
+    $updated = $wpdb->update(
+        $wpdb->prefix . 'crm_tasks',
+        [
+            'assignee_id'   => $assignee_id,
+            'linked_type'   => $linked_type,
+            'linked_id'     => $linked_id,
+            'title'         => $title,
+            'due_date'      => $parsed_date,
+            'reminder_days' => $reminder_days,
+        ],
+        [ 'id' => $task_id, 'business_id' => $business_id ],
+        [ '%d','%s','%d','%s','%s','%d' ],
+        [ '%d','%d' ]
+    );
+
+    if ( $updated === false ) {
+        wp_send_json_error( [ 'message' => 'Failed to update task. Please try again.' ] );
+    }
+
+    wp_send_json_success( [ 'message' => 'Task updated successfully.' ] );
+}
+
+function bntm_ajax_crm_delete_task() {
+    check_ajax_referer( 'crm_nonce', 'nonce' );
+
+    if ( ! is_user_logged_in() ) {
+        wp_send_json_error( [ 'message' => 'Unauthorized.' ] );
+    }
+
+    global $wpdb;
+    $business_id = get_current_user_id();
+    $task_id     = intval( $_POST['task_id'] ?? 0 );
+
+    if ( $task_id <= 0 ) {
+        wp_send_json_error( [ 'message' => 'Invalid task.' ] );
+    }
+
+    $exists = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(*) FROM {$wpdb->prefix}crm_tasks
+         WHERE id = %d AND business_id = %d",
+        $task_id, $business_id
+    ) );
+
+    if ( ! $exists ) {
+        wp_send_json_error( [ 'message' => 'Task not found.' ] );
+    }
+
+    $deleted = $wpdb->update(
+        $wpdb->prefix . 'crm_tasks',
+        [ 'status' => 'deleted' ],
+        [ 'id' => $task_id, 'business_id' => $business_id ],
+        [ '%s' ],
+        [ '%d', '%d' ]
+    );
+
+    if ( $deleted === false ) {
+        wp_send_json_error( [ 'message' => 'Failed to delete task. Please try again.' ] );
+    }
+
+    wp_send_json_success( [ 'message' => 'Task deleted successfully.' ] );
+}
+
+function bntm_ajax_crm_complete_task() {
+    check_ajax_referer( 'crm_nonce', 'nonce' );
+
+    if ( ! is_user_logged_in() ) {
+        wp_send_json_error( [ 'message' => 'Unauthorized.' ] );
+    }
+
+    global $wpdb;
+    $business_id = get_current_user_id();
+    $task_id     = intval( $_POST['task_id'] ?? 0 );
+
+    if ( $task_id <= 0 ) {
+        wp_send_json_error( [ 'message' => 'Invalid task.' ] );
+    }
+
+    $task = $wpdb->get_row( $wpdb->prepare(
+        "SELECT * FROM {$wpdb->prefix}crm_tasks
+         WHERE id = %d AND business_id = %d",
+        $task_id, $business_id
+    ) );
+
+    if ( ! $task ) {
+        wp_send_json_error( [ 'message' => 'Task not found.' ] );
+    }
+
+    if ( $task->status === 'complete' ) {
+        wp_send_json_success( [ 'message' => 'Task already marked complete.' ] );
+    }
+
+    $wpdb->query( 'START TRANSACTION' );
+
+    $updated = $wpdb->update(
+        $wpdb->prefix . 'crm_tasks',
+        [ 'status' => 'complete' ],
+        [ 'id' => $task_id, 'business_id' => $business_id ],
+        [ '%s' ],
+        [ '%d', '%d' ]
+    );
+
+    if ( $updated === false ) {
+        $wpdb->query( 'ROLLBACK' );
+        wp_send_json_error( [ 'message' => 'Failed to complete task. Please try again.' ] );
+    }
+
+    if ( $task->linked_type !== '' && $task->linked_id > 0 ) {
+        crm_log_activity(
+            $business_id,
+            $business_id,
+            $task->linked_type,
+            (int) $task->linked_id,
+            'task_completed',
+            'Task completed: ' . $task->title
+        );
+    }
+
+    $wpdb->query( 'COMMIT' );
+
+    wp_send_json_success( [ 'message' => 'Task marked as complete.' ] );
+}
+
+// =============================================================================
+// AJAX HANDLERS — SETTINGS: PIPELINE STAGES
+// =============================================================================
+
+function bntm_ajax_crm_get_stages() {
+    check_ajax_referer( 'crm_nonce', 'nonce' );
+
+    if ( ! is_user_logged_in() ) {
+        wp_send_json_error( [ 'message' => 'Unauthorized.' ] );
+    }
+
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_send_json_error( [ 'message' => 'Insufficient permissions.' ] );
+    }
+
+    global $wpdb;
+    $business_id = get_current_user_id();
+
+    $stages = $wpdb->get_results( $wpdb->prepare(
+        "SELECT * FROM {$wpdb->prefix}crm_pipeline_stages
+         WHERE business_id = %d AND pipeline_id = 1 AND status = 'active'
+         ORDER BY sort_order ASC",
+        $business_id
+    ) );
+
+    wp_send_json_success( [ 'stages' => $stages ] );
+}
+
+function bntm_ajax_crm_save_stage() {
+    check_ajax_referer( 'crm_nonce', 'nonce' );
+
+    if ( ! is_user_logged_in() ) {
+        wp_send_json_error( [ 'message' => 'Unauthorized.' ] );
+    }
+
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_send_json_error( [ 'message' => 'Insufficient permissions.' ] );
+    }
+
+    global $wpdb;
+    $business_id = get_current_user_id();
+    $stage_id    = intval(              $_POST['stage_id'] ?? 0 );
+    $name        = sanitize_text_field( $_POST['name']     ?? '' );
+    $color       = sanitize_text_field( $_POST['color']    ?? '#6366f1' );
+
+    if ( $name === '' ) {
+        wp_send_json_error( [ 'message' => 'Stage name is required.' ] );
+    }
+
+    if ( ! preg_match( '/^#[0-9a-fA-F]{3,6}$/', $color ) ) {
+        $color = '#6366f1';
+    }
+
+    if ( $stage_id > 0 ) {
+        $exists = (int) $wpdb->get_var( $wpdb->prepare(
+            "SELECT COUNT(*) FROM {$wpdb->prefix}crm_pipeline_stages
+             WHERE id = %d AND business_id = %d",
+            $stage_id, $business_id
+        ) );
+
+        if ( ! $exists ) {
+            wp_send_json_error( [ 'message' => 'Stage not found.' ] );
+        }
+
+        $updated = $wpdb->update(
+            $wpdb->prefix . 'crm_pipeline_stages',
+            [
+                'name'  => $name,
+                'color' => $color,
+            ],
+            [ 'id' => $stage_id, 'business_id' => $business_id ],
+            [ '%s', '%s' ],
+            [ '%d', '%d' ]
+        );
+
+        if ( $updated === false ) {
+            wp_send_json_error( [ 'message' => 'Failed to update stage. Please try again.' ] );
+        }
+
+        wp_send_json_success( [
+            'message'  => 'Stage updated successfully.',
+            'stage_id' => $stage_id,
+        ] );
+    }
+
+    $duplicate = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(*) FROM {$wpdb->prefix}crm_pipeline_stages
+         WHERE business_id = %d AND pipeline_id = 1 AND status = 'active'
+           AND name = %s",
+        $business_id, $name
+    ) );
+
+    if ( $duplicate > 0 ) {
+        wp_send_json_error( [ 'message' => 'A stage with this name already exists.' ] );
+    }
+
+    $max_order = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COALESCE(MAX(sort_order), 0)
+         FROM {$wpdb->prefix}crm_pipeline_stages
+         WHERE business_id = %d AND pipeline_id = 1 AND status = 'active'",
+        $business_id
+    ) );
+
+    $inserted = $wpdb->insert(
+        $wpdb->prefix . 'crm_pipeline_stages',
+        [
+            'rand_id'     => bntm_rand_id(),
+            'business_id' => $business_id,
+            'pipeline_id' => 1,
+            'name'        => $name,
+            'sort_order'  => $max_order + 1,
+            'color'       => $color,
+            'status'      => 'active',
+        ],
+        [ '%s', '%d', '%d', '%s', '%d', '%s', '%s' ]
+    );
+
+    if ( ! $inserted ) {
+        wp_send_json_error( [ 'message' => 'Failed to create stage. Please try again.' ] );
+    }
+
+    wp_send_json_success( [
+        'message'  => 'Stage created successfully.',
+        'stage_id' => $wpdb->insert_id,
+    ] );
+}
+
+function bntm_ajax_crm_delete_stage() {
+    check_ajax_referer( 'crm_nonce', 'nonce' );
+
+    if ( ! is_user_logged_in() ) {
+        wp_send_json_error( [ 'message' => 'Unauthorized.' ] );
+    }
+
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_send_json_error( [ 'message' => 'Insufficient permissions.' ] );
+    }
+
+    global $wpdb;
+    $business_id = get_current_user_id();
+    $stage_id    = intval( $_POST['stage_id'] ?? 0 );
+
+    if ( $stage_id <= 0 ) {
+        wp_send_json_error( [ 'message' => 'Invalid stage.' ] );
+    }
+
+    $exists = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(*) FROM {$wpdb->prefix}crm_pipeline_stages
+         WHERE id = %d AND business_id = %d",
+        $stage_id, $business_id
+    ) );
+
+    if ( ! $exists ) {
+        wp_send_json_error( [ 'message' => 'Stage not found.' ] );
+    }
+
+    $active_stage_count = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(*) FROM {$wpdb->prefix}crm_pipeline_stages
+         WHERE business_id = %d AND pipeline_id = 1 AND status = 'active'",
+        $business_id
+    ) );
+
+    if ( $active_stage_count <= 1 ) {
+        wp_send_json_error( [ 'message' => 'You must have at least one pipeline stage. Add another stage before deleting this one.' ] );
+    }
+
+    $deals_in_stage = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(*) FROM {$wpdb->prefix}crm_deals
+         WHERE stage_id = %d AND business_id = %d AND status = 'open'",
+        $stage_id, $business_id
+    ) );
+
+    if ( $deals_in_stage > 0 ) {
+        wp_send_json_error( [
+            'message' => 'Cannot delete stage with ' . $deals_in_stage . ' open deal(s). Move or close those deals first.',
+        ] );
+    }
+
+    $deleted = $wpdb->update(
+        $wpdb->prefix . 'crm_pipeline_stages',
+        [ 'status' => 'deleted' ],
+        [ 'id' => $stage_id, 'business_id' => $business_id ],
+        [ '%s' ],
+        [ '%d', '%d' ]
+    );
+
+    if ( $deleted === false ) {
+        wp_send_json_error( [ 'message' => 'Failed to delete stage. Please try again.' ] );
+    }
+
+    wp_send_json_success( [ 'message' => 'Stage deleted successfully.' ] );
+}
+
+function bntm_ajax_crm_reorder_stages() {
+    check_ajax_referer( 'crm_nonce', 'nonce' );
+
+    if ( ! is_user_logged_in() ) {
+        wp_send_json_error( [ 'message' => 'Unauthorized.' ] );
+    }
+
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_send_json_error( [ 'message' => 'Insufficient permissions.' ] );
+    }
+
+    global $wpdb;
+    $business_id = get_current_user_id();
+    $stage_ids   = sanitize_text_field( $_POST['stage_ids'] ?? '' );
+
+    if ( $stage_ids === '' ) {
+        wp_send_json_error( [ 'message' => 'No stage order provided.' ] );
+    }
+
+    $ids = array_map( 'intval', explode( ',', $stage_ids ) );
+    $ids = array_filter( $ids, function( $id ) { return $id > 0; } );
+    $ids = array_values( $ids );
+
+    if ( empty( $ids ) ) {
+        wp_send_json_error( [ 'message' => 'Invalid stage order data.' ] );
+    }
+
+    $wpdb->query( 'START TRANSACTION' );
+
+    foreach ( $ids as $index => $id ) {
+        $updated = $wpdb->update(
+            $wpdb->prefix . 'crm_pipeline_stages',
+            [ 'sort_order' => $index + 1 ],
+            [ 'id' => $id, 'business_id' => $business_id ],
+            [ '%d' ],
+            [ '%d', '%d' ]
+        );
+
+        if ( $updated === false ) {
+            $wpdb->query( 'ROLLBACK' );
+            wp_send_json_error( [ 'message' => 'Failed to save stage order. Please try again.' ] );
+        }
+    }
+
+    $wpdb->query( 'COMMIT' );
+
+    wp_send_json_success( [ 'message' => 'Stage order saved.' ] );
+}
+
+// =============================================================================
+// AJAX HANDLERS — SETTINGS: CUSTOM PROPERTIES
+// =============================================================================
+
+function bntm_ajax_crm_get_custom_properties() {
+    check_ajax_referer( 'crm_nonce', 'nonce' );
+
+    if ( ! is_user_logged_in() ) {
+        wp_send_json_error( [ 'message' => 'Unauthorized.' ] );
+    }
+
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_send_json_error( [ 'message' => 'Insufficient permissions.' ] );
+    }
+
+    global $wpdb;
+    $business_id = get_current_user_id();
+    $object_type = sanitize_text_field( $_POST['object_type'] ?? '' );
+
+    $where   = [ $wpdb->prepare( 'business_id = %d', $business_id ) ];
+    $where[] = "status = 'active'";
+
+    $allowed_types = [ 'contact', 'company', 'deal' ];
+    if ( $object_type !== '' && in_array( $object_type, $allowed_types, true ) ) {
+        $where[] = $wpdb->prepare( 'object_type = %s', $object_type );
+    }
+
+    $where_sql = 'WHERE ' . implode( ' AND ', $where );
+
+    $props = $wpdb->get_results(
+        "SELECT * FROM {$wpdb->prefix}crm_custom_properties
+         {$where_sql}
+         ORDER BY object_type ASC, sort_order ASC"
+    );
+
+    wp_send_json_success( [ 'properties' => $props ] );
+}
+
+function bntm_ajax_crm_save_custom_property() {
+    check_ajax_referer( 'crm_nonce', 'nonce' );
+
+    if ( ! is_user_logged_in() ) {
+        wp_send_json_error( [ 'message' => 'Unauthorized.' ] );
+    }
+
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_send_json_error( [ 'message' => 'Insufficient permissions.' ] );
+    }
+
+    global $wpdb;
+    $business_id   = get_current_user_id();
+    $prop_id       = intval(              $_POST['prop_id']       ?? 0 );
+    $field_label   = sanitize_text_field( $_POST['field_label']   ?? '' );
+    $field_name    = sanitize_key(        $_POST['field_name']     ?? '' );
+    $object_type   = sanitize_text_field( $_POST['object_type']   ?? '' );
+    $field_type    = sanitize_text_field( $_POST['field_type']    ?? 'text' );
+    $field_options = sanitize_textarea_field( $_POST['field_options'] ?? '' );
+
+    if ( $field_label === '' ) {
+        wp_send_json_error( [ 'message' => 'Field label is required.' ] );
+    }
+    if ( $field_name === '' ) {
+        wp_send_json_error( [ 'message' => 'Field name is required.' ] );
+    }
+    if ( ! preg_match( '/^[a-z0-9_]+$/', $field_name ) ) {
+        wp_send_json_error( [ 'message' => 'Field name must contain only lowercase letters, numbers, and underscores.' ] );
+    }
+
+    $allowed_object_types = [ 'contact', 'company', 'deal' ];
+    if ( ! in_array( $object_type, $allowed_object_types, true ) ) {
+        wp_send_json_error( [ 'message' => 'Invalid object type.' ] );
+    }
+
+    $allowed_field_types = [ 'text', 'number', 'date', 'textarea', 'select' ];
+    if ( ! in_array( $field_type, $allowed_field_types, true ) ) {
+        $field_type = 'text';
+    }
+
+    $sanitized_options = null;
+    if ( $field_type === 'select' ) {
+        if ( $field_options === '' ) {
+            wp_send_json_error( [ 'message' => 'Dropdown options are required for select fields.' ] );
+        }
+        $options_array = array_filter(
+            array_map( 'sanitize_text_field', explode( "\n", $field_options ) ),
+            function( $o ) { return $o !== ''; }
+        );
+        if ( empty( $options_array ) ) {
+            wp_send_json_error( [ 'message' => 'Please provide at least one dropdown option.' ] );
+        }
+        $sanitized_options = wp_json_encode( array_values( $options_array ) );
+    }
+
+    if ( $prop_id > 0 ) {
+        $exists = (int) $wpdb->get_var( $wpdb->prepare(
+            "SELECT COUNT(*) FROM {$wpdb->prefix}crm_custom_properties
+             WHERE id = %d AND business_id = %d",
+            $prop_id, $business_id
+        ) );
+
+        if ( ! $exists ) {
+            wp_send_json_error( [ 'message' => 'Property not found.' ] );
+        }
+
+        $duplicate = (int) $wpdb->get_var( $wpdb->prepare(
+            "SELECT COUNT(*) FROM {$wpdb->prefix}crm_custom_properties
+             WHERE business_id = %d AND object_type = %s
+               AND field_name = %s AND status = 'active' AND id != %d",
+            $business_id, $object_type, $field_name, $prop_id
+        ) );
+
+        if ( $duplicate > 0 ) {
+            wp_send_json_error( [ 'message' => 'A property with this field name already exists for this object type.' ] );
+        }
+
+        $updated = $wpdb->update(
+            $wpdb->prefix . 'crm_custom_properties',
+            [
+                'field_label'   => $field_label,
+                'field_name'    => $field_name,
+                'object_type'   => $object_type,
+                'field_type'    => $field_type,
+                'field_options' => $sanitized_options,
+            ],
+            [ 'id' => $prop_id, 'business_id' => $business_id ],
+            [ '%s', '%s', '%s', '%s', '%s' ],
+            [ '%d', '%d' ]
+        );
+
+        if ( $updated === false ) {
+            wp_send_json_error( [ 'message' => 'Failed to update property. Please try again.' ] );
+        }
+
+        wp_send_json_success( [
+            'message' => 'Property updated successfully.',
+            'prop_id' => $prop_id,
+        ] );
+    }
+
+    $duplicate = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(*) FROM {$wpdb->prefix}crm_custom_properties
+         WHERE business_id = %d AND object_type = %s
+           AND field_name = %s AND status = 'active'",
+        $business_id, $object_type, $field_name
+    ) );
+
+    if ( $duplicate > 0 ) {
+        wp_send_json_error( [ 'message' => 'A property with this field name already exists for this object type.' ] );
+    }
+
+    $max_order = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COALESCE(MAX(sort_order), 0)
+         FROM {$wpdb->prefix}crm_custom_properties
+         WHERE business_id = %d AND object_type = %s AND status = 'active'",
+        $business_id, $object_type
+    ) );
+
+    $inserted = $wpdb->insert(
+        $wpdb->prefix . 'crm_custom_properties',
+        [
+            'rand_id'       => bntm_rand_id(),
+            'business_id'   => $business_id,
+            'object_type'   => $object_type,
+            'field_name'    => $field_name,
+            'field_label'   => $field_label,
+            'field_type'    => $field_type,
+            'field_options' => $sanitized_options,
+            'sort_order'    => $max_order + 1,
+            'status'        => 'active',
+        ],
+        [ '%s', '%d', '%s', '%s', '%s', '%s', '%s', '%d', '%s' ]
+    );
+
+    if ( ! $inserted ) {
+        wp_send_json_error( [ 'message' => 'Failed to create property. Please try again.' ] );
+    }
+
+    wp_send_json_success( [
+        'message' => 'Property created successfully.',
+        'prop_id' => $wpdb->insert_id,
+    ] );
+}
+
+function bntm_ajax_crm_delete_custom_property() {
+    check_ajax_referer( 'crm_nonce', 'nonce' );
+
+    if ( ! is_user_logged_in() ) {
+        wp_send_json_error( [ 'message' => 'Unauthorized.' ] );
+    }
+
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_send_json_error( [ 'message' => 'Insufficient permissions.' ] );
+    }
+
+    global $wpdb;
+    $business_id = get_current_user_id();
+    $prop_id     = intval( $_POST['prop_id'] ?? 0 );
+
+    if ( $prop_id <= 0 ) {
+        wp_send_json_error( [ 'message' => 'Invalid property.' ] );
+    }
+
+    $exists = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(*) FROM {$wpdb->prefix}crm_custom_properties
+         WHERE id = %d AND business_id = %d",
+        $prop_id, $business_id
+    ) );
+
+    if ( ! $exists ) {
+        wp_send_json_error( [ 'message' => 'Property not found.' ] );
+    }
+
+    $deleted = $wpdb->update(
+        $wpdb->prefix . 'crm_custom_properties',
+        [ 'status' => 'deleted' ],
+        [ 'id' => $prop_id, 'business_id' => $business_id ],
+        [ '%s' ],
+        [ '%d', '%d' ]
+    );
+
+    if ( $deleted === false ) {
+        wp_send_json_error( [ 'message' => 'Failed to delete property. Please try again.' ] );
+    }
+
+    wp_send_json_success( [ 'message' => 'Property deleted successfully.' ] );
+}
+
+// =============================================================================
+// HELPER FUNCTIONS
+// =============================================================================
+
+function crm_format_currency( $amount ) {
+    $currency = bntm_get_setting( 'crm_currency', 'PHP' );
+    $symbols  = [
+        'USD' => '$',
+        'EUR' => '&euro;',
+        'GBP' => '&pound;',
+        'PHP' => '&#8369;',
+    ];
+    $symbol = $symbols[ $currency ] ?? '&#8369;';
+    return $symbol . number_format( (float) $amount, 2 );
+}
+
+function crm_log_activity(
+    $business_id,
+    $author_id,
+    $linked_type,
+    $linked_id,
+    $activity_type,
+    $body
+) {
+    global $wpdb;
+
+    $allowed_types = [ 'note', 'task_created', 'task_completed', 'deal_moved', 'status_changed' ];
+    if ( ! in_array( $activity_type, $allowed_types, true ) ) {
+        $activity_type = 'note';
+    }
+
+    $allowed_linked = [ 'contact', 'company', 'deal' ];
+    if ( ! in_array( $linked_type, $allowed_linked, true ) ) {
+        return false;
+    }
+
+    return $wpdb->insert(
+        $wpdb->prefix . 'crm_activities',
+        [
+            'rand_id'       => bntm_rand_id(),
+            'business_id'   => intval( $business_id ),
+            'author_id'     => intval( $author_id ),
+            'linked_type'   => sanitize_text_field( $linked_type ),
+            'linked_id'     => intval( $linked_id ),
+            'activity_type' => $activity_type,
+            'body'          => sanitize_textarea_field( $body ),
+            'status'        => 'active',
+        ],
+        [ '%s', '%d', '%d', '%s', '%d', '%s', '%s', '%s' ]
+    );
+}
+
+function crm_activity_label( $type ) {
+    $labels = [
+        'note'           => 'Note added',
+        'task_created'   => 'Task created',
+        'task_completed' => 'Task completed',
+        'deal_moved'     => 'Deal stage changed',
+        'status_changed' => 'Record updated',
+    ];
+    return $labels[ $type ] ?? ucfirst( str_replace( '_', ' ', $type ) );
+}
+
+function crm_time_ago( $datetime ) {
+    $now  = current_time( 'timestamp' );
+    $then = strtotime( $datetime );
+    $diff = max( 0, $now - $then );
+
+    if ( $diff < 60 )         return 'just now';
+    if ( $diff < 3600 )       return floor( $diff / 60 ) . 'm ago';
+    if ( $diff < 86400 )      return floor( $diff / 3600 ) . 'h ago';
+    if ( $diff < 604800 )     return floor( $diff / 86400 ) . 'd ago';
+    if ( $diff < 2592000 )    return floor( $diff / 604800 ) . 'w ago';
+    if ( $diff < 31536000 )   return floor( $diff / 2592000 ) . 'mo ago';
+    return floor( $diff / 31536000 ) . 'y ago';
+}
+
+function crm_get_linked_record_label( $linked_type, $linked_id, $business_id ) {
+    global $wpdb;
+
+    if ( ! $linked_type || ! $linked_id ) {
+        return '';
+    }
+
+    switch ( $linked_type ) {
+        case 'contact':
+            $row = $wpdb->get_row( $wpdb->prepare(
+                "SELECT first_name, last_name
+                 FROM {$wpdb->prefix}crm_contacts
+                 WHERE id = %d AND business_id = %d",
+                $linked_id, $business_id
+            ) );
+            return $row ? trim( $row->first_name . ' ' . $row->last_name ) : '—';
+
+        case 'company':
+            $row = $wpdb->get_row( $wpdb->prepare(
+                "SELECT name FROM {$wpdb->prefix}crm_companies
+                 WHERE id = %d AND business_id = %d",
+                $linked_id, $business_id
+            ) );
+            return $row ? $row->name : '—';
+
+        case 'deal':
+            $row = $wpdb->get_row( $wpdb->prepare(
+                "SELECT name FROM {$wpdb->prefix}crm_deals
+                 WHERE id = %d AND business_id = %d",
+                $linked_id, $business_id
+            ) );
+            return $row ? $row->name : '—';
+
+        default:
+            return '—';
+    }
+}
+
+function crm_get_stats( $business_id ) {
+    global $wpdb;
+    $today = current_time( 'Y-m-d' );
+
+    return [
+        'total_contacts'  => (int) $wpdb->get_var( $wpdb->prepare(
+            "SELECT COUNT(*) FROM {$wpdb->prefix}crm_contacts
+             WHERE business_id = %d AND status = 'active'",
+            $business_id
+        ) ),
+        'total_companies' => (int) $wpdb->get_var( $wpdb->prepare(
+            "SELECT COUNT(*) FROM {$wpdb->prefix}crm_companies
+             WHERE business_id = %d AND status = 'active'",
+            $business_id
+        ) ),
+        'open_deals'      => (int) $wpdb->get_var( $wpdb->prepare(
+            "SELECT COUNT(*) FROM {$wpdb->prefix}crm_deals
+             WHERE business_id = %d AND status = 'open'",
+            $business_id
+        ) ),
+        'pipeline_value'  => (float) $wpdb->get_var( $wpdb->prepare(
+            "SELECT COALESCE(SUM(amount), 0) FROM {$wpdb->prefix}crm_deals
+             WHERE business_id = %d AND status = 'open'",
+            $business_id
+        ) ),
+        'overdue_tasks'   => (int) $wpdb->get_var( $wpdb->prepare(
+            "SELECT COUNT(*) FROM {$wpdb->prefix}crm_tasks
+             WHERE business_id = %d AND status = 'pending' AND due_date < %s",
+            $business_id, $today
+        ) ),
+        'pending_tasks'   => (int) $wpdb->get_var( $wpdb->prepare(
+            "SELECT COUNT(*) FROM {$wpdb->prefix}crm_tasks
+             WHERE business_id = %d AND status = 'pending' AND due_date >= %s",
+            $business_id, $today
+        ) ),
+    ];
+}
+
+function crm_seed_default_pipeline_stages() {
+    global $wpdb;
+
+    $existing = (int) $wpdb->get_var(
+        "SELECT COUNT(*) FROM {$wpdb->prefix}crm_pipeline_stages
+         WHERE pipeline_id = 1"
+    );
+
+    if ( $existing > 0 ) {
+        return;
+    }
+
+    $default_stages = [
+        [ 'name' => 'Lead In',        'color' => '#6366f1', 'sort_order' => 1 ],
+        [ 'name' => 'Qualified',       'color' => '#3b82f6', 'sort_order' => 2 ],
+        [ 'name' => 'Proposal Sent',   'color' => '#f59e0b', 'sort_order' => 3 ],
+        [ 'name' => 'Negotiation',     'color' => '#ec4899', 'sort_order' => 4 ],
+        [ 'name' => 'Closed Won',      'color' => '#10b981', 'sort_order' => 5 ],
+        [ 'name' => 'Closed Lost',     'color' => '#ef4444', 'sort_order' => 6 ],
+    ];
+
+    foreach ( $default_stages as $stage ) {
+        $wpdb->insert(
+            $wpdb->prefix . 'crm_pipeline_stages',
+            [
+                'rand_id'     => bntm_rand_id(),
+                'business_id' => 0,
+                'pipeline_id' => 1,
+                'name'        => $stage['name'],
+                'sort_order'  => $stage['sort_order'],
+                'color'       => $stage['color'],
+                'status'      => 'active',
+            ],
+            [ '%s', '%d', '%d', '%s', '%d', '%s', '%s' ]
+        );
+    }
+}
+
+function crm_check_dependencies() {
+    return true;
+}
+
+// =============================================================================
+// SHORTCODE REGISTRATION BOOTSTRAP
+// =============================================================================
+
+function bntm_crm_register_shortcodes() {
+    $shortcodes = bntm_crm_get_shortcodes();
+    foreach ( $shortcodes as $tag => $callback ) {
+        if ( function_exists( $callback ) ) {
+            add_shortcode( $tag, $callback );
+        }
+    }
+}
+add_action( 'init', 'bntm_crm_register_shortcodes' );
+
+// =============================================================================
+// PAGE AUTO-CREATION ON ACTIVATION
+// =============================================================================
+
+function bntm_crm_create_pages() {
+    $pages = bntm_crm_get_pages();
+
+    foreach ( $pages as $title => $shortcode ) {
+        $slug = sanitize_title( $title );
+
+        $existing = get_page_by_path( $slug );
+        if ( $existing ) {
+            continue;
+        }
+
+        wp_insert_post( [
+            'post_title'   => $title,
+            'post_name'    => $slug,
+            'post_content' => $shortcode,
+            'post_status'  => 'publish',
+            'post_type'    => 'page',
+            'post_author'  => get_current_user_id(),
+        ] );
+    }
+}
+register_activation_hook( BNTM_CRM_PATH . 'crm.php', 'bntm_crm_create_pages' );
+register_activation_hook( BNTM_CRM_PATH . 'crm.php', 'bntm_crm_create_tables' );
