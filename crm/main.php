@@ -1,39 +1,43 @@
-﻿<?php
+<?php
 /**
- * Module Name: CRM
+ * Module Name: Simple CRM
  * Module Slug: crm
- * Description: Allows businesses to manage their customer relationships. Business owners can track contacts, manage leads through a pipeline, log interactions, and follow up on deals. All activity is managed from an internal dashboard.
+ * Description: A HubSpot-inspired internal CRM for managing contacts, companies,
+ *              deals, tasks, and activity history. Supports B2B and individual
+ *              customers with an owner-first dashboard, pipeline management,
+ *              and basic admin customization via custom properties.
  * Version: 1.0.0
  * Author: BNTM
- * Icon: <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+ * Icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
  */
 
-// Prevent direct access
-if (!defined('ABSPATH')) exit;
+if ( ! defined( 'ABSPATH' ) ) exit;
 
-// Module constants
-define('BNTM_CRM_PATH', dirname(__FILE__) . '/');
-define('BNTM_CRM_URL', plugin_dir_url(__FILE__));
+define( 'BNTM_CRM_PATH', dirname( __FILE__ ) . '/' );
+define( 'BNTM_CRM_URL',  plugin_dir_url( __FILE__ ) );
+define( 'BNTM_CRM_SCHEMA_VERSION', '1.1.0' );
 
-// ============================================================
-// MODULE CONFIGURATION FUNCTIONS
-// ============================================================
+// =============================================================================
+// MODULE CONFIGURATION
+// =============================================================================
 
-/**
- * Return pages data for the CRM module.
- * @return array
- */
 function bntm_crm_get_pages() {
     return [
-        'CRM Dashboard'  => '[crm_dashboard]',
-        'Contact Form'   => '[crm_contact_form]',
+        'CRM Dashboard' => '[crm_dashboard]',
     ];
 }
 
-/**
- * Return tables data for the CRM module.
- * @return array
- */
+function crm_get_current_business_scope_id() {
+    if ( function_exists( 'bntm_get_current_business_id' ) ) {
+        $business_id = absint( bntm_get_current_business_id() );
+        if ( $business_id > 0 ) {
+            return $business_id;
+        }
+    }
+
+    return absint( get_current_user_id() );
+}
+
 function bntm_crm_get_tables() {
     global $wpdb;
     $charset = $wpdb->get_charset_collate();
@@ -44,3997 +48,8656 @@ function bntm_crm_get_tables() {
             id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
             rand_id VARCHAR(20) UNIQUE NOT NULL,
             business_id BIGINT UNSIGNED NOT NULL DEFAULT 0,
+            owner_id BIGINT UNSIGNED NOT NULL DEFAULT 0,
+            company_id BIGINT UNSIGNED NOT NULL DEFAULT 0,
             first_name VARCHAR(100) NOT NULL DEFAULT '',
             last_name VARCHAR(100) NOT NULL DEFAULT '',
-            email VARCHAR(255) NOT NULL DEFAULT '',
+            email VARCHAR(191) NOT NULL DEFAULT '',
             phone VARCHAR(50) NOT NULL DEFAULT '',
-            company VARCHAR(255) NOT NULL DEFAULT '',
-            notes TEXT,
+            job_title VARCHAR(191) NOT NULL DEFAULT '',
+            address TEXT DEFAULT NULL,
+            lead_source VARCHAR(100) NOT NULL DEFAULT '',
+            lifecycle_status VARCHAR(50) NOT NULL DEFAULT 'lead',
+            tags TEXT DEFAULT NULL,
+            custom_properties LONGTEXT DEFAULT NULL,
             status VARCHAR(50) NOT NULL DEFAULT 'active',
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
             INDEX idx_business (business_id),
-            INDEX idx_status (status)
+            INDEX idx_owner (owner_id),
+            INDEX idx_company (company_id),
+            INDEX idx_lifecycle (lifecycle_status)
         ) {$charset};",
 
-        'crm_leads' => "CREATE TABLE {$prefix}crm_leads (
+        'crm_companies' => "CREATE TABLE {$prefix}crm_companies (
             id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
             rand_id VARCHAR(20) UNIQUE NOT NULL,
             business_id BIGINT UNSIGNED NOT NULL DEFAULT 0,
-            contact_id BIGINT UNSIGNED NOT NULL DEFAULT 0,
-            title VARCHAR(255) NOT NULL DEFAULT '',
-            value DECIMAL(15,2) NOT NULL DEFAULT 0.00,
-            pipeline_type VARCHAR(50) NOT NULL DEFAULT 'subscription',
-            product_type VARCHAR(50) NOT NULL DEFAULT '',
-            service_type VARCHAR(100) NOT NULL DEFAULT '',
+            owner_id BIGINT UNSIGNED NOT NULL DEFAULT 0,
+            name VARCHAR(191) NOT NULL DEFAULT '',
+            industry VARCHAR(100) NOT NULL DEFAULT '',
+            website VARCHAR(255) NOT NULL DEFAULT '',
+            phone VARCHAR(50) NOT NULL DEFAULT '',
+            email VARCHAR(191) NOT NULL DEFAULT '',
+            address TEXT DEFAULT NULL,
             lead_source VARCHAR(100) NOT NULL DEFAULT '',
-            sales_owner BIGINT UNSIGNED NOT NULL DEFAULT 0,
-            motm_uploaded TINYINT(1) NOT NULL DEFAULT 0,
-            ended_reason VARCHAR(50) NOT NULL DEFAULT '',
-            stage VARCHAR(100) NOT NULL DEFAULT 'new',
-            priority VARCHAR(20) NOT NULL DEFAULT 'medium',
-            expected_close DATE NULL,
-            notes TEXT,
+            tags TEXT DEFAULT NULL,
+            custom_properties LONGTEXT DEFAULT NULL,
+            status VARCHAR(50) NOT NULL DEFAULT 'active',
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            INDEX idx_business (business_id),
+            INDEX idx_owner (owner_id)
+        ) {$charset};",
+
+        'crm_deals' => "CREATE TABLE {$prefix}crm_deals (
+            id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+            rand_id VARCHAR(20) UNIQUE NOT NULL,
+            business_id BIGINT UNSIGNED NOT NULL DEFAULT 0,
+            owner_id BIGINT UNSIGNED NOT NULL DEFAULT 0,
+            contact_id BIGINT UNSIGNED NOT NULL DEFAULT 0,
+            company_id BIGINT UNSIGNED NOT NULL DEFAULT 0,
+            pipeline_id BIGINT UNSIGNED NOT NULL DEFAULT 1,
+            stage_id BIGINT UNSIGNED NOT NULL DEFAULT 0,
+            name VARCHAR(191) NOT NULL DEFAULT '',
+            amount DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+            expected_close_date DATE DEFAULT NULL,
+            custom_properties LONGTEXT DEFAULT NULL,
             status VARCHAR(50) NOT NULL DEFAULT 'open',
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
             INDEX idx_business (business_id),
+            INDEX idx_owner (owner_id),
+            INDEX idx_stage (stage_id),
             INDEX idx_contact (contact_id),
-            INDEX idx_stage (stage),
-            INDEX idx_pipeline_type (pipeline_type),
-            INDEX idx_product_type (product_type),
-            INDEX idx_service_type (service_type),
-            INDEX idx_lead_source (lead_source),
-            INDEX idx_sales_owner (sales_owner)
+            INDEX idx_company (company_id),
+            INDEX idx_status (status)
         ) {$charset};",
 
-        'crm_interactions' => "CREATE TABLE {$prefix}crm_interactions (
+        'crm_tasks' => "CREATE TABLE {$prefix}crm_tasks (
             id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
             rand_id VARCHAR(20) UNIQUE NOT NULL,
             business_id BIGINT UNSIGNED NOT NULL DEFAULT 0,
-            contact_id BIGINT UNSIGNED NOT NULL DEFAULT 0,
-            type VARCHAR(50) NOT NULL DEFAULT 'note',
-            subject VARCHAR(255) NOT NULL DEFAULT '',
-            details TEXT,
-            interaction_date DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            assignee_id BIGINT UNSIGNED NOT NULL DEFAULT 0,
+            linked_type VARCHAR(50) NOT NULL DEFAULT '',
+            linked_id BIGINT UNSIGNED NOT NULL DEFAULT 0,
+            title VARCHAR(255) NOT NULL DEFAULT '',
+            due_date DATE DEFAULT NULL,
+            reminder_days INT UNSIGNED NOT NULL DEFAULT 0,
+            status VARCHAR(50) NOT NULL DEFAULT 'pending',
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            INDEX idx_business (business_id),
+            INDEX idx_assignee (assignee_id),
+            INDEX idx_linked (linked_type, linked_id),
+            INDEX idx_due (due_date)
+        ) {$charset};",
+
+        'crm_activities' => "CREATE TABLE {$prefix}crm_activities (
+            id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+            rand_id VARCHAR(20) UNIQUE NOT NULL,
+            business_id BIGINT UNSIGNED NOT NULL DEFAULT 0,
+            author_id BIGINT UNSIGNED NOT NULL DEFAULT 0,
+            linked_type VARCHAR(50) NOT NULL DEFAULT '',
+            linked_id BIGINT UNSIGNED NOT NULL DEFAULT 0,
+            activity_type VARCHAR(50) NOT NULL DEFAULT 'note',
+            body TEXT DEFAULT NULL,
             status VARCHAR(50) NOT NULL DEFAULT 'active',
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
             INDEX idx_business (business_id),
-            INDEX idx_contact (contact_id)
+            INDEX idx_linked (linked_type, linked_id),
+            INDEX idx_author (author_id)
+        ) {$charset};",
+
+        'crm_notes' => "CREATE TABLE {$prefix}crm_notes (
+            id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+            rand_id VARCHAR(20) UNIQUE NOT NULL,
+            business_id BIGINT UNSIGNED NOT NULL DEFAULT 0,
+            author_id BIGINT UNSIGNED NOT NULL DEFAULT 0,
+            linked_type VARCHAR(50) NOT NULL DEFAULT '',
+            linked_id BIGINT UNSIGNED NOT NULL DEFAULT 0,
+            body TEXT DEFAULT NULL,
+            status VARCHAR(50) NOT NULL DEFAULT 'active',
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            INDEX idx_business (business_id),
+            INDEX idx_linked (linked_type, linked_id),
+            INDEX idx_author (author_id)
+        ) {$charset};",
+
+        'crm_files' => "CREATE TABLE {$prefix}crm_files (
+            id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+            rand_id VARCHAR(20) UNIQUE NOT NULL,
+            business_id BIGINT UNSIGNED NOT NULL DEFAULT 0,
+            uploaded_by BIGINT UNSIGNED NOT NULL DEFAULT 0,
+            linked_type VARCHAR(50) NOT NULL DEFAULT '',
+            linked_id BIGINT UNSIGNED NOT NULL DEFAULT 0,
+            file_name VARCHAR(255) NOT NULL DEFAULT '',
+            file_url TEXT DEFAULT NULL,
+            mime_type VARCHAR(100) NOT NULL DEFAULT '',
+            file_size BIGINT UNSIGNED NOT NULL DEFAULT 0,
+            status VARCHAR(50) NOT NULL DEFAULT 'active',
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            INDEX idx_business (business_id),
+            INDEX idx_linked (linked_type, linked_id),
+            INDEX idx_uploaded_by (uploaded_by)
+        ) {$charset};",
+
+        'crm_pipeline_stages' => "CREATE TABLE {$prefix}crm_pipeline_stages (
+            id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+            rand_id VARCHAR(20) UNIQUE NOT NULL,
+            business_id BIGINT UNSIGNED NOT NULL DEFAULT 0,
+            pipeline_id BIGINT UNSIGNED NOT NULL DEFAULT 1,
+            name VARCHAR(100) NOT NULL DEFAULT '',
+            sort_order INT UNSIGNED NOT NULL DEFAULT 0,
+            color VARCHAR(20) NOT NULL DEFAULT '#6366f1',
+            status VARCHAR(50) NOT NULL DEFAULT 'active',
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            INDEX idx_business (business_id),
+            INDEX idx_pipeline (pipeline_id),
+            INDEX idx_sort (sort_order)
+        ) {$charset};",
+
+        'crm_custom_properties' => "CREATE TABLE {$prefix}crm_custom_properties (
+            id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+            rand_id VARCHAR(20) UNIQUE NOT NULL,
+            business_id BIGINT UNSIGNED NOT NULL DEFAULT 0,
+            object_type VARCHAR(50) NOT NULL DEFAULT 'contact',
+            field_name VARCHAR(100) NOT NULL DEFAULT '',
+            field_label VARCHAR(191) NOT NULL DEFAULT '',
+            field_type VARCHAR(50) NOT NULL DEFAULT 'text',
+            field_options TEXT DEFAULT NULL,
+            sort_order INT UNSIGNED NOT NULL DEFAULT 0,
+            status VARCHAR(50) NOT NULL DEFAULT 'active',
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            INDEX idx_business (business_id),
+            INDEX idx_object (object_type)
         ) {$charset};",
     ];
 }
 
-/**
- * Return shortcodes data for the CRM module.
- * @return array
- */
 function bntm_crm_get_shortcodes() {
     return [
-        'crm_dashboard'    => 'bntm_shortcode_crm',
-        'crm_contact_form' => 'bntm_shortcode_crm_contact_form',
+        'crm_dashboard' => 'bntm_shortcode_crm',
     ];
 }
 
-/**
- * Create or update CRM database tables.
- * @return int
- */
 function bntm_crm_create_tables() {
-    require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
+    require_once( ABSPATH . 'wp-admin/includes/upgrade.php' );
     $tables = bntm_crm_get_tables();
-    foreach ($tables as $sql) {
-        dbDelta($sql);
+    foreach ( $tables as $sql ) {
+        dbDelta( $sql );
     }
-    return count($tables);
+    crm_seed_default_pipeline_stages();
+    update_option( 'bntm_crm_schema_version', BNTM_CRM_SCHEMA_VERSION );
+    return count( $tables );
 }
 
-// ============================================================
+function bntm_crm_maybe_upgrade_schema() {
+    $installed_version = get_option( 'bntm_crm_schema_version', '' );
+
+    if ( version_compare( (string) $installed_version, BNTM_CRM_SCHEMA_VERSION, '>=' ) ) {
+        return;
+    }
+
+    bntm_crm_create_tables();
+}
+
+// =============================================================================
 // AJAX ACTION HOOKS
-// ============================================================
+// =============================================================================
+
+// Dashboard
+add_action( 'wp_ajax_crm_get_dashboard_stats',   'bntm_ajax_crm_get_dashboard_stats' );
+add_action( 'wp_ajax_crm_get_recent_activity',   'bntm_ajax_crm_get_recent_activity' );
+add_action( 'wp_ajax_crm_get_record_detail',     'bntm_ajax_crm_get_record_detail' );
+add_action( 'wp_ajax_crm_get_record_activity',   'bntm_ajax_crm_get_record_activity' );
+add_action( 'wp_ajax_crm_get_notes',             'bntm_ajax_crm_get_notes' );
+add_action( 'wp_ajax_crm_save_note',             'bntm_ajax_crm_save_note' );
+add_action( 'wp_ajax_crm_delete_note',           'bntm_ajax_crm_delete_note' );
 
 // Contacts
-add_action('wp_ajax_crm_add_contact',        'bntm_ajax_crm_add_contact');
-add_action('wp_ajax_crm_edit_contact',       'bntm_ajax_crm_edit_contact');
-add_action('wp_ajax_crm_delete_contact',     'bntm_ajax_crm_delete_contact');
-add_action('wp_ajax_crm_get_contact',        'bntm_ajax_crm_get_contact');
+add_action( 'wp_ajax_crm_get_contacts',          'bntm_ajax_crm_get_contacts' );
+add_action( 'wp_ajax_crm_create_contact',        'bntm_ajax_crm_create_contact' );
+add_action( 'wp_ajax_crm_update_contact',        'bntm_ajax_crm_update_contact' );
+add_action( 'wp_ajax_crm_delete_contact',        'bntm_ajax_crm_delete_contact' );
 
-// Leads
-add_action('wp_ajax_crm_add_lead',           'bntm_ajax_crm_add_lead');
-add_action('wp_ajax_crm_edit_lead',          'bntm_ajax_crm_edit_lead');
-add_action('wp_ajax_crm_delete_lead',        'bntm_ajax_crm_delete_lead');
-add_action('wp_ajax_crm_update_lead_stage',  'bntm_ajax_crm_update_lead_stage');
+// Companies
+add_action( 'wp_ajax_crm_get_companies',         'bntm_ajax_crm_get_companies' );
+add_action( 'wp_ajax_crm_create_company',        'bntm_ajax_crm_create_company' );
+add_action( 'wp_ajax_crm_update_company',        'bntm_ajax_crm_update_company' );
+add_action( 'wp_ajax_crm_delete_company',        'bntm_ajax_crm_delete_company' );
 
-// Interactions
-add_action('wp_ajax_crm_add_interaction',    'bntm_ajax_crm_add_interaction');
-add_action('wp_ajax_crm_delete_interaction', 'bntm_ajax_crm_delete_interaction');
+// Deals
+add_action( 'wp_ajax_crm_get_deals',             'bntm_ajax_crm_get_deals' );
+add_action( 'wp_ajax_crm_create_deal',           'bntm_ajax_crm_create_deal' );
+add_action( 'wp_ajax_crm_update_deal',           'bntm_ajax_crm_update_deal' );
+add_action( 'wp_ajax_crm_delete_deal',           'bntm_ajax_crm_delete_deal' );
+add_action( 'wp_ajax_crm_move_deal_stage',       'bntm_ajax_crm_move_deal_stage' );
 
-// Settings
-add_action('wp_ajax_crm_save_settings',      'bntm_ajax_crm_save_settings');
+// Tasks
+add_action( 'wp_ajax_crm_get_tasks',             'bntm_ajax_crm_get_tasks' );
+add_action( 'wp_ajax_crm_create_task',           'bntm_ajax_crm_create_task' );
+add_action( 'wp_ajax_crm_update_task',           'bntm_ajax_crm_update_task' );
+add_action( 'wp_ajax_crm_delete_task',           'bntm_ajax_crm_delete_task' );
+add_action( 'wp_ajax_crm_complete_task',         'bntm_ajax_crm_complete_task' );
 
-// Public: contact form submission
-add_action('wp_ajax_crm_submit_contact_form',        'bntm_ajax_crm_submit_contact_form');
-add_action('wp_ajax_nopriv_crm_submit_contact_form', 'bntm_ajax_crm_submit_contact_form');
+// Settings — Pipeline Stages
+add_action( 'wp_ajax_crm_get_stages',            'bntm_ajax_crm_get_stages' );
+add_action( 'wp_ajax_crm_save_stage',            'bntm_ajax_crm_save_stage' );
+add_action( 'wp_ajax_crm_delete_stage',          'bntm_ajax_crm_delete_stage' );
+add_action( 'wp_ajax_crm_reorder_stages',        'bntm_ajax_crm_reorder_stages' );
 
-// ============================================================
+// Settings — Custom Properties
+add_action( 'wp_ajax_crm_get_custom_properties', 'bntm_ajax_crm_get_custom_properties' );
+add_action( 'wp_ajax_crm_save_custom_property',  'bntm_ajax_crm_save_custom_property' );
+add_action( 'wp_ajax_crm_delete_custom_property','bntm_ajax_crm_delete_custom_property' );
+
+// =============================================================================
 // MAIN DASHBOARD SHORTCODE
-// ============================================================
+// =============================================================================
 
-/**
- * Render the CRM shortcode output.
- * @return string
- */
 function bntm_shortcode_crm() {
-    if (!is_user_logged_in()) {
+    if ( ! is_user_logged_in() ) {
         return '<div class="bntm-notice">Please log in to access the CRM.</div>';
     }
 
     $current_user = wp_get_current_user();
-    $business_id  = $current_user->ID;
-    $active_tab   = isset($_GET['tab']) ? sanitize_text_field($_GET['tab']) : 'overview';
+    $business_id  = crm_get_current_business_scope_id();
+    $is_admin     = current_user_can( 'manage_options' );
+    $active_tab   = isset( $_GET['tab'] ) ? sanitize_text_field( $_GET['tab'] ) : 'dashboard';
+    $active_view  = isset( $_GET['view'] ) ? sanitize_text_field( $_GET['view'] ) : '';
+    $record_id    = isset( $_GET['id'] ) ? intval( $_GET['id'] ) : 0;
+    $crm_users    = get_users( [ 'fields' => [ 'ID', 'display_name' ] ] );
+
+    crm_sync_default_pipeline_stages_for_business( $business_id );
 
     ob_start();
     ?>
     <script>
-    var ajaxurl = '<?php echo admin_url('admin-ajax.php'); ?>';
-    var crm_nonce = '<?php echo wp_create_nonce('crm_nonce'); ?>';
-    </script>
-
-    <div class="bntm-crm-container">
-        <!-- Tab Navigation -->
-        <div class="bntm-tabs">
-            <a href="?tab=overview" class="bntm-tab <?php echo $active_tab === 'overview' ? 'active' : ''; ?>">
-                <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><rect x="14" y="3" width="7" height="7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><rect x="3" y="14" width="7" height="7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><rect x="14" y="14" width="7" height="7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                Overview
-            </a>
-            <a href="?tab=contacts" class="bntm-tab <?php echo $active_tab === 'contacts' ? 'active' : ''; ?>">
-                <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4" stroke-width="2"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>
-                Contacts
-            </a>
-            <a href="?tab=leads" class="bntm-tab <?php echo $active_tab === 'leads' ? 'active' : ''; ?>">
-                <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>
-                Leads
-            </a>
-            <a href="?tab=interactions" class="bntm-tab <?php echo $active_tab === 'interactions' ? 'active' : ''; ?>">
-                <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
-                Interactions
-            </a>
-            <a href="?tab=settings" class="bntm-tab <?php echo $active_tab === 'settings' ? 'active' : ''; ?>">
-                <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><circle cx="12" cy="12" r="3" stroke-width="2"/></svg>
-                Settings
-            </a>
-        </div>
-
-        <!-- Tab Content -->
-        <div class="bntm-tab-content">
-            <?php if ($active_tab === 'overview'): ?>
-                <?php echo crm_overview_tab($business_id); ?>
-            <?php elseif ($active_tab === 'contacts'): ?>
-                <?php echo crm_contacts_tab($business_id); ?>
-            <?php elseif ($active_tab === 'leads'): ?>
-                <?php echo crm_leads_tab($business_id); ?>
-            <?php elseif ($active_tab === 'interactions'): ?>
-                <?php echo crm_interactions_tab($business_id); ?>
-            <?php elseif ($active_tab === 'settings'): ?>
-                <?php echo crm_settings_tab($business_id); ?>
-            <?php endif; ?>
-        </div>
-    </div>
-
-    <style>
-    /* ── Shared CRM styles ── */
-    .bntm-crm-container { font-family: inherit; }
-    .bntm-tabs { display:flex; flex-wrap:wrap; gap:4px; margin-bottom:24px; border-bottom:2px solid #e5e7eb; padding-bottom:0; }
-    .bntm-tab { display:inline-flex; align-items:center; gap:6px; padding:10px 18px; font-size:14px; font-weight:500; color:#6b7280; text-decoration:none; border-radius:6px 6px 0 0; border:none; background:transparent; cursor:pointer; transition:color .15s,background .15s; margin-bottom:-2px; border-bottom:2px solid transparent; }
-    .bntm-tab:hover { color:#111827; background:#f3f4f6; }
-    .bntm-tab.active { color:var(--bntm-primary,#6366f1); border-bottom:2px solid var(--bntm-primary,#6366f1); background:#fff; }
-    .bntm-tab-content { min-height:300px; }
-
-    /* Stats row */
-    .bntm-stats-row { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:16px; margin-bottom:24px; }
-    .bntm-stat-card { background:#fff; border:1px solid #e5e7eb; border-radius:12px; padding:20px; display:flex; align-items:center; gap:16px; box-shadow:0 1px 3px rgba(0,0,0,.06); }
-    .bntm-stat-card .stat-icon { width:48px; height:48px; border-radius:10px; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
-    .bntm-stat-card .stat-content h3 { margin:0 0 4px; font-size:12px; font-weight:500; color:#6b7280; text-transform:uppercase; letter-spacing:.05em; }
-    .bntm-stat-card .stat-number { margin:0 0 2px; font-size:26px; font-weight:700; color:#111827; line-height:1; }
-    .bntm-stat-card .stat-label { font-size:11px; color:#9ca3af; }
-
-    /* Form section */
-    .bntm-form-section { background:#fff; border:1px solid #e5e7eb; border-radius:12px; padding:20px 24px; margin-bottom:20px; }
-    .bntm-form-section h3 { margin:0 0 16px; font-size:16px; font-weight:600; color:#111827; }
-
-    /* Inputs/selects/buttons */
-    .crm-input, .crm-select, .crm-textarea {
-        width:100%; padding:9px 12px; border:1px solid #d1d5db; border-radius:8px;
-        font-size:14px; color:#111827; background:#fff; box-sizing:border-box;
-        transition:border-color .15s,box-shadow .15s;
-    }
-    .crm-input:focus, .crm-select:focus, .crm-textarea:focus {
-        outline:none; border-color:var(--bntm-primary,#6366f1);
-        box-shadow:0 0 0 3px rgba(99,102,241,.12);
-    }
-    .crm-textarea { resize:vertical; min-height:80px; }
-    .crm-form-row { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px; }
-    .crm-form-row.single { grid-template-columns:1fr; }
-    .crm-form-row.triple { grid-template-columns:1fr 1fr 1fr; }
-    .crm-form-group { display:flex; flex-direction:column; gap:4px; }
-    .crm-form-group label { font-size:12px; font-weight:500; color:#374151; }
-
-    /* Table */
-    .bntm-table-wrapper { overflow-x:auto; border-radius:10px; border:1px solid #e5e7eb; }
-    .bntm-table { width:100%; border-collapse:collapse; font-size:14px; }
-    .bntm-table thead tr { background:#f9fafb; }
-    .bntm-table th { padding:11px 14px; text-align:left; font-size:11px; font-weight:600; color:#6b7280; text-transform:uppercase; letter-spacing:.05em; white-space:nowrap; }
-    .bntm-table td { padding:12px 14px; border-top:1px solid #f3f4f6; color:#374151; vertical-align:middle; }
-    .bntm-table tbody tr:hover { background:#fafafa; }
-
-    /* Badges */
-    .crm-badge { display:inline-flex; align-items:center; padding:3px 10px; border-radius:999px; font-size:11px; font-weight:600; text-transform:capitalize; }
-    .crm-badge-new        { background:#eff6ff; color:#2563eb; }
-    .crm-badge-contacted  { background:#fef3c7; color:#b45309; }
-    .crm-badge-qualified  { background:#ecfdf5; color:#059669; }
-    .crm-badge-won        { background:#d1fae5; color:#065f46; }
-    .crm-badge-lost       { background:#fee2e2; color:#991b1b; }
-    .crm-badge-active     { background:#ecfdf5; color:#059669; }
-    .crm-badge-inactive   { background:#f3f4f6; color:#6b7280; }
-    .crm-badge-open       { background:#eff6ff; color:#2563eb; }
-    .crm-badge-closed     { background:#f3f4f6; color:#6b7280; }
-    .crm-badge-call       { background:#faf5ff; color:#7c3aed; }
-    .crm-badge-email      { background:#ecfeff; color:#0891b2; }
-    .crm-badge-meeting    { background:#fff7ed; color:#c2410c; }
-    .crm-badge-note       { background:#f0fdf4; color:#15803d; }
-    .crm-badge-high       { background:#fee2e2; color:#991b1b; }
-    .crm-badge-medium     { background:#fef3c7; color:#b45309; }
-    .crm-badge-low        { background:#f0fdf4; color:#15803d; }
-
-    /* Buttons */
-    .bntm-btn-primary   { background:var(--bntm-primary,#6366f1); color:#fff; border:none; padding:9px 18px; border-radius:8px; font-size:14px; font-weight:500; cursor:pointer; transition:background .15s,opacity .15s; }
-    .bntm-btn-primary:hover { background:var(--bntm-primary-hover,#4f46e5); }
-    .bntm-btn-secondary { background:#fff; color:#374151; border:1px solid #d1d5db; padding:9px 18px; border-radius:8px; font-size:14px; font-weight:500; cursor:pointer; transition:background .15s; }
-    .bntm-btn-secondary:hover { background:#f9fafb; }
-    .bntm-btn-danger    { background:#ef4444; color:#fff; border:none; padding:9px 18px; border-radius:8px; font-size:14px; font-weight:500; cursor:pointer; transition:background .15s; }
-    .bntm-btn-danger:hover { background:#dc2626; }
-    .bntm-btn-small { padding:5px 12px; font-size:12px; }
-    .bntm-btn-icon  { background:transparent; border:none; cursor:pointer; padding:5px; border-radius:6px; color:#6b7280; transition:color .15s,background .15s; }
-    .bntm-btn-icon:hover { background:#f3f4f6; color:#111827; }
-    button:disabled { opacity:.55; cursor:not-allowed; }
-
-    /* Notices */
-    .bntm-notice { padding:12px 16px; border-radius:8px; font-size:14px; margin-bottom:12px; }
-    .bntm-notice-success { background:#ecfdf5; color:#065f46; border:1px solid #a7f3d0; }
-    .bntm-notice-error   { background:#fef2f2; color:#991b1b; border:1px solid #fecaca; }
-
-    /* Modal */
-    .crm-modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:9999; align-items:center; justify-content:center; padding:16px; }
-    .crm-modal-overlay.open { display:flex; }
-    .crm-modal { background:#fff; border-radius:16px; width:100%; max-width:520px; max-height:90vh; overflow-y:auto; box-shadow:0 20px 60px rgba(0,0,0,.2); }
-    .crm-modal-header { display:flex; align-items:center; justify-content:space-between; padding:20px 24px 0; }
-    .crm-modal-header h3 { margin:0; font-size:18px; font-weight:700; color:#111827; }
-    .crm-modal-body { padding:20px 24px 24px; }
-    .crm-modal-footer { display:flex; gap:10px; justify-content:flex-end; padding:0 24px 24px; }
-
-    /* Filter bar */
-    .crm-filter-bar { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-bottom:16px; }
-    .crm-search-input { flex:1; min-width:180px; padding:8px 12px; border:1px solid #d1d5db; border-radius:8px; font-size:14px; color:#111827; }
-    .crm-search-input:focus { outline:none; border-color:var(--bntm-primary,#6366f1); }
-
-    /* Frontend pages grid */
-    .bntm-frontend-pages-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:16px; }
-    .bntm-page-card { border:1px solid #e5e7eb; border-radius:12px; overflow:hidden; background:#fff; }
-    .bntm-page-card-header { display:flex; align-items:center; justify-content:space-between; padding:14px 16px; background:#f9fafb; border-bottom:1px solid #e5e7eb; }
-    .bntm-page-card-icon { width:32px; height:32px; border-radius:8px; background:var(--bntm-primary,#6366f1); display:flex; align-items:center; justify-content:center; color:#fff; }
-    .bntm-page-audience-badge { font-size:11px; font-weight:600; padding:3px 8px; border-radius:999px; }
-    .bntm-badge-public   { background:#dbeafe; color:#1d4ed8; }
-    .bntm-badge-loggedin { background:#fef3c7; color:#b45309; }
-    .bntm-page-card-body { padding:14px 16px; }
-    .bntm-page-card-body h4 { margin:0 0 6px; font-size:14px; font-weight:600; color:#111827; }
-    .bntm-page-card-body p  { margin:0; font-size:13px; color:#6b7280; }
-    .bntm-page-card-footer { padding:12px 16px; display:flex; gap:8px; border-top:1px solid #f3f4f6; }
-
-    /* Pipeline kanban */
-    .crm-pipeline { display:flex; gap:14px; overflow-x:auto; padding-bottom:8px; }
-    .crm-pipeline-col { flex:0 0 220px; background:#f9fafb; border:1px solid #e5e7eb; border-radius:12px; padding:14px; }
-    .crm-pipeline-col-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
-    .crm-pipeline-col-header h4 { margin:0; font-size:13px; font-weight:600; color:#374151; text-transform:capitalize; }
-    .crm-pipeline-count { font-size:11px; font-weight:700; background:#e5e7eb; color:#6b7280; border-radius:999px; padding:2px 8px; }
-    .crm-lead-card { background:#fff; border:1px solid #e5e7eb; border-radius:8px; padding:12px; margin-bottom:8px; cursor:pointer; transition:box-shadow .15s; }
-    .crm-lead-card:hover { box-shadow:0 4px 12px rgba(0,0,0,.08); }
-    .crm-lead-card h5 { margin:0 0 4px; font-size:13px; font-weight:600; color:#111827; }
-    .crm-lead-card .lead-value { font-size:12px; font-weight:700; color:var(--bntm-primary,#6366f1); }
-    .crm-lead-card .lead-contact { font-size:11px; color:#9ca3af; margin-top:4px; }
-
-    /* Action buttons in table */
-    .crm-actions { display:flex; gap:4px; }
-
-    /* Interaction list */
-    .crm-interaction-item { display:flex; gap:14px; padding:14px 0; border-bottom:1px solid #f3f4f6; }
-    .crm-interaction-item:last-child { border-bottom:none; }
-    .crm-interaction-icon { width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
-    .crm-interaction-meta { font-size:11px; color:#9ca3af; margin-top:2px; }
-
-    /* Responsive */
-    @media(max-width:640px) {
-        .crm-form-row { grid-template-columns:1fr; }
-        .crm-form-row.triple { grid-template-columns:1fr; }
-        .bntm-stats-row { grid-template-columns:1fr 1fr; }
-        .crm-pipeline { flex-direction:column; }
-        .crm-pipeline-col { flex:unset; }
-    }
-    </style>
-
-    <script>
-    // ── Shared utilities ──
-    function crmShowToast(msg, type) {
-        var el = document.getElementById('crm-toast');
-        if (!el) {
-            el = document.createElement('div');
-            el.id = 'crm-toast';
-            el.style.cssText = 'position:fixed;bottom:24px;right:24px;z-index:99999;display:flex;flex-direction:column;gap:8px;';
-            document.body.appendChild(el);
-        }
-        var t = document.createElement('div');
-        t.style.cssText = 'padding:12px 18px;border-radius:10px;font-size:14px;font-weight:500;box-shadow:0 4px 20px rgba(0,0,0,.15);transition:opacity .3s;max-width:320px;';
-        t.style.background = type === 'success' ? '#065f46' : '#991b1b';
-        t.style.color = '#fff';
-        t.textContent = msg;
-        el.appendChild(t);
-        setTimeout(function(){ t.style.opacity='0'; setTimeout(function(){ t.remove(); },300); }, 3000);
-    }
-
-    function crmOpenModal(id) {
-        var m = document.getElementById(id);
-        if (m) { m.classList.add('open'); document.body.style.overflow='hidden'; }
-    }
-    function crmCloseModal(id) {
-        var m = document.getElementById(id);
-        if (m) { m.classList.remove('open'); document.body.style.overflow=''; }
-    }
-
-    // Close modal on overlay click
-    document.addEventListener('click', function(e) {
-        if (e.target.classList.contains('crm-modal-overlay')) {
-            e.target.classList.remove('open');
-            document.body.style.overflow = '';
-        }
-    });
-
-    // Copy URL helper
-    document.addEventListener('click', function(e) {
-        if (e.target.classList.contains('copy-page-url')) {
-            var url = e.target.getAttribute('data-url');
-            if (navigator.clipboard) {
-                navigator.clipboard.writeText(url).then(function(){ crmShowToast('URL copied!','success'); });
-            } else {
-                var ta = document.createElement('textarea');
-                ta.value = url;
-                document.body.appendChild(ta);
-                ta.select();
-                document.execCommand('copy');
-                ta.remove();
-                crmShowToast('URL copied!','success');
-            }
-        }
-    });
-    </script>
-    <?php
-    $content = ob_get_clean();
-    return bntm_universal_container('CRM', $content);
-}
-
-// ============================================================
-// TAB: OVERVIEW
-// ============================================================
-
-/**
- * Render the overview tab content for the CRM dashboard.
- * @param int $business_id Business ID to scope the CRM data.
- * @return array
- */
-function crm_overview_tab($business_id) {
-    global $wpdb;
-    $stats = crm_get_stats($business_id);
-
-    $overview_graph_metrics = [
-        ['label' => 'Total Leads', 'value' => $stats['total_leads'], 'sub' => number_format($stats['active_contacts']) . ' contacts', 'color' => '#6366f1', 'display_value' => number_format($stats['total_leads'])],
-        ['label' => 'Active Opportunities', 'value' => $stats['active_opportunities'], 'sub' => crm_format_price($stats['pipeline_value']) . ' open pipeline', 'color' => '#10b981', 'display_value' => number_format($stats['active_opportunities'])],
-        ['label' => 'Won / Closed Clients', 'value' => $stats['won_leads'], 'sub' => crm_format_price($stats['won_value']) . ' value', 'color' => '#f59e0b', 'display_value' => number_format($stats['won_leads'])],
-        ['label' => 'Lost / Ended Deals', 'value' => $stats['lost_deals'], 'sub' => 'Closed or ended', 'color' => '#ef4444', 'display_value' => number_format($stats['lost_deals'])],
-        ['label' => 'MOTM Completion', 'value' => $stats['motm_completion'], 'sub' => 'Leads with MOTM uploaded', 'color' => '#6366f1', 'display_value' => number_format($stats['motm_completion']) . '%'],
-    ];
-    $overview_graph_max = max(array_column($overview_graph_metrics, 'value')) ?: 1;
-
-    ob_start();
-    ?>
-    <div style="display:flex;align-items:center;justify-content:flex-end;gap:12px;margin-bottom:18px;">
-        <label for="overview-display-mode" style="margin:0;font-size:14px;color:#374151;">Overview view</label>
-        <select id="overview-display-mode" class="crm-select" style="width:auto;min-width:180px;" onchange="crmSwitchOverviewDisplay(this.value)">
-            <option value="cards">Stat Cards</option>
-            <option value="graph">Bar Graph</option>
-        </select>
-    </div>
-    <div id="overview-stat-cards">
-    <!-- Stat Cards -->
-    <div class="bntm-stats-row">
-        <div class="bntm-stat-card">
-            <div class="stat-icon" style="background:var(--bntm-primary,#6366f1);">
-                <svg width="24" height="24" fill="none" stroke="white" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-            </div>
-            <div class="stat-content">
-                <h3>Total Leads</h3>
-                <p class="stat-number"><?php echo number_format($stats['total_leads']); ?></p>
-                <span class="stat-label"><?php echo number_format($stats['active_contacts']); ?> contacts</span>
-            </div>
-        </div>
-        <div class="bntm-stat-card">
-            <div class="stat-icon" style="background:#10b981;">
-                <svg width="24" height="24" fill="none" stroke="white" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>
-            </div>
-            <div class="stat-content">
-                <h3>Active Opportunities</h3>
-                <p class="stat-number"><?php echo number_format($stats['active_opportunities']); ?></p>
-                <span class="stat-label"><?php echo crm_format_price($stats['pipeline_value']); ?> open pipeline</span>
-            </div>
-        </div>
-        <div class="bntm-stat-card">
-            <div class="stat-icon" style="background:#f59e0b;">
-                <svg width="24" height="24" fill="none" stroke="white" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-            </div>
-            <div class="stat-content">
-                <h3>Won / Closed Clients</h3>
-                <p class="stat-number"><?php echo number_format($stats['won_leads']); ?></p>
-                <span class="stat-label"><?php echo crm_format_price($stats['won_value']); ?> value</span>
-            </div>
-        </div>
-        <div class="bntm-stat-card">
-            <div class="stat-icon" style="background:#ef4444;">
-                <svg width="24" height="24" fill="none" stroke="white" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 6L6 18M6 6l12 12"/></svg>
-            </div>
-            <div class="stat-content">
-                <h3>Lost / Ended Deals</h3>
-                <p class="stat-number"><?php echo number_format($stats['lost_deals']); ?></p>
-                <span class="stat-label">Closed or ended</span>
-            </div>
-        </div>
-    </div>
-
-    <div class="bntm-stats-row">
-        <div class="bntm-stat-card">
-            <div class="stat-icon" style="background:#6366f1;">
-                <svg width="24" height="24" fill="none" stroke="white" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
-            </div>
-            <div class="stat-content">
-                <h3>MOTM Completion</h3>
-                <p class="stat-number"><?php echo number_format($stats['motm_completion']); ?>%</p>
-                <span class="stat-label">Leads with MOTM uploaded</span>
-            </div>
-        </div>
-        <div class="bntm-stat-card">
-            <div class="stat-icon" style="background:#0ea5e9;">
-                <svg width="24" height="24" fill="none" stroke="white" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
-            </div>
-            <div class="stat-content">
-                <h3>Pipeline Type Breakdown</h3>
-                <p class="stat-number" style="font-size:18px;line-height:1.2;">&nbsp;</p>
-                <span class="stat-label">
-                    <?php foreach ($stats['pipeline_type_breakdown'] as $row): ?>
-                        <?php echo esc_html(crm_pipeline_type_label($row['pipeline_type'])); ?>: <?php echo number_format($row['total']); ?><br>
-                    <?php endforeach; ?>
-                </span>
-            </div>
-        </div>
-        <div class="bntm-stat-card">
-            <div class="stat-icon" style="background:#14b8a6;">
-                <svg width="24" height="24" fill="none" stroke="white" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 6h18M3 12h18M3 18h18"/></svg>
-            </div>
-            <div class="stat-content">
-                <h3>Leads by Source</h3>
-                <p class="stat-number" style="font-size:18px;line-height:1.2;">&nbsp;</p>
-                <span class="stat-label">
-                    <?php foreach ($stats['lead_source_breakdown'] as $row): ?>
-                        <?php echo esc_html($row['lead_source'] ?: 'Unspecified'); ?>: <?php echo number_format($row['total']); ?><br>
-                    <?php endforeach; ?>
-                </span>
-            </div>
-        </div>
-        <div class="bntm-stat-card">
-            <div class="stat-icon" style="background:#f59e0b;">
-                <svg width="24" height="24" fill="none" stroke="white" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
-            </div>
-            <div class="stat-content">
-                <h3>Deals by Product / Service</h3>
-                <p class="stat-number" style="font-size:18px;line-height:1.2;">&nbsp;</p>
-                <span class="stat-label">
-                    <?php foreach ($stats['product_service_breakdown'] as $row): ?>
-                        <?php echo esc_html($row['item']); ?>: <?php echo number_format($row['total']); ?><br>
-                    <?php endforeach; ?>
-                </span>
-            </div>
-        </div>
-    </div>
-
-    <div id="overview-bar-graph" style="display:none;">
-        <div class="crm-overview-graph">
-            <?php foreach ($overview_graph_metrics as $metric):
-                $bar_width = $overview_graph_max ? round(($metric['value'] / $overview_graph_max) * 100) : 0;
-                ?>
-            <div class="crm-overview-graph-row">
-                <div class="crm-overview-graph-header">
-                    <span><?php echo esc_html($metric['label']); ?></span>
-                    <span><?php echo esc_html($metric['display_value']); ?></span>
-                </div>
-                <div class="crm-overview-graph-bar">
-                    <div class="crm-overview-graph-bar-fill" style="width:<?php echo esc_attr($bar_width); ?>%;background:<?php echo esc_attr($metric['color']); ?>;"></div>
-                </div>
-                <div class="crm-overview-graph-meta"><?php echo esc_html($metric['sub']); ?></div>
-            </div>
-            <?php endforeach; ?>
-        </div>
-    </div>
-
-    <style>
-    .crm-overview-graph { display:grid; gap:18px; margin-bottom:24px; }
-    .crm-overview-graph-row { background:#fff; border:1px solid #e5e7eb; border-radius:14px; padding:16px; }
-    .crm-overview-graph-header { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:10px; font-weight:600; color:#111827; }
-    .crm-overview-graph-bar { height:12px; background:#f3f4f6; border-radius:999px; overflow:hidden; }
-    .crm-overview-graph-bar-fill { height:100%; border-radius:999px; }
-    .crm-overview-graph-meta { font-size:13px; color:#6b7280; }
-    </style>
-    <script>
-    function crmSwitchOverviewDisplay(displayMode) {
-        var cards = document.getElementById('overview-stat-cards');
-        var graph = document.getElementById('overview-bar-graph');
-        if (!cards || !graph) return;
-        cards.style.display = displayMode === 'cards' ? '' : 'none';
-        graph.style.display = displayMode === 'graph' ? '' : 'none';
-    }
-    </script>
-
-    <!-- Recent Interactions -->
-    <div class="bntm-form-section">
-        <h3>Recent Interactions</h3>
-        <?php
-        $recent = $wpdb->get_results($wpdb->prepare(
-            "SELECT i.*, c.first_name, c.last_name
-             FROM {$wpdb->prefix}crm_interactions i
-             LEFT JOIN {$wpdb->prefix}crm_contacts c ON c.id = i.contact_id
-             WHERE i.business_id = %d AND i.status = 'active'
-             ORDER BY i.interaction_date DESC LIMIT 5",
-            $business_id
-        ));
-        $type_colors = ['call'=>'#7c3aed','email'=>'#0891b2','meeting'=>'#c2410c','note'=>'#15803d'];
-        $type_icons  = [
-            'call'    => '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"/>',
-            'email'   => '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>',
-            'meeting' => '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>',
-            'note'    => '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>',
+    var ajaxurl = '<?php echo esc_js( admin_url( 'admin-ajax.php' ) ); ?>';
+    var crm_nonce = '<?php echo wp_create_nonce( 'crm_nonce' ); ?>';
+    var crm_is_admin = <?php echo $is_admin ? 'true' : 'false'; ?>;
+    var crm_user_id = <?php echo intval( $business_id ); ?>;
+    var crm_users = <?php echo wp_json_encode( array_map( function( $user ) {
+        return [
+            'id' => (int) $user->ID,
+            'display_name' => $user->display_name,
         ];
-        if (empty($recent)): ?>
-        <p style="color:#9ca3af;font-size:14px;margin:0;">No interactions yet. Log your first interaction from the Interactions tab.</p>
-        <?php else: ?>
-        <div>
-            <?php foreach ($recent as $item):
-                $col   = $type_colors[$item->type] ?? '#6b7280';
-                $ipath = $type_icons[$item->type] ?? $type_icons['note'];
-                ?>
-            <div class="crm-interaction-item">
-                <div class="crm-interaction-icon" style="background:<?php echo esc_attr($col); ?>22;">
-                    <svg width="18" height="18" fill="none" stroke="<?php echo esc_attr($col); ?>" viewBox="0 0 24 24"><?php echo $ipath; ?></svg>
-                </div>
-                <div style="flex:1;">
-                    <div style="font-size:14px;font-weight:500;color:#111827;"><?php echo esc_html($item->subject); ?></div>
-                    <div class="crm-interaction-meta">
-                        <?php echo esc_html($item->first_name . ' ' . $item->last_name); ?> &middot; <?php echo date('M j, Y g:i A', strtotime($item->interaction_date)); ?>
-                    </div>
-                </div>
-                <span class="crm-badge crm-badge-<?php echo esc_attr($item->type); ?>"><?php echo esc_html($item->type); ?></span>
-            </div>
-            <?php endforeach; ?>
-        </div>
-        <?php endif; ?>
-    </div>
-
-    <!-- Frontend Pages -->
-    <div class="bntm-form-section">
-        <h3>Frontend Pages</h3>
-        <p style="color:#6b7280;margin-bottom:16px;font-size:14px;">Public-facing pages for this module. Share these links with your customers.</p>
-        <div class="bntm-frontend-pages-grid">
-            <div class="bntm-page-card">
-                <div class="bntm-page-card-header">
-                    <div class="bntm-page-card-icon">
-                        <svg width="18" height="18" fill="none" stroke="white" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-                    </div>
-                    <span class="bntm-page-audience-badge bntm-badge-public">Public</span>
-                </div>
-                <div class="bntm-page-card-body">
-                    <h4>Contact Form</h4>
-                    <p>Public lead capture form — visitors can submit their details and a lead is automatically created.</p>
-                </div>
-                <div class="bntm-page-card-footer">
-                    <?php
-                    $page = get_page_by_path('contact-form');
-                    $url  = $page ? get_permalink($page->ID) : '#';
-                    ?>
-                    <a href="<?php echo esc_url($url); ?>" target="_blank" class="bntm-btn-primary bntm-btn-small">Open Page</a>
-                    <button class="bntm-btn-secondary bntm-btn-small copy-page-url" data-url="<?php echo esc_url($url); ?>">Copy URL</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <style>
-    /* Overview tab specific — none needed beyond shared styles */
-    </style>
-    <script>
-    (function() {
-        // Overview tab JS — no actions needed
-    })();
-    </script>
-    <?php
-    return ob_get_clean();
-}
-
-// ============================================================
-// TAB: CONTACTS  —  Revamped (Apple HIG, new lead fields)
-// ============================================================
- 
-/**
- * Render the contacts tab content for the CRM dashboard.
- * @param int $business_id Business ID to scope the CRM data.
- * @return array
- */
-function crm_contacts_tab($business_id) {
-    global $wpdb;
-    $contacts = $wpdb->get_results($wpdb->prepare(
-        "SELECT * FROM {$wpdb->prefix}crm_contacts WHERE business_id = %d ORDER BY created_at DESC",
-        $business_id
-    ));
- 
-    // Pipeline stages for the Add/Edit Lead modal inside the contact detail drawer
-    $pipeline_stages = crm_get_pipeline_stages($business_id);
- 
-    ob_start();
-    ?>
- 
-    <!-- ══════════════════════════════════════════════════
-         CONTACTS TAB — Apple HIG Styles
-    ══════════════════════════════════════════════════ -->
-    <style>
-    /* ── Reset & base ── */
-    .crm-c *,
-    .crm-c *::before,
-    .crm-c *::after { box-sizing: border-box; }
- 
-    .crm-c {
-        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Helvetica Neue", sans-serif;
-        -webkit-font-smoothing: antialiased;
-        color: #1c1c1e;
-    }
- 
-    /* ── Toolbar ── */
-    .crm-c-toolbar {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 12px;
-        flex-wrap: wrap;
-        margin-bottom: 16px;
-    }
- 
-    .crm-c-search-wrap {
-        position: relative;
-        flex: 1;
-        min-width: 200px;
-        max-width: 360px;
-    }
-    .crm-c-search-wrap svg.search-icon {
-        position: absolute;
-        left: 10px;
-        top: 50%;
-        transform: translateY(-50%);
-        color: #8e8e93;
-        pointer-events: none;
-    }
-    .crm-c-search {
-        width: 100%;
-        padding: 8px 12px 8px 34px;
-        background: #f2f2f7;
-        border: none;
-        border-radius: 10px;
-        font-size: 14px;
-        color: #1c1c1e;
-        outline: none;
-        transition: box-shadow .15s;
-    }
-    .crm-c-search:focus {
-        box-shadow: 0 0 0 3px rgba(0, 122, 255, .25);
-        background: #fff;
-        border: 1px solid #007aff;
-    }
-    .crm-c-search::placeholder { color: #8e8e93; }
- 
-    .crm-c-toolbar-right {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        flex-wrap: wrap;
-    }
- 
-    .crm-c-filter-pill {
-        padding: 7px 14px;
-        border-radius: 20px;
-        font-size: 13px;
-        font-weight: 500;
-        border: 1px solid #d1d1d6;
-        background: #fff;
-        color: #3c3c43;
-        cursor: pointer;
-        transition: background .12s, border-color .12s;
-        white-space: nowrap;
-    }
-    .crm-c-filter-pill.active,
-    .crm-c-filter-pill:hover { background: #007aff; border-color: #007aff; color: #fff; }
- 
-    .crm-c-add-btn {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        padding: 8px 16px;
-        background: #007aff;
-        color: #fff;
-        border: none;
-        border-radius: 10px;
-        font-size: 14px;
-        font-weight: 600;
-        cursor: pointer;
-        transition: background .12s, transform .1s;
-        white-space: nowrap;
-    }
-    .crm-c-add-btn:hover  { background: #0062cc; }
-    .crm-c-add-btn:active { transform: scale(0.97); }
- 
-    /* ── Contact List ── */
-    .crm-c-list {
-        background: #fff;
-        border-radius: 14px;
-        border: 1px solid #e5e5ea;
-        overflow: hidden;
-    }
- 
-    .crm-c-list-header {
-        display: grid;
-        grid-template-columns: 2fr 1.5fr 1fr 1fr 90px 80px;
-        padding: 9px 16px;
-        background: #f9f9fb;
-        border-bottom: 1px solid #e5e5ea;
-    }
-    .crm-c-list-header span {
-        font-size: 11px;
-        font-weight: 600;
-        letter-spacing: .04em;
-        text-transform: uppercase;
-        color: #8e8e93;
-    }
- 
-    .crm-c-row {
-        display: grid;
-        grid-template-columns: 2fr 1.5fr 1fr 1fr 90px 80px;
-        align-items: center;
-        padding: 13px 16px;
-        border-bottom: 1px solid #f2f2f7;
-        cursor: pointer;
-        transition: background .1s;
-    }
-    .crm-c-row:last-child { border-bottom: none; }
-    .crm-c-row:hover { background: #f9f9fb; }
- 
-    /* avatar + name cell */
-    .crm-c-name-cell {
-        display: flex;
-        align-items: center;
-        gap: 11px;
-        min-width: 0;
-    }
-    .crm-c-avatar {
-        width: 36px;
-        height: 36px;
-        border-radius: 50%;
-        background: #e3eeff;
-        color: #007aff;
-        font-size: 13px;
-        font-weight: 700;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        flex-shrink: 0;
-        letter-spacing: -.02em;
-    }
-    /* Avatar color variety */
-    .crm-c-avatar.av-green  { background: #e3f9e9; color: #25a244; }
-    .crm-c-avatar.av-orange { background: #fff0e1; color: #bf6400; }
-    .crm-c-avatar.av-purple { background: #f0eaff; color: #7a43c2; }
-    .crm-c-avatar.av-pink   { background: #ffe6f0; color: #c0297e; }
-    .crm-c-avatar.av-teal   { background: #e0f9f4; color: #0f766e; }
- 
-    .crm-c-name { font-size: 14px; font-weight: 600; color: #1c1c1e; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .crm-c-company { font-size: 12px; color: #8e8e93; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
- 
-    .crm-c-cell {
-        font-size: 13px;
-        color: #3c3c43;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        padding-right: 8px;
-    }
-    .crm-c-cell.muted { color: #aeaeb2; }
- 
-    /* Status badge */
-    .crm-c-badge {
-        display: inline-flex;
-        align-items: center;
-        gap: 4px;
-        padding: 3px 9px;
-        border-radius: 20px;
-        font-size: 11px;
-        font-weight: 600;
-    }
-    .crm-c-badge::before {
-        content: '';
-        display: inline-block;
-        width: 6px; height: 6px;
-        border-radius: 50%;
-    }
-    .crm-c-badge-active  { background: #e6f9ee; color: #1a7f3c; }
-    .crm-c-badge-active::before  { background: #25a244; }
-    .crm-c-badge-inactive{ background: #f2f2f7; color: #6e6e73; }
-    .crm-c-badge-inactive::before{ background: #aeaeb2; }
- 
-    /* Row actions */
-    .crm-c-actions {
-        display: flex;
-        align-items: center;
-        gap: 2px;
-        justify-content: flex-end;
-        opacity: 0;
-        transition: opacity .1s;
-    }
-    .crm-c-row:hover .crm-c-actions { opacity: 1; }
- 
-    .crm-c-icon-btn {
-        width: 30px; height: 30px;
-        border-radius: 8px;
-        border: none;
-        background: transparent;
-        display: flex; align-items: center; justify-content: center;
-        cursor: pointer;
-        color: #8e8e93;
-        transition: background .1s, color .1s;
-    }
-    .crm-c-icon-btn:hover { background: #f2f2f7; color: #1c1c1e; }
-    .crm-c-icon-btn.danger:hover { background: #fff0f0; color: #ff3b30; }
- 
-    /* Empty state */
-    .crm-c-empty {
-        padding: 56px 24px;
-        text-align: center;
-        color: #8e8e93;
-    }
-    .crm-c-empty svg { margin-bottom: 14px; opacity: .4; }
-    .crm-c-empty h3 { margin: 0 0 6px; font-size: 16px; font-weight: 600; color: #3c3c43; }
-    .crm-c-empty p  { margin: 0; font-size: 14px; }
- 
-    /* ══════════════════════════════════════════════════
-       SLIDE-OVER DETAIL DRAWER
-    ══════════════════════════════════════════════════ */
-    .crm-drawer-overlay {
-        display: none;
-        position: fixed;
-        inset: 0;
-        z-index: 9998;
-        background: rgba(0,0,0,.35);
-        backdrop-filter: blur(2px);
-    }
-    .crm-drawer-overlay.open { display: block; }
- 
-    .crm-drawer {
-        position: fixed;
-        top: 0; right: 0; bottom: 0;
-        width: 420px;
-        max-width: 100vw;
-        background: #f2f2f7;
-        z-index: 9999;
-        display: flex;
-        flex-direction: column;
-        transform: translateX(110%);
-        transition: transform .3s cubic-bezier(.4,0,.2,1);
-        box-shadow: -4px 0 32px rgba(0,0,0,.12);
-    }
-    .crm-drawer.open { transform: translateX(0); }
- 
-    .crm-drawer-topbar {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: 16px 20px 12px;
-        background: #f2f2f7;
-        border-bottom: 1px solid #e5e5ea;
-        flex-shrink: 0;
-    }
-    .crm-drawer-topbar h2 { margin: 0; font-size: 17px; font-weight: 700; color: #1c1c1e; }
- 
-    .crm-drawer-close {
-        width: 30px; height: 30px;
-        border-radius: 50%;
-        border: none;
-        background: #e5e5ea;
-        color: #6e6e73;
-        display: flex; align-items: center; justify-content: center;
-        cursor: pointer;
-        font-size: 16px;
-        transition: background .1s;
-    }
-    .crm-drawer-close:hover { background: #d1d1d6; }
- 
-    .crm-drawer-body {
-        flex: 1;
-        overflow-y: auto;
-        padding: 16px;
-    }
- 
-    /* Drawer card sections */
-    .crm-dc {
-        background: #fff;
-        border-radius: 13px;
-        border: 1px solid #e5e5ea;
-        margin-bottom: 16px;
-        overflow: hidden;
-    }
-    .crm-dc-head {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: 12px 16px;
-        border-bottom: 1px solid #f2f2f7;
-    }
-    .crm-dc-head h4 {
-        margin: 0;
-        font-size: 12px;
-        font-weight: 600;
-        letter-spacing: .05em;
-        text-transform: uppercase;
-        color: #8e8e93;
-    }
-    .crm-dc-edit-btn {
-        font-size: 13px;
-        font-weight: 500;
-        color: #007aff;
-        border: none;
-        background: transparent;
-        cursor: pointer;
-        padding: 0;
-    }
-    .crm-dc-edit-btn:hover { opacity: .7; }
- 
-    /* Profile hero */
-    .crm-dc-profile {
-        padding: 20px 16px;
-        display: flex;
-        align-items: center;
-        gap: 14px;
-    }
-    .crm-dc-avatar-lg {
-        width: 60px; height: 60px;
-        border-radius: 50%;
-        display: flex; align-items: center; justify-content: center;
-        font-size: 22px; font-weight: 700;
-        flex-shrink: 0;
-    }
-    .crm-dc-info { flex: 1; min-width: 0; }
-    .crm-dc-info h3 { margin: 0 0 3px; font-size: 20px; font-weight: 700; color: #1c1c1e; }
-    .crm-dc-info p  { margin: 0; font-size: 14px; color: #6e6e73; }
- 
-    /* Info rows */
-    .crm-dc-row {
-        display: flex;
-        align-items: center;
-        padding: 11px 16px;
-        border-bottom: 1px solid #f2f2f7;
-        gap: 12px;
-    }
-    .crm-dc-row:last-child { border-bottom: none; }
-    .crm-dc-row-icon { color: #8e8e93; flex-shrink: 0; }
-    .crm-dc-row-label { font-size: 13px; color: #8e8e93; flex: 0 0 90px; }
-    .crm-dc-row-val   { font-size: 14px; color: #1c1c1e; font-weight: 500; flex: 1; }
-    .crm-dc-row-val.empty { color: #c7c7cc; font-weight: 400; }
- 
-    /* Notes block */
-    .crm-dc-notes {
-        padding: 12px 16px;
-        font-size: 14px;
-        color: #3c3c43;
-        line-height: 1.55;
-    }
-    .crm-dc-notes.empty { color: #c7c7cc; font-style: italic; }
- 
-    /* Mini lead card in drawer */
-    .crm-dc-lead-item {
-        display: flex;
-        align-items: center;
-        padding: 11px 16px;
-        border-bottom: 1px solid #f2f2f7;
-        gap: 10px;
-    }
-    .crm-dc-lead-item:last-child { border-bottom: none; }
-    .crm-dc-lead-dot {
-        width: 8px; height: 8px;
-        border-radius: 50%;
-        flex-shrink: 0;
-        margin-top: 2px;
-    }
-    .crm-dc-lead-name { font-size: 14px; font-weight: 500; color: #1c1c1e; flex: 1; }
-    .crm-dc-lead-val  { font-size: 13px; color: #007aff; font-weight: 600; }
-    .crm-dc-stage-pill {
-        font-size: 11px;
-        font-weight: 600;
-        padding: 2px 8px;
-        border-radius: 12px;
-        text-transform: capitalize;
-    }
- 
-    /* Interaction item in drawer */
-    .crm-dc-int-item {
-        display: flex;
-        gap: 12px;
-        padding: 10px 16px;
-        border-bottom: 1px solid #f2f2f7;
-        align-items: flex-start;
-    }
-    .crm-dc-int-item:last-child { border-bottom: none; }
-    .crm-dc-int-icon {
-        width: 30px; height: 30px;
-        border-radius: 50%;
-        display: flex; align-items: center; justify-content: center;
-        flex-shrink: 0;
-    }
-    .crm-dc-int-subj { font-size: 13px; font-weight: 600; color: #1c1c1e; }
-    .crm-dc-int-meta { font-size: 12px; color: #8e8e93; margin-top: 1px; }
- 
-    /* Drawer footer action row */
-    .crm-drawer-footer {
-        padding: 12px 16px;
-        border-top: 1px solid #e5e5ea;
-        background: #f2f2f7;
-        display: flex;
-        gap: 8px;
-        flex-shrink: 0;
-    }
-    .crm-drawer-btn {
-        flex: 1;
-        padding: 10px;
-        border-radius: 10px;
-        font-size: 14px;
-        font-weight: 600;
-        border: none;
-        cursor: pointer;
-        transition: opacity .12s;
-    }
-    .crm-drawer-btn:active { opacity: .75; }
-    .crm-drawer-btn-primary  { background: #007aff; color: #fff; }
-    .crm-drawer-btn-primary:hover { background: #0062cc; }
-    .crm-drawer-btn-danger   { background: #fff0f0; color: #ff3b30; border: 1px solid #ffc9c7; }
-    .crm-drawer-btn-danger:hover { background: #ffdede; }
- 
-    /* ══════════════════════════════════════════════════
-       SHEET MODAL  (Add / Edit Contact, Add Lead)
-    ══════════════════════════════════════════════════ */
-    .crm-sheet-overlay {
-        display: none;
-        position: fixed;
-        inset: 0;
-        z-index: 10010;
-        background: rgba(0,0,0,.4);
-        align-items: flex-end;
-        justify-content: center;
-        padding: 0;
-    }
-    .crm-sheet-overlay.open { display: flex; }
- 
-    .crm-sheet {
-        background: #fff;
-        border-radius: 20px 20px 0 0;
-        width: 100%;
-        max-width: 600px;
-        max-height: 92vh;
-        display: flex;
-        flex-direction: column;
-        transform: translateY(100%);
-        transition: transform .3s cubic-bezier(.4,0,.2,1);
-        overflow: hidden;
-    }
-    .crm-sheet-overlay.open .crm-sheet { transform: translateY(0); }
- 
-    .crm-sheet-handle {
-        width: 36px; height: 4px;
-        border-radius: 2px;
-        background: #d1d1d6;
-        margin: 10px auto 0;
-        flex-shrink: 0;
-    }
- 
-    .crm-sheet-header {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: 14px 20px 10px;
-        flex-shrink: 0;
-    }
-    .crm-sheet-header h3 { margin: 0; font-size: 17px; font-weight: 700; color: #1c1c1e; }
- 
-    .crm-sheet-cancel {
-        font-size: 16px;
-        font-weight: 400;
-        color: #007aff;
-        border: none;
-        background: transparent;
-        cursor: pointer;
-        padding: 0;
-    }
-    .crm-sheet-save {
-        font-size: 16px;
-        font-weight: 600;
-        color: #007aff;
-        border: none;
-        background: transparent;
-        cursor: pointer;
-        padding: 0;
-    }
-    .crm-sheet-save:disabled { color: #aeaeb2; }
- 
-    .crm-sheet-body {
-        flex: 1;
-        overflow-y: auto;
-        padding: 8px 16px 20px;
-    }
- 
-    /* Grouped form sections (iOS-style) */
-    .crm-form-group-label {
-        font-size: 12px;
-        font-weight: 600;
-        letter-spacing: .04em;
-        text-transform: uppercase;
-        color: #8e8e93;
-        margin: 20px 0 6px 4px;
-    }
-    .crm-form-card {
-        background: #fff;
-        border-radius: 13px;
-        border: 1px solid #e5e5ea;
-        overflow: hidden;
-        margin-bottom: 2px;
-    }
-    .crm-form-field {
-        display: flex;
-        align-items: center;
-        padding: 0 14px;
-        border-bottom: 1px solid #f2f2f7;
-        min-height: 44px;
-        gap: 12px;
-    }
-    .crm-form-field:last-child { border-bottom: none; }
-    .crm-form-field label {
-        font-size: 14px;
-        font-weight: 500;
-        color: #1c1c1e;
-        flex: 0 0 110px;
-        padding: 11px 0;
-    }
-    .crm-form-field input,
-    .crm-form-field select,
-    .crm-form-field textarea {
-        flex: 1;
-        border: none;
-        outline: none;
-        font-size: 14px;
-        color: #1c1c1e;
-        background: transparent;
-        padding: 11px 0;
-        font-family: inherit;
-        -webkit-font-smoothing: antialiased;
-    }
-    .crm-form-field input::placeholder,
-    .crm-form-field textarea::placeholder { color: #c7c7cc; }
-    .crm-form-field select { color: #1c1c1e; cursor: pointer; }
-    .crm-form-field textarea { resize: none; min-height: 80px; padding-top: 11px; align-self: flex-start; }
- 
-    .crm-form-field-msg {
-        padding: 0 16px 10px;
-        font-size: 12px;
-    }
-    .crm-form-field-msg.error { color: #ff3b30; }
- 
-    /* ── Responsive ── */
-    @media (max-width: 640px) {
-        .crm-c-list-header,
-        .crm-c-row { grid-template-columns: 2fr 1fr 80px 64px; }
-        .crm-c-list-header span:nth-child(2),
-        .crm-c-row > .crm-c-cell:nth-child(2) { display: none; }
-        .crm-c-list-header span:nth-child(3),
-        .crm-c-row > .crm-c-cell:nth-child(3) { display: none; }
-        .crm-drawer { width: 100vw; }
-    }
-    </style>
- 
-    <div class="crm-c">
- 
-        <!-- ── Toolbar ── -->
-        <div class="crm-c-toolbar">
-            <div class="crm-c-search-wrap">
-                <svg class="search-icon" width="15" height="15" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8" stroke-width="2"/><path stroke-width="2" stroke-linecap="round" d="M21 21l-4.35-4.35"/></svg>
-                <input type="text" id="crm-c-search" class="crm-c-search" placeholder="Search contacts…" autocomplete="off">
-            </div>
-            <div class="crm-c-toolbar-right">
-                <button class="crm-c-filter-pill active" data-status="">All</button>
-                <button class="crm-c-filter-pill" data-status="active">Active</button>
-                <button class="crm-c-filter-pill" data-status="inactive">Inactive</button>
-                <button class="crm-c-add-btn" onclick="crmCOpenAddSheet()">
-                    <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4"/></svg>
-                    New Contact
-                </button>
-            </div>
-        </div>
- 
-        <!-- ── Contact List ── -->
-        <div class="crm-c-list" id="crm-c-list">
-            <div class="crm-c-list-header" aria-hidden="true">
-                <span>Name</span>
-                <span>Email</span>
-                <span>Phone</span>
-                <span>Company</span>
-                <span>Status</span>
-                <span style="text-align:right;">Actions</span>
-            </div>
- 
-            <?php if (empty($contacts)): ?>
-            <div class="crm-c-empty">
-                <svg width="48" height="48" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4" stroke-width="1.5"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>
-                <h3>No contacts yet</h3>
-                <p>Add your first contact to get started.</p>
-            </div>
-            <?php else:
-                $avatar_colors = ['av-blue','av-green','av-orange','av-purple','av-pink','av-teal'];
-                $i = 0;
-                foreach ($contacts as $c):
-                    $initials = strtoupper(substr($c->first_name,0,1) . substr($c->last_name,0,1));
-                    $av_class = $avatar_colors[$i % count($avatar_colors)];
-                    $i++;
-                    $row_data = json_encode([
-                        'rand_id'    => $c->rand_id,
-                        'first_name' => $c->first_name,
-                        'last_name'  => $c->last_name,
-                        'email'      => $c->email,
-                        'phone'      => $c->phone,
-                        'company'    => $c->company,
-                        'status'     => $c->status,
-                        'notes'      => $c->notes,
-                        'initials'   => $initials,
-                        'av_class'   => $av_class,
-                        'created_at' => $c->created_at,
-                    ]);
-            ?>
-            <div class="crm-c-row"
-                 data-search="<?php echo esc_attr(strtolower($c->first_name . ' ' . $c->last_name . ' ' . $c->email . ' ' . $c->company)); ?>"
-                 data-status="<?php echo esc_attr($c->status); ?>"
-                 onclick="crmCOpenDrawer(<?php echo esc_attr($row_data); ?>)"
-                 role="row" tabindex="0"
-                 onkeydown="if(event.key==='Enter')crmCOpenDrawer(<?php echo esc_attr($row_data); ?>)">
- 
-                <!-- Name + avatar -->
-                <div class="crm-c-name-cell">
-                    <div class="crm-c-avatar <?php echo esc_attr($av_class); ?>" aria-hidden="true"><?php echo esc_html($initials); ?></div>
-                    <div style="min-width:0;">
-                        <div class="crm-c-name"><?php echo esc_html($c->first_name . ' ' . $c->last_name); ?></div>
-                        <?php if ($c->company): ?><div class="crm-c-company"><?php echo esc_html($c->company); ?></div><?php endif; ?>
-                    </div>
-                </div>
- 
-                <!-- Email -->
-                <div class="crm-c-cell <?php echo $c->email ? '' : 'muted'; ?>">
-                    <?php echo esc_html($c->email ?: '—'); ?>
-                </div>
- 
-                <!-- Phone -->
-                <div class="crm-c-cell <?php echo $c->phone ? '' : 'muted'; ?>">
-                    <?php echo esc_html($c->phone ?: '—'); ?>
-                </div>
- 
-                <!-- Company -->
-                <div class="crm-c-cell <?php echo $c->company ? '' : 'muted'; ?>">
-                    <?php echo esc_html($c->company ?: '—'); ?>
-                </div>
- 
-                <!-- Status -->
-                <div>
-                    <span class="crm-c-badge crm-c-badge-<?php echo esc_attr($c->status); ?>"><?php echo esc_html(ucfirst($c->status)); ?></span>
-                </div>
- 
-                <!-- Actions -->
-                <div class="crm-c-actions" onclick="event.stopPropagation()">
-                    <button class="crm-c-icon-btn"
-                            title="Edit contact"
-                            aria-label="Edit <?php echo esc_attr($c->first_name . ' ' . $c->last_name); ?>"
-                            onclick="crmCOpenEditSheet(<?php echo esc_attr($row_data); ?>)">
-                        <svg width="15" height="15" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
-                    </button>
-                    <button class="crm-c-icon-btn danger"
-                            title="Delete contact"
-                            aria-label="Delete <?php echo esc_attr($c->first_name . ' ' . $c->last_name); ?>"
-                            onclick="crmCDelete('<?php echo esc_attr($c->rand_id); ?>', this)">
-                        <svg width="15" height="15" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
-                    </button>
-                </div>
-            </div>
-            <?php endforeach; ?>
-            <?php endif; ?>
-        </div><!-- /.crm-c-list -->
- 
-    </div><!-- /.crm-c -->
- 
- 
-    <!-- ══════════════════════════════════════════════════
-         DETAIL DRAWER
-    ══════════════════════════════════════════════════ -->
-    <div class="crm-drawer-overlay" id="crm-drawer-overlay" onclick="crmCCloseDrawer()"></div>
-    <aside class="crm-drawer" id="crm-drawer" role="dialog" aria-modal="true" aria-label="Contact details">
-        <div class="crm-drawer-topbar">
-            <h2 id="crm-drawer-title">Contact</h2>
-            <button class="crm-drawer-close" onclick="crmCCloseDrawer()" aria-label="Close">✕</button>
-        </div>
-        <div class="crm-drawer-body" id="crm-drawer-body">
-            <p style="color:#8e8e93;font-size:14px;">Loading…</p>
-        </div>
-        <div class="crm-drawer-footer">
-            <button class="crm-drawer-btn crm-drawer-btn-primary" id="crm-drawer-edit-btn">Edit Contact</button>
-            <button class="crm-drawer-btn crm-drawer-btn-danger" id="crm-drawer-del-btn">Delete</button>
-        </div>
-    </aside>
- 
- 
-    <!-- ══════════════════════════════════════════════════
-         ADD CONTACT SHEET
-    ══════════════════════════════════════════════════ -->
-    <div class="crm-sheet-overlay" id="crm-add-sheet" role="dialog" aria-modal="true" aria-label="Add contact">
-        <div class="crm-sheet">
-            <div class="crm-sheet-handle" aria-hidden="true"></div>
-            <div class="crm-sheet-header">
-                <button class="crm-sheet-cancel" onclick="crmCCloseSheet('crm-add-sheet')">Cancel</button>
-                <h3>New Contact</h3>
-                <button class="crm-sheet-save" id="crm-add-save" onclick="crmCSubmitAdd()">Add</button>
-            </div>
-            <div class="crm-sheet-body">
- 
-                <div class="crm-form-group-label">Name</div>
-                <div class="crm-form-card">
-                    <div class="crm-form-field">
-                        <label for="add-fn">First Name</label>
-                        <input id="add-fn" type="text" placeholder="Required" autocomplete="given-name">
-                    </div>
-                    <div class="crm-form-field">
-                        <label for="add-ln">Last Name</label>
-                        <input id="add-ln" type="text" placeholder="Required" autocomplete="family-name">
-                    </div>
-                </div>
- 
-                <div class="crm-form-group-label">Contact Info</div>
-                <div class="crm-form-card">
-                    <div class="crm-form-field">
-                        <label for="add-em">Email</label>
-                        <input id="add-em" type="email" placeholder="Optional" autocomplete="email">
-                    </div>
-                    <div class="crm-form-field">
-                        <label for="add-ph">Phone</label>
-                        <input id="add-ph" type="tel" placeholder="Optional" autocomplete="tel">
-                    </div>
-                    <div class="crm-form-field">
-                        <label for="add-co">Company</label>
-                        <input id="add-co" type="text" placeholder="Optional" autocomplete="organization">
-                    </div>
-                </div>
- 
-                <div class="crm-form-group-label">Notes</div>
-                <div class="crm-form-card">
-                    <div class="crm-form-field" style="align-items:flex-start;">
-                        <textarea id="add-notes" placeholder="Any relevant details…" rows="3"></textarea>
-                    </div>
-                </div>
- 
-                <div id="add-msg" class="crm-form-field-msg error" style="display:none;"></div>
- 
-            </div>
-        </div>
-    </div>
- 
-    <!-- ══════════════════════════════════════════════════
-         EDIT CONTACT SHEET
-    ══════════════════════════════════════════════════ -->
-    <div class="crm-sheet-overlay" id="crm-edit-sheet" role="dialog" aria-modal="true" aria-label="Edit contact">
-        <div class="crm-sheet">
-            <div class="crm-sheet-handle" aria-hidden="true"></div>
-            <div class="crm-sheet-header">
-                <button class="crm-sheet-cancel" onclick="crmCCloseSheet('crm-edit-sheet')">Cancel</button>
-                <h3>Edit Contact</h3>
-                <button class="crm-sheet-save" id="crm-edit-save" onclick="crmCSubmitEdit()">Save</button>
-            </div>
-            <div class="crm-sheet-body">
-                <input type="hidden" id="edit-rand-id">
- 
-                <div class="crm-form-group-label">Name</div>
-                <div class="crm-form-card">
-                    <div class="crm-form-field">
-                        <label for="edit-fn">First Name</label>
-                        <input id="edit-fn" type="text" placeholder="Required">
-                    </div>
-                    <div class="crm-form-field">
-                        <label for="edit-ln">Last Name</label>
-                        <input id="edit-ln" type="text" placeholder="Required">
-                    </div>
-                </div>
- 
-                <div class="crm-form-group-label">Contact Info</div>
-                <div class="crm-form-card">
-                    <div class="crm-form-field">
-                        <label for="edit-em">Email</label>
-                        <input id="edit-em" type="email" placeholder="Optional">
-                    </div>
-                    <div class="crm-form-field">
-                        <label for="edit-ph">Phone</label>
-                        <input id="edit-ph" type="tel" placeholder="Optional">
-                    </div>
-                    <div class="crm-form-field">
-                        <label for="edit-co">Company</label>
-                        <input id="edit-co" type="text" placeholder="Optional">
-                    </div>
-                </div>
- 
-                <div class="crm-form-group-label">Status</div>
-                <div class="crm-form-card">
-                    <div class="crm-form-field">
-                        <label for="edit-st">Status</label>
-                        <select id="edit-st">
-                            <option value="active">Active</option>
-                            <option value="inactive">Inactive</option>
-                        </select>
-                    </div>
-                </div>
- 
-                <div class="crm-form-group-label">Notes</div>
-                <div class="crm-form-card">
-                    <div class="crm-form-field" style="align-items:flex-start;">
-                        <textarea id="edit-notes" rows="3" placeholder="Any relevant details…"></textarea>
-                    </div>
-                </div>
- 
-                <div id="edit-msg" class="crm-form-field-msg error" style="display:none;"></div>
- 
-            </div>
-        </div>
-    </div>
- 
-    <!-- ══════════════════════════════════════════════════
-         ADD LEAD SHEET  (opened from contact drawer)
-    ══════════════════════════════════════════════════ -->
-    <div class="crm-sheet-overlay" id="crm-lead-sheet" role="dialog" aria-modal="true" aria-label="Add lead">
-        <div class="crm-sheet">
-            <div class="crm-sheet-handle" aria-hidden="true"></div>
-            <div class="crm-sheet-header">
-                <button class="crm-sheet-cancel" onclick="crmCCloseSheet('crm-lead-sheet')">Cancel</button>
-                <h3>New Lead</h3>
-                <button class="crm-sheet-save" id="crm-lead-save" onclick="crmCSubmitLead()">Add</button>
-            </div>
-            <div class="crm-sheet-body">
-                <input type="hidden" id="lead-contact-id">
- 
-                <div class="crm-form-group-label">Lead Details</div>
-                <div class="crm-form-card">
-                    <div class="crm-form-field">
-                        <label for="lead-title">Title</label>
-                        <input id="lead-title" type="text" placeholder="e.g. Website Redesign">
-                    </div>
-                    <div class="crm-form-field">
-                        <label for="lead-value">Value</label>
-                        <input id="lead-value" type="number" placeholder="0.00" min="0" step="0.01">
-                    </div>
-                </div>
- 
-                <div class="crm-form-group-label">Pipeline</div>
-                <div class="crm-form-card">
-                    <div class="crm-form-field">
-                        <label for="lead-stage">Stage</label>
-                        <select id="lead-stage">
-                            <?php foreach ($pipeline_stages as $s): ?>
-                            <option value="<?php echo esc_attr($s); ?>"><?php echo esc_html(ucfirst($s)); ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-                    <div class="crm-form-field">
-                        <label for="lead-priority">Priority</label>
-                        <select id="lead-priority">
-                            <option value="low">Low</option>
-                            <option value="medium" selected>Medium</option>
-                            <option value="high">High</option>
-                        </select>
-                    </div>
-                    <div class="crm-form-field">
-                        <label for="lead-pipeline-type">Pipeline Type</label>
-                        <select id="lead-pipeline-type">
-                            <option value="sales">Sales</option>
-                            <option value="partnership">Partnership</option>
-                            <option value="renewal">Renewal</option>
-                            <option value="upsell">Upsell</option>
-                            <option value="other">Other</option>
-                        </select>
-                    </div>
-                </div>
- 
-                <div class="crm-form-group-label">Source &amp; Product</div>
-                <div class="crm-form-card">
-                    <div class="crm-form-field">
-                        <label for="lead-source">Lead Source</label>
-                        <select id="lead-source">
-                            <option value="">— Select —</option>
-                            <option value="website">Website</option>
-                            <option value="referral">Referral</option>
-                            <option value="social">Social Media</option>
-                            <option value="email">Email Campaign</option>
-                            <option value="event">Event / Trade Show</option>
-                            <option value="cold_outreach">Cold Outreach</option>
-                            <option value="partner">Partner</option>
-                            <option value="other">Other</option>
-                        </select>
-                    </div>
-                    <div class="crm-form-field">
-                        <label for="lead-product">Product Type</label>
-                        <select id="lead-product">
-                            <option value="">— Select —</option>
-                            <option value="saas">SaaS / Software</option>
-                            <option value="consulting">Consulting</option>
-                            <option value="hardware">Hardware</option>
-                            <option value="service">Service</option>
-                            <option value="license">License</option>
-                            <option value="support">Support Plan</option>
-                            <option value="other">Other</option>
-                        </select>
-                    </div>
-                </div>
- 
-                <div class="crm-form-group-label">Timeline &amp; Status</div>
-                <div class="crm-form-card">
-                    <div class="crm-form-field">
-                        <label for="lead-close">Expected Close</label>
-                        <input id="lead-close" type="date">
-                    </div>
-                    <div class="crm-form-field">
-                        <label for="lead-status">Status</label>
-                        <select id="lead-status">
-                            <option value="open">Open</option>
-                            <option value="won">Won</option>
-                            <option value="lost">Lost</option>
-                        </select>
-                    </div>
-                </div>
- 
-                <div class="crm-form-group-label">Notes</div>
-                <div class="crm-form-card">
-                    <div class="crm-form-field" style="align-items:flex-start;">
-                        <textarea id="lead-notes" rows="3" placeholder="Deal context, requirements…"></textarea>
-                    </div>
-                </div>
- 
-                <div class="crm-form-group-label">Note Priority</div>
-                <div class="crm-form-card">
-                    <div class="crm-form-field">
-                        <label for="lead-note-priority">Note Priority</label>
-                        <select id="lead-note-priority">
-                            <option value="low">Low — FYI only</option>
-                            <option value="medium" selected>Medium — Review when possible</option>
-                            <option value="high">High — Action required</option>
-                        </select>
-                    </div>
-                </div>
- 
-                <div id="lead-msg" class="crm-form-field-msg error" style="display:none;"></div>
- 
-            </div>
-        </div>
-    </div>
- 
- 
-    <!-- ══════════════════════════════════════════════════
-         JAVASCRIPT
-    ══════════════════════════════════════════════════ -->
-    <script>
-    (function() {
- 
-        // ── Search & filter ──────────────────────────────
-        var searchEl = document.getElementById('crm-c-search');
-        var pills    = document.querySelectorAll('.crm-c-filter-pill');
-        var activeStatus = '';
- 
-        function filterList() {
-            var q = searchEl ? searchEl.value.toLowerCase() : '';
-            document.querySelectorAll('#crm-c-list .crm-c-row').forEach(function(r) {
-                var nameMatch   = r.getAttribute('data-search').includes(q);
-                var statusMatch = !activeStatus || r.getAttribute('data-status') === activeStatus;
-                r.style.display = (nameMatch && statusMatch) ? '' : 'none';
-            });
-        }
- 
-        if (searchEl) searchEl.addEventListener('input', filterList);
- 
-        pills.forEach(function(pill) {
-            pill.addEventListener('click', function() {
-                pills.forEach(function(p){ p.classList.remove('active'); });
-                pill.classList.add('active');
-                activeStatus = pill.getAttribute('data-status');
-                filterList();
-            });
-        });
- 
-        // ── Sheet helpers ────────────────────────────────
-        window.crmCOpenSheet  = function(id) {
-            var el = document.getElementById(id);
-            if (el) { el.classList.add('open'); document.body.style.overflow = 'hidden'; }
-        };
-        window.crmCCloseSheet = function(id) {
-            var el = document.getElementById(id);
-            if (el) { el.classList.remove('open'); document.body.style.overflow = ''; }
-        };
- 
-        // ── Drawer helpers ───────────────────────────────
-        window.crmCOpenDrawer  = function(data) {
-            var drawer = document.getElementById('crm-drawer');
-            var overlay = document.getElementById('crm-drawer-overlay');
-            document.getElementById('crm-drawer-title').textContent = data.first_name + ' ' + data.last_name;
-            overlay.classList.add('open');
-            drawer.classList.add('open');
-            document.body.style.overflow = 'hidden';
- 
-            // Wire footer buttons
-            document.getElementById('crm-drawer-edit-btn').onclick = function() {
-                crmCCloseDrawer();
-                crmCOpenEditSheet(data);
-            };
-            document.getElementById('crm-drawer-del-btn').onclick = function() {
-                crmCDelete(data.rand_id, this);
-            };
- 
-            // Render drawer body immediately with local data then fetch more
-            renderDrawerLocal(data);
-            fetchDrawerData(data);
-        };
-        window.crmCCloseDrawer = function() {
-            document.getElementById('crm-drawer').classList.remove('open');
-            document.getElementById('crm-drawer-overlay').classList.remove('open');
-            document.body.style.overflow = '';
-        };
- 
-        function renderDrawerLocal(data) {
-            var stageColors = {
-                new:'#007aff', contacted:'#ff9500', qualified:'#34c759',
-                won:'#30d158', lost:'#ff3b30'
-            };
-            var html = '';
- 
-            // Profile card
-            html += '<div class="crm-dc">'
-                 + '<div class="crm-dc-profile">'
-                 + '<div class="crm-dc-avatar-lg ' + escAttr(data.av_class) + '">' + escHtml(data.initials) + '</div>'
-                 + '<div class="crm-dc-info"><h3>' + escHtml(data.first_name + ' ' + data.last_name) + '</h3>'
-                 + '<p>' + (data.company ? escHtml(data.company) : '<span style="color:#c7c7cc">No company</span>') + '</p>'
-                 + '</div></div>';
- 
-            // Status
-            html += '<div class="crm-dc-row">'
-                 + '<svg class="crm-dc-row-icon" width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" stroke-width="2"/><path stroke-linecap="round" stroke-width="2" d="M9 12l2 2 4-4"/></svg>'
-                 + '<span class="crm-dc-row-label">Status</span>'
-                 + '<span class="crm-dc-row-val"><span class="crm-c-badge crm-c-badge-' + escAttr(data.status) + '">' + escHtml(ucfirst(data.status)) + '</span></span>'
-                 + '</div>';
- 
-            // Email
-            html += drawerRow('M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z','Email', data.email || null);
-            // Phone
-            html += drawerRow('M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z','Phone', data.phone || null);
-            html += '</div>';
- 
-            // Notes card
-            html += '<div class="crm-dc"><div class="crm-dc-head"><h4>Notes</h4></div>'
-                 + '<div class="crm-dc-notes' + (data.notes ? '' : ' empty') + '">' + (data.notes ? escHtml(data.notes) : 'No notes added') + '</div>'
-                 + '</div>';
- 
-            // Leads placeholder
-            html += '<div class="crm-dc" id="crm-drawer-leads">'
-                 + '<div class="crm-dc-head"><h4>Leads</h4>'
-                 + '<button class="crm-dc-edit-btn" onclick="crmCOpenLeadSheet(\'' + escAttr(data.rand_id) + '\')">+ Add Lead</button>'
-                 + '</div>'
-                 + '<div style="padding:12px 16px;color:#8e8e93;font-size:13px;" id="crm-drawer-leads-inner">Loading…</div>'
-                 + '</div>';
- 
-            // Interactions placeholder
-            html += '<div class="crm-dc" id="crm-drawer-ints">'
-                 + '<div class="crm-dc-head"><h4>Recent Interactions</h4></div>'
-                 + '<div style="padding:12px 16px;color:#8e8e93;font-size:13px;" id="crm-drawer-ints-inner">Loading…</div>'
-                 + '</div>';
- 
-            document.getElementById('crm-drawer-body').innerHTML = html;
-        }
- 
-        function fetchDrawerData(data) {
-            var fd = new FormData();
-            fd.append('action', 'crm_get_contact');
-            fd.append('nonce', crm_nonce);
-            fd.append('rand_id', data.rand_id);
-            fetch(ajaxurl, { method:'POST', body:fd })
-                .then(function(r){ return r.json(); })
-                .then(function(d) {
-                    if (!d.success) return;
-                    var leads  = d.data.leads;
-                    var ints   = d.data.interactions;
-                    var stageColors = {
-                        new:'#007aff', contacted:'#ff9500', qualified:'#ff9f0a',
-                        won:'#34c759', lost:'#ff3b30'
-                    };
- 
-                    // Render leads
-                    var leadsEl = document.getElementById('crm-drawer-leads-inner');
-                    if (leadsEl) {
-                        if (!leads.length) {
-                            leadsEl.innerHTML = '<span style="color:#c7c7cc;font-style:italic;">No leads yet</span>';
-                        } else {
-                            var lhtml = '';
-                            leads.forEach(function(l) {
-                                var col = stageColors[l.stage] || '#8e8e93';
-                                lhtml += '<div class="crm-dc-lead-item">'
-                                    + '<div class="crm-dc-lead-dot" style="background:' + col + ';"></div>'
-                                    + '<span class="crm-dc-lead-name">' + escHtml(l.title) + '</span>'
-                                    + '<span class="crm-dc-stage-pill" style="background:' + col + '22;color:' + col + ';">' + escHtml(l.stage) + '</span>'
-                                    + '</div>';
-                            });
-                            leadsEl.outerHTML = lhtml;
-                            // outerHTML replacement: also remove the wrapping div
-                            var wrap = document.getElementById('crm-drawer-leads-inner');
-                            if (wrap) wrap.outerHTML = lhtml;
-                        }
-                    }
- 
-                    // Render interactions
-                    var intsEl = document.getElementById('crm-drawer-ints-inner');
-                    if (intsEl) {
-                        if (!ints.length) {
-                            intsEl.innerHTML = '<span style="color:#c7c7cc;font-style:italic;">No interactions logged</span>';
-                        } else {
-                            var typeConfig = {
-                                call:    { color:'#7c3aed', icon:'M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z' },
-                                email:   { color:'#0891b2', icon:'M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z' },
-                                meeting: { color:'#c2410c', icon:'M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z' },
-                                note:    { color:'#15803d', icon:'M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z' },
-                            };
-                            var ihtml = '';
-                            ints.forEach(function(i) {
-                                var tc = typeConfig[i.type] || typeConfig.note;
-                                ihtml += '<div class="crm-dc-int-item">'
-                                    + '<div class="crm-dc-int-icon" style="background:' + tc.color + '18;">'
-                                    + '<svg width="14" height="14" fill="none" stroke="' + tc.color + '" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="' + tc.icon + '"/></svg>'
-                                    + '</div>'
-                                    + '<div><div class="crm-dc-int-subj">' + escHtml(i.subject) + '</div>'
-                                    + '<div class="crm-dc-int-meta">' + escHtml(ucfirst(i.type)) + ' · ' + escHtml(i.interaction_date) + '</div></div>'
-                                    + '</div>';
-                            });
-                            intsEl.outerHTML = ihtml;
-                            var wrap2 = document.getElementById('crm-drawer-ints-inner');
-                            if (wrap2) wrap2.outerHTML = ihtml;
-                        }
-                    }
-                });
-        }
- 
-        function drawerRow(iconPath, label, val) {
-            return '<div class="crm-dc-row">'
-                 + '<svg class="crm-dc-row-icon" width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="' + iconPath + '"/></svg>'
-                 + '<span class="crm-dc-row-label">' + label + '</span>'
-                 + '<span class="crm-dc-row-val' + (val ? '' : ' empty') + '">' + (val ? escHtml(val) : 'Not set') + '</span>'
-                 + '</div>';
-        }
- 
-        // ── Lead sheet ────────────────────────────────
-        window.crmCOpenLeadSheet = function(rand_id) {
-            // We need the DB contact id — store it on the hidden field via rand_id lookup
-            document.getElementById('lead-contact-id').value = rand_id; // will be resolved server-side via rand_id
-            document.getElementById('lead-title').value   = '';
-            document.getElementById('lead-value').value   = '';
-            document.getElementById('lead-notes').value   = '';
-            document.getElementById('lead-msg').style.display = 'none';
-            crmCOpenSheet('crm-lead-sheet');
-        };
- 
-        window.crmCSubmitLead = function() {
-            var btn       = document.getElementById('crm-lead-save');
-            var title     = document.getElementById('lead-title').value.trim();
-            var contactRandId = document.getElementById('lead-contact-id').value;
-            var msgEl     = document.getElementById('lead-msg');
-            if (!title) { msgEl.textContent = 'Lead title is required.'; msgEl.style.display = 'block'; return; }
-            btn.disabled = true;
-            var fd = new FormData();
-            fd.append('action',          'crm_add_lead');
-            fd.append('nonce',           crm_nonce);
-            fd.append('contact_rand_id', contactRandId);
-            fd.append('title',           title);
-            fd.append('value',           document.getElementById('lead-value').value || 0);
-            fd.append('stage',           document.getElementById('lead-stage').value);
-            fd.append('priority',        document.getElementById('lead-priority').value);
-            fd.append('pipeline_type',   document.getElementById('lead-pipeline-type').value);
-            fd.append('lead_source',     document.getElementById('lead-source').value);
-            fd.append('product_type',    document.getElementById('lead-product').value);
-            fd.append('expected_close',  document.getElementById('lead-close').value);
-            fd.append('status',          document.getElementById('lead-status').value);
-            fd.append('notes',           document.getElementById('lead-notes').value.trim());
-            fd.append('note_priority',   document.getElementById('lead-note-priority').value);
-            fetch(ajaxurl, { method:'POST', body:fd })
-                .then(function(r){ return r.json(); })
-                .then(function(d) {
-                    btn.disabled = false;
-                    if (d.success) { crmShowToast('Lead added!','success'); crmCCloseSheet('crm-lead-sheet'); location.reload(); }
-                    else { msgEl.textContent = d.data.message; msgEl.style.display = 'block'; }
-                })
-                .catch(function() { btn.disabled = false; crmShowToast('Request failed.','error'); });
-        };
- 
-        // ── Add Contact ───────────────────────────────
-        window.crmCOpenAddSheet = function() {
-            ['add-fn','add-ln','add-em','add-ph','add-co','add-notes'].forEach(function(id){
-                var el = document.getElementById(id);
-                if (el) el.value = '';
-            });
-            document.getElementById('add-msg').style.display = 'none';
-            crmCOpenSheet('crm-add-sheet');
-        };
- 
-        window.crmCSubmitAdd = function() {
-            var btn   = document.getElementById('crm-add-save');
-            var fn    = document.getElementById('add-fn').value.trim();
-            var ln    = document.getElementById('add-ln').value.trim();
-            var msgEl = document.getElementById('add-msg');
-            if (!fn || !ln) { msgEl.textContent = 'First and last name are required.'; msgEl.style.display = 'block'; return; }
-            btn.disabled = true;
-            var fd = new FormData();
-            fd.append('action',      'crm_add_contact');
-            fd.append('nonce',       crm_nonce);
-            fd.append('first_name',  fn);
-            fd.append('last_name',   ln);
-            fd.append('email',       document.getElementById('add-em').value.trim());
-            fd.append('phone',       document.getElementById('add-ph').value.trim());
-            fd.append('company',     document.getElementById('add-co').value.trim());
-            fd.append('notes',       document.getElementById('add-notes').value.trim());
-            fetch(ajaxurl, { method:'POST', body:fd })
-                .then(function(r){ return r.json(); })
-                .then(function(d) {
-                    btn.disabled = false;
-                    if (d.success) { crmShowToast('Contact added!','success'); crmCCloseSheet('crm-add-sheet'); location.reload(); }
-                    else { msgEl.textContent = d.data.message; msgEl.style.display = 'block'; }
-                })
-                .catch(function() { btn.disabled = false; crmShowToast('Request failed.','error'); });
-        };
- 
-        // ── Edit Contact ──────────────────────────────
-        window.crmCOpenEditSheet = function(data) {
-            document.getElementById('edit-rand-id').value = data.rand_id;
-            document.getElementById('edit-fn').value    = data.first_name;
-            document.getElementById('edit-ln').value    = data.last_name;
-            document.getElementById('edit-em').value    = data.email;
-            document.getElementById('edit-ph').value    = data.phone;
-            document.getElementById('edit-co').value    = data.company;
-            document.getElementById('edit-st').value    = data.status;
-            document.getElementById('edit-notes').value = data.notes || '';
-            document.getElementById('edit-msg').style.display = 'none';
-            crmCOpenSheet('crm-edit-sheet');
-        };
- 
-        window.crmCSubmitEdit = function() {
-            var btn   = document.getElementById('crm-edit-save');
-            var fn    = document.getElementById('edit-fn').value.trim();
-            var ln    = document.getElementById('edit-ln').value.trim();
-            var msgEl = document.getElementById('edit-msg');
-            if (!fn || !ln) { msgEl.textContent = 'First and last name are required.'; msgEl.style.display = 'block'; return; }
-            btn.disabled = true;
-            var fd = new FormData();
-            fd.append('action',      'crm_edit_contact');
-            fd.append('nonce',       crm_nonce);
-            fd.append('rand_id',     document.getElementById('edit-rand-id').value);
-            fd.append('first_name',  fn);
-            fd.append('last_name',   ln);
-            fd.append('email',       document.getElementById('edit-em').value.trim());
-            fd.append('phone',       document.getElementById('edit-ph').value.trim());
-            fd.append('company',     document.getElementById('edit-co').value.trim());
-            fd.append('status',      document.getElementById('edit-st').value);
-            fd.append('notes',       document.getElementById('edit-notes').value.trim());
-            fetch(ajaxurl, { method:'POST', body:fd })
-                .then(function(r){ return r.json(); })
-                .then(function(d) {
-                    btn.disabled = false;
-                    if (d.success) { crmShowToast('Contact updated!','success'); crmCCloseSheet('crm-edit-sheet'); location.reload(); }
-                    else { msgEl.textContent = d.data.message; msgEl.style.display = 'block'; }
-                })
-                .catch(function() { btn.disabled = false; crmShowToast('Request failed.','error'); });
-        };
- 
-        // ── Delete Contact ────────────────────────────
-        window.crmCDelete = function(rand_id, btnEl) {
-            if (!confirm('Delete this contact? Their leads and interactions will also be removed.')) return;
-            if (btnEl) btnEl.disabled = true;
-            var fd = new FormData();
-            fd.append('action',  'crm_delete_contact');
-            fd.append('nonce',   crm_nonce);
-            fd.append('rand_id', rand_id);
-            fetch(ajaxurl, { method:'POST', body:fd })
-                .then(function(r){ return r.json(); })
-                .then(function(d) {
-                    if (btnEl) btnEl.disabled = false;
-                    if (d.success) { crmShowToast('Contact deleted.','success'); crmCCloseDrawer(); location.reload(); }
-                    else { crmShowToast(d.data.message,'error'); }
-                })
-                .catch(function() { if (btnEl) btnEl.disabled = false; crmShowToast('Request failed.','error'); });
-        };
- 
-        // ── Utilities ─────────────────────────────────
-        function escHtml(str) {
-            var d = document.createElement('div');
-            d.appendChild(document.createTextNode(String(str || '')));
-            return d.innerHTML;
-        }
-        function escAttr(str) {
-            return String(str || '').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-        }
-        function ucfirst(str) {
-            if (!str) return '';
-            return str.charAt(0).toUpperCase() + str.slice(1);
-        }
- 
-        // Close sheets on overlay click
-        document.querySelectorAll('.crm-sheet-overlay').forEach(function(overlay) {
-            overlay.addEventListener('click', function(e) {
-                if (e.target === overlay) {
-                    overlay.classList.remove('open');
-                    document.body.style.overflow = '';
-                }
-            });
-        });
- 
-    })();
-    </script>
- 
-    <?php
-    return ob_get_clean();
-}
- 
-// ============================================================
-// NOTE: The Add Lead AJAX handler (bntm_ajax_crm_add_lead) should
-// be updated to also accept and store these new fields:
-//
-//   contact_rand_id  — resolve to contact_id before insert
-//   pipeline_type    — VARCHAR(50)  e.g. 'sales','partnership'
-//   lead_source      — VARCHAR(50)  e.g. 'website','referral'
-//   product_type     — VARCHAR(50)  e.g. 'saas','consulting'
-//   note_priority    — VARCHAR(20)  e.g. 'low','medium','high'
-//
-// Add those columns to the crm_leads table migration:
-//   pipeline_type VARCHAR(50) NOT NULL DEFAULT 'sales',
-//   lead_source   VARCHAR(100) NOT NULL DEFAULT '',
-//   product_type  VARCHAR(100) NOT NULL DEFAULT '',
-//   note_priority VARCHAR(20) NOT NULL DEFAULT 'medium',
-//
-// Update bntm_ajax_crm_add_lead() to:
-//   1. Accept contact_rand_id → look up the contact id for this business
-//   2. Insert the 4 new fields
-// ============================================================
-
-// ============================================================
-// TAB: LEADS
-// ============================================================
-
-/**
- * Render the leads tab content for the CRM dashboard.
- * @param int $business_id Business ID to scope the CRM data.
- * @return array
- */
-function crm_leads_tab($business_id) {
-    global $wpdb;
-
-    $pipeline_type = isset($_GET['pipeline']) && in_array($_GET['pipeline'], ['subscription', 'enterprise']) ? sanitize_text_field($_GET['pipeline']) : 'subscription';
-    $stages        = crm_get_pipeline_stages($business_id, $pipeline_type);
-    $lead_sources  = crm_get_lead_sources();
-    $product_types = crm_get_product_types();
-
-    $leads_by_stage = [];
-    foreach ($stages as $stage) {
-        $leads_by_stage[$stage] = $wpdb->get_results($wpdb->prepare(
-            "SELECT l.*, c.first_name, c.last_name
-             FROM {$wpdb->prefix}crm_leads l
-             LEFT JOIN {$wpdb->prefix}crm_contacts c ON c.id = l.contact_id
-             WHERE l.business_id = %d AND l.pipeline_type = %s AND l.stage = %s AND l.status = 'open'
-             ORDER BY l.created_at DESC",
-            $business_id, $pipeline_type, $stage
-        ));
-    }
-
-    $contacts = $wpdb->get_results($wpdb->prepare(
-        "SELECT id, first_name, last_name FROM {$wpdb->prefix}crm_contacts WHERE business_id = %d AND status = 'active' ORDER BY first_name",
-        $business_id
-    ));
-
-    $max_stage_count = max(array_map('count', $leads_by_stage)) ?: 1;
-
-    ob_start();
-    ?>
-    <div class="crm-filter-bar" style="margin-bottom:16px;">
-        <select id="lead-pipeline-filter" class="crm-select" style="width:auto;min-width:150px;" onchange="crmApplyLeadFilters()">
-            <option value="">All Pipelines</option>
-            <?php foreach (crm_get_pipeline_types() as $key => $label): ?>
-                <option value="<?php echo esc_attr($key); ?>" <?php selected($pipeline_type, $key); ?>><?php echo esc_html($label); ?></option>
-            <?php endforeach; ?>
-        </select>
-        <select id="lead-stage-filter" class="crm-select" style="width:auto;min-width:170px;" onchange="crmApplyLeadFilters()">
-            <option value="">All Stages</option>
-            <?php foreach ($stages as $s): ?>
-                <option value="<?php echo esc_attr($s); ?>"><?php echo esc_html($s); ?></option>
-            <?php endforeach; ?>
-        </select>
-        <select id="lead-status-filter" class="crm-select" style="width:auto;min-width:150px;" onchange="crmApplyLeadFilters()">
-            <option value="">All Statuses</option>
-            <option value="open">Open</option>
-            <option value="won">Won</option>
-            <option value="lost">Lost</option>
-        </select>
-        <select id="lead-source-filter" class="crm-select" style="width:auto;min-width:170px;" onchange="crmApplyLeadFilters()">
-            <option value="">All Sources</option>
-            <?php foreach ($lead_sources as $source_key => $source_label): ?>
-                <option value="<?php echo esc_attr($source_key); ?>"><?php echo esc_html($source_label); ?></option>
-            <?php endforeach; ?>
-        </select>
-    </div>
-    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:16px;">
-        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-            <select id="lead-view-mode" class="crm-select" style="width:auto;min-width:140px;" onchange="crmSwitchLeadView(this.value)">
-                <option value="pipeline">Pipeline View</option>
-                <option value="list">List View</option>
-            </select>
-            <div id="pipeline-display-wrap" style="display:flex;align-items:center;gap:8px;">
-                <label for="lead-pipeline-display-mode" style="margin:0;font-size:14px;color:#374151;">Display</label>
-                <select id="lead-pipeline-display-mode" class="crm-select" style="width:auto;min-width:170px;" onchange="crmSwitchPipelineDisplay(this.value)">
-                    <option value="graph">Bar Graph</option>
-                    <option value="cards">Stat Cards</option>
-                </select>
-            </div>
-        </div>
-        <button class="bntm-btn-primary" onclick="crmOpenModal('add-lead-modal')">
-            <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="vertical-align:-3px;margin-right:4px;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
-            Add Lead
-        </button>
-    </div>
-
-    <!-- Pipeline view -->
-    <div id="lead-view-pipeline">
-        <div id="lead-view-pipeline-graph">
-            <div class="crm-pipeline">
-                <?php foreach ($stages as $stage):
-                    $stage_leads = $leads_by_stage[$stage] ?? [];
-                    $stage_value = array_sum(array_column($stage_leads, 'value'));
-                    $bar_pct     = $max_stage_count ? round(min(100, (count($stage_leads) / $max_stage_count) * 100)) : 0;
-                    ?>
-                <div class="crm-pipeline-col">
-                    <div class="crm-pipeline-col-header">
-                        <h4><?php echo esc_html($stage); ?></h4>
-                        <span class="crm-pipeline-count"><?php echo count($stage_leads); ?></span>
-                    </div>
-                    <div class="crm-pipeline-bar" title="<?php echo esc_attr(count($stage_leads)); ?> leads">
-                        <div class="crm-pipeline-bar-fill" style="width:<?php echo esc_attr($bar_pct); ?>%;"></div>
-                    </div>
-                    <div style="font-size:11px;color:#9ca3af;margin-bottom:10px;"><?php echo crm_format_price($stage_value); ?></div>
-                    <?php foreach ($stage_leads as $l): ?>
-                    <div class="crm-lead-card" data-pipeline-type="<?php echo esc_attr($l->pipeline_type); ?>" data-stage="<?php echo esc_attr($l->stage); ?>" data-status="<?php echo esc_attr($l->status); ?>" data-product-type="<?php echo esc_attr($l->product_type); ?>" data-service-type="<?php echo esc_attr($l->service_type); ?>" data-source="<?php echo esc_attr($l->lead_source); ?>" onclick="crmEditLead(<?php echo esc_attr(json_encode(['rand_id'=>$l->rand_id,'title'=>$l->title,'contact_id'=>$l->contact_id,'value'=>$l->value,'pipeline_type'=>$l->pipeline_type,'product_type'=>$l->product_type,'service_type'=>$l->service_type,'lead_source'=>$l->lead_source,'motm_uploaded'=>$l->motm_uploaded,'ended_reason'=>$l->ended_reason,'stage'=>$l->stage,'priority'=>$l->priority,'expected_close'=>$l->expected_close,'notes'=>$l->notes,'status'=>$l->status])); ?>)">
-                        <h5><?php echo esc_html($l->title); ?></h5>
-                        <div class="lead-value"><?php echo crm_format_price($l->value); ?></div>
-                        <div class="lead-contact"><?php echo esc_html($l->first_name . ' ' . $l->last_name); ?></div>
-                        <div style="margin-top:8px;">
-                            <span class="crm-badge crm-badge-<?php echo esc_attr($l->priority); ?>" style="font-size:10px;"><?php echo esc_html($l->priority); ?></span>
-                        </div>
-                    </div>
-                    <?php endforeach; ?>
-                    <?php if (empty($stage_leads)): ?>
-                    <div style="text-align:center;color:#d1d5db;font-size:12px;padding:16px 0;">Empty</div>
-                    <?php endif; ?>
-                </div>
-                <?php endforeach; ?>
-            </div>
-        </div>
-
-        <div id="lead-view-pipeline-cards" style="display:none;">
-            <div class="crm-stage-cards">
-                <?php foreach ($stages as $stage):
-                    $stage_leads = $leads_by_stage[$stage] ?? [];
-                    $stage_value = array_sum(array_column($stage_leads, 'value'));
-                    $card_pct    = $max_stage_count ? round(min(100, (count($stage_leads) / $max_stage_count) * 100)) : 0;
-                    ?>
-                <div class="crm-stage-card" data-stage="<?php echo esc_attr($stage); ?>">
-                    <div class="crm-stage-card-header">
-                        <h4><?php echo esc_html($stage); ?></h4>
-                        <span class="crm-stage-count"><?php echo count($stage_leads); ?></span>
-                    </div>
-                    <div class="crm-stage-card-value"><?php echo crm_format_price($stage_value); ?></div>
-                    <div class="crm-stage-card-bar">
-                        <div class="crm-stage-card-bar-fill" style="width:<?php echo esc_attr($card_pct); ?>%;"></div>
-                    </div>
-                    <div class="crm-stage-card-meta"><?php echo number_format(count($stage_leads)); ?> open lead<?php echo count($stage_leads) === 1 ? '' : 's'; ?></div>
-                </div>
-                <?php endforeach; ?>
-            </div>
-        </div>
-    </div>
-
-    <style>
-    .crm-stage-cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:16px; margin-bottom:20px; }
-    .crm-stage-card { background:#fff; border:1px solid #e5e7eb; border-radius:14px; padding:18px; box-shadow:0 1px 4px rgba(15,23,42,.06); }
-    .crm-stage-card-header { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:12px; }
-    .crm-stage-card-header h4 { margin:0; font-size:14px; font-weight:700; color:#111827; }
-    .crm-stage-count, .crm-stage-card-value, .crm-stage-card-meta { margin:0; color:#374151; }
-    .crm-stage-card-value { font-size:22px; font-weight:700; margin-bottom:10px; color:var(--bntm-primary,#6366f1); }
-    .crm-stage-card-bar { height:10px; background:#f3f4f6; border-radius:999px; overflow:hidden; margin-bottom:10px; }
-    .crm-stage-card-bar-fill { height:100%; background:linear-gradient(90deg,#6366f1,#4f46e5); border-radius:999px; }
-    .crm-stage-card-meta { font-size:12px; color:#6b7280; }
-    .crm-pipeline-bar { height:10px; background:#f3f4f6; border-radius:999px; overflow:hidden; margin-bottom:10px; }
-    .crm-pipeline-bar-fill { height:100%; background:linear-gradient(90deg,#6366f1,#4f46e5); border-radius:999px; }
-    </style>
-
-    <!-- List view -->
-    <div id="lead-view-list" style="display:none;">
-        <?php
-        $all_leads = $wpdb->get_results($wpdb->prepare(
-            "SELECT l.*, c.first_name, c.last_name
-             FROM {$wpdb->prefix}crm_leads l
-             LEFT JOIN {$wpdb->prefix}crm_contacts c ON c.id = l.contact_id
-             WHERE l.business_id = %d
-             ORDER BY l.created_at DESC",
-            $business_id
-        ));
-        ?>
-        <div class="bntm-table-wrapper">
-            <table class="bntm-table">
-                <thead><tr><th>Title</th><th>Contact</th><th>Pipeline</th><th>Product / Service</th><th>Source</th><th>Value</th><th>Stage</th><th>Priority</th><th>Close Date</th><th>Status</th><th>Actions</th></tr></thead>
-                <tbody>
-                <?php if (empty($all_leads)): ?>
-                <tr><td colspan="8" style="text-align:center;color:#9ca3af;padding:32px;">No leads yet.</td></tr>
-                <?php else: ?>
-                <?php foreach ($all_leads as $l): ?>
-                <tr data-pipeline-type="<?php echo esc_attr($l->pipeline_type); ?>" data-product-type="<?php echo esc_attr($l->product_type); ?>" data-service-type="<?php echo esc_attr($l->service_type); ?>" data-source="<?php echo esc_attr($l->lead_source); ?>" data-status="<?php echo esc_attr($l->status); ?>">
-                    <td style="font-weight:500;color:#111827;"><?php echo esc_html($l->title); ?></td>
-                    <td><?php echo esc_html($l->first_name . ' ' . $l->last_name); ?></td>
-                    <td><?php echo esc_html(crm_pipeline_type_label($l->pipeline_type)); ?></td>
-                    <td><?php echo esc_html($l->pipeline_type === 'subscription' ? $l->product_type : $l->service_type); ?></td>
-                    <td><?php echo esc_html($l->lead_source ?: '—'); ?></td>
-                    <td style="font-weight:600;color:var(--bntm-primary,#6366f1);"><?php echo crm_format_price($l->value); ?></td>
-                    <td><span class="crm-badge crm-badge-<?php echo esc_attr(sanitize_title($l->stage)); ?>"><?php echo esc_html($l->stage); ?></span></td>
-                    <td><span class="crm-badge crm-badge-<?php echo esc_attr($l->priority); ?>"><?php echo esc_html($l->priority); ?></span></td>
-                    <td style="font-size:13px;color:#6b7280;"><?php echo $l->expected_close ? date('M j, Y', strtotime($l->expected_close)) : '—'; ?></td>
-                    <td><span class="crm-badge crm-badge-<?php echo esc_attr($l->status); ?>"><?php echo esc_html($l->status); ?></span></td>
-                    <td>
-                        <div class="crm-actions">
-                            <button class="bntm-btn-icon" title="Edit" onclick="crmEditLead(<?php echo esc_attr(json_encode(['rand_id'=>$l->rand_id,'title'=>$l->title,'contact_id'=>$l->contact_id,'value'=>$l->value,'pipeline_type'=>$l->pipeline_type,'product_type'=>$l->product_type,'service_type'=>$l->service_type,'lead_source'=>$l->lead_source,'motm_uploaded'=>$l->motm_uploaded,'ended_reason'=>$l->ended_reason,'stage'=>$l->stage,'priority'=>$l->priority,'expected_close'=>$l->expected_close,'notes'=>$l->notes,'status'=>$l->status])); ?>)">
-                                <svg width="15" height="15" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
-                            </button>
-                            <button class="bntm-btn-icon" title="Delete" onclick="crmDeleteLead('<?php echo esc_attr($l->rand_id); ?>', this)" style="color:#ef4444;">
-                                <svg width="15" height="15" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
-                            </button>
-                        </div>
-                    </td>
-                </tr>
-                <?php endforeach; ?>
-                <?php endif; ?>
-                </tbody>
-            </table>
-        </div>
-    </div>
-
-    <!-- Add Lead Modal -->
-    <div class="crm-modal-overlay" id="add-lead-modal">
-        <div class="crm-modal">
-            <div class="crm-modal-header">
-                <h3>Add Lead</h3>
-                <button class="bntm-btn-icon" onclick="crmCloseModal('add-lead-modal')"><svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
-            </div>
-            <div class="crm-modal-body">
-                <div class="crm-form-row single">
-                    <div class="crm-form-group"><label>Lead Title *</label><input type="text" id="add-lead-title" class="crm-input" placeholder="e.g. Website Redesign for Acme"></div>
-                </div>
-                <div class="crm-form-row">
-                    <div class="crm-form-group"><label>Pipeline Type</label>
-                        <select id="add-lead-pipeline-type" class="crm-select" onchange="crmRefreshLeadFields('add')">
-                            <?php foreach (crm_get_pipeline_types() as $key => $label): ?>
-                                <option value="<?php echo esc_attr($key); ?>" <?php selected($key, $pipeline_type); ?>><?php echo esc_html($label); ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-                    <div class="crm-form-group"><label>Lead Source</label>
-                        <select id="add-lead-source" class="crm-select">
-                            <option value="">— Select Source —</option>
-                            <?php foreach ($lead_sources as $source_key => $source_label): ?>
-                                <option value="<?php echo esc_attr($source_key); ?>"><?php echo esc_html($source_label); ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-                </div>
-                <div class="crm-form-row">
-                    <div class="crm-form-group" id="add-lead-product-group"><label>Product Type</label>
-                        <select id="add-lead-product-type" class="crm-select">
-                            <option value="">— Select Product —</option>
-                            <?php foreach ($product_types as $product_key => $product_label): ?>
-                                <option value="<?php echo esc_attr($product_key); ?>"><?php echo esc_html($product_label); ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-                    <div class="crm-form-group" id="add-lead-service-group" style="display:none;"><label>Service Type</label>
-                        <input type="text" id="add-lead-service-type" class="crm-input" placeholder="e.g. Web development"></div>
-                </div>
-                <div class="crm-form-row">
-                    <div class="crm-form-group"><label>Contact</label>
-                        <select id="add-lead-contact" class="crm-select">
-                            <option value="">— Select Contact —</option>
-                            <?php foreach ($contacts as $c): ?><option value="<?php echo esc_attr($c->id); ?>"><?php echo esc_html($c->first_name . ' ' . $c->last_name); ?></option><?php endforeach; ?>
-                        </select>
-                    </div>
-                    <div class="crm-form-group"><label>Value</label><input type="number" id="add-lead-value" class="crm-input" placeholder="0.00" min="0" step="0.01"></div>
-                </div>
-                <div class="crm-form-row triple">
-                    <div class="crm-form-group"><label>Stage</label>
-                        <select id="add-lead-stage" class="crm-select"></select>
-                    </div>
-                    <div class="crm-form-group"><label>Priority</label>
-                        <select id="add-lead-priority" class="crm-select"><option value="low">Low</option><option value="medium" selected>Medium</option><option value="high">High</option></select>
-                    </div>
-                    <div class="crm-form-group"><label>Expected Close</label><input type="date" id="add-lead-close" class="crm-input"></div>
-                </div>
-                <div class="crm-form-row">
-                    <div class="crm-form-group"><label style="display:flex;align-items:center;gap:10px;"><input type="checkbox" id="add-lead-motm" style="margin:0;"> MOTM Uploaded</label></div>
-                    <div class="crm-form-group" id="add-lead-ended-reason-group" style="display:none;"><label>Ended Reason</label>
-                        <select id="add-lead-ended-reason" class="crm-select">
-                            <option value="">— Select Reason —</option>
-                            <?php foreach (crm_get_ended_reasons() as $reason_key => $reason_label): ?>
-                                <option value="<?php echo esc_attr($reason_key); ?>"><?php echo esc_html($reason_label); ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-                </div>
-                <div class="crm-form-row single">
-                    <div class="crm-form-group"><label>Notes</label><textarea id="add-lead-notes" class="crm-textarea" placeholder="Additional details..."></textarea></div>
-                </div>
-                <div id="add-lead-msg"></div>
-            </div>
-            <div class="crm-modal-footer">
-                <button class="bntm-btn-secondary" onclick="crmCloseModal('add-lead-modal')">Cancel</button>
-                <button class="bntm-btn-primary" id="add-lead-btn" onclick="crmSubmitAddLead()">Add Lead</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Edit Lead Modal -->
-    <div class="crm-modal-overlay" id="edit-lead-modal">
-        <div class="crm-modal">
-            <div class="crm-modal-header">
-                <h3>Edit Lead</h3>
-                <button class="bntm-btn-icon" onclick="crmCloseModal('edit-lead-modal')"><svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
-            </div>
-            <div class="crm-modal-body">
-                <input type="hidden" id="edit-lead-rand-id">
-                <div class="crm-form-row single">
-                    <div class="crm-form-group"><label>Lead Title *</label><input type="text" id="edit-lead-title" class="crm-input"></div>
-                </div>
-                <div class="crm-form-row">
-                    <div class="crm-form-group"><label>Pipeline Type</label>
-                        <select id="edit-lead-pipeline-type" class="crm-select" onchange="crmRefreshLeadFields('edit')">
-                            <?php foreach (crm_get_pipeline_types() as $key => $label): ?>
-                                <option value="<?php echo esc_attr($key); ?>"><?php echo esc_html($label); ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-                    <div class="crm-form-group"><label>Lead Source</label>
-                        <select id="edit-lead-source" class="crm-select">
-                            <option value="">— Select Source —</option>
-                            <?php foreach ($lead_sources as $source_key => $source_label): ?>
-                                <option value="<?php echo esc_attr($source_key); ?>"><?php echo esc_html($source_label); ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-                </div>
-                <div class="crm-form-row">
-                    <div class="crm-form-group" id="edit-lead-product-group"><label>Product Type</label>
-                        <select id="edit-lead-product-type" class="crm-select">
-                            <option value="">— Select Product —</option>
-                            <?php foreach ($product_types as $product_key => $product_label): ?>
-                                <option value="<?php echo esc_attr($product_key); ?>"><?php echo esc_html($product_label); ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-                    <div class="crm-form-group" id="edit-lead-service-group" style="display:none;"><label>Service Type</label>
-                        <input type="text" id="edit-lead-service-type" class="crm-input" placeholder="e.g. Web development"></div>
-                </div>
-                <div class="crm-form-row">
-                    <div class="crm-form-group"><label>Contact</label>
-                        <select id="edit-lead-contact" class="crm-select">
-                            <option value="">— Select Contact —</option>
-                            <?php foreach ($contacts as $c): ?><option value="<?php echo esc_attr($c->id); ?>"><?php echo esc_html($c->first_name . ' ' . $c->last_name); ?></option><?php endforeach; ?>
-                        </select>
-                    </div>
-                    <div class="crm-form-group"><label>Value</label><input type="number" id="edit-lead-value" class="crm-input" min="0" step="0.01"></div>
-                </div>
-                <div class="crm-form-row triple">
-                    <div class="crm-form-group"><label>Stage</label>
-                        <select id="edit-lead-stage" class="crm-select"></select>
-                    </div>
-                    <div class="crm-form-group"><label>Priority</label>
-                        <select id="edit-lead-priority" class="crm-select"><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option></select>
-                    </div>
-                    <div class="crm-form-group"><label>Expected Close</label><input type="date" id="edit-lead-close" class="crm-input"></div>
-                </div>
-                <div class="crm-form-row">
-                    <div class="crm-form-group"><label>Status</label>
-                        <select id="edit-lead-status" class="crm-select"><option value="open">Open</option><option value="won">Won</option><option value="lost">Lost</option></select>
-                    </div>
-                    <div class="crm-form-group"><label style="display:flex;align-items:center;gap:10px;"><input type="checkbox" id="edit-lead-motm" style="margin:0;"> MOTM Uploaded</label></div>
-                </div>
-                <div class="crm-form-row">
-                    <div class="crm-form-group" id="edit-lead-ended-reason-group" style="display:none;"><label>Ended Reason</label>
-                        <select id="edit-lead-ended-reason" class="crm-select">
-                            <option value="">— Select Reason —</option>
-                            <?php foreach (crm_get_ended_reasons() as $reason_key => $reason_label): ?>
-                                <option value="<?php echo esc_attr($reason_key); ?>"><?php echo esc_html($reason_label); ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-                </div>
-                <div class="crm-form-row single">
-                    <div class="crm-form-group"><label>Notes</label><textarea id="edit-lead-notes" class="crm-textarea"></textarea></div>
-                </div>
-                <div id="edit-lead-msg"></div>
-            </div>
-            <div class="crm-modal-footer">
-                <button class="bntm-btn-secondary" onclick="crmCloseModal('edit-lead-modal')">Cancel</button>
-                <button class="bntm-btn-danger bntm-btn-small" onclick="crmDeleteCurrentLead()">Delete</button>
-                <button class="bntm-btn-primary" id="edit-lead-btn" onclick="crmSubmitEditLead()">Save Changes</button>
-            </div>
-        </div>
-    </div>
-
-    <script>
-    (function() {
-        var leadPipelineStages = {
-            subscription: <?php echo json_encode(crm_get_pipeline_stages($business_id, 'subscription')); ?>,
-            enterprise: <?php echo json_encode(crm_get_pipeline_stages($business_id, 'enterprise')); ?>
-        };
-
-        function crmSetStageOptions(prefix, pipeline) {
-            var select = document.getElementById(prefix + '-lead-stage');
-            if (!select) return;
-            select.innerHTML = '';
-            var stages = leadPipelineStages[pipeline] || leadPipelineStages.subscription;
-            stages.forEach(function(stage) {
-                var opt = document.createElement('option');
-                opt.value = stage;
-                opt.textContent = stage;
-                select.appendChild(opt);
-            });
-        }
-
-        function crmRefreshLeadFields(mode) {
-            var pipeline = document.getElementById(mode + '-lead-pipeline-type').value;
-            var productGroup = document.getElementById(mode + '-lead-product-group');
-            var serviceGroup = document.getElementById(mode + '-lead-service-group');
-            var endedGroup = document.getElementById(mode + '-lead-ended-reason-group');
-            var stageSelect = document.getElementById(mode + '-lead-stage');
-
-            if (pipeline === 'enterprise') {
-                productGroup.style.display = 'none';
-                serviceGroup.style.display = '';
-            } else {
-                productGroup.style.display = '';
-                serviceGroup.style.display = 'none';
-            }
-
-            crmSetStageOptions(mode, pipeline);
-            if (endedGroup && stageSelect) {
-                endedGroup.style.display = stageSelect.value === 'Subscription Ended' ? '' : 'none';
-            }
-        }
-
-        function crmApplyLeadFilters() {
-            var pipelineFilter = document.getElementById('lead-pipeline-filter');
-            var stageFilter = document.getElementById('lead-stage-filter');
-            var statusFilter = document.getElementById('lead-status-filter');
-            var sourceFilter = document.getElementById('lead-source-filter');
-
-            if (pipelineFilter && pipelineFilter.value && pipelineFilter.value !== '<?php echo esc_js($pipeline_type); ?>') {
-                var params = new URLSearchParams(window.location.search);
-                params.set('tab', 'leads');
-                params.set('pipeline', pipelineFilter.value);
-                window.location.search = params.toString();
-                return;
-            }
-
-            var stageValue = stageFilter ? stageFilter.value.toLowerCase() : '';
-            var statusValue = statusFilter ? statusFilter.value.toLowerCase() : '';
-            var sourceValue = sourceFilter ? sourceFilter.value.toLowerCase() : '';
-
-            document.querySelectorAll('.crm-lead-card, .crm-stage-card, #lead-view-list tbody tr').forEach(function(item) {
-                var match = true;
-                var itemStage = (item.getAttribute('data-stage') || '').toLowerCase();
-                var itemStatus = (item.getAttribute('data-status') || '').toLowerCase();
-                var itemSource = (item.getAttribute('data-source') || '').toLowerCase();
-
-                if (item.classList.contains('crm-stage-card')) {
-                    if (stageValue && itemStage !== stageValue) {
-                        match = false;
-                    }
-                } else {
-                    if (stageValue && itemStage !== stageValue) {
-                        match = false;
-                    }
-                    if (statusValue && itemStatus !== statusValue) {
-                        match = false;
-                    }
-                    if (sourceValue && itemSource !== sourceValue) {
-                        match = false;
-                    }
-                }
-
-                item.style.display = match ? '' : 'none';
-            });
-        }
-
-        window.crmSwitchPipelineDisplay = function(v) {
-            document.getElementById('lead-view-pipeline-graph').style.display = v === 'graph' ? '' : 'none';
-            document.getElementById('lead-view-pipeline-cards').style.display = v === 'cards' ? '' : 'none';
-        };
-
-        window.crmSwitchLeadView = function(v) {
-            var displayWrap = document.getElementById('pipeline-display-wrap');
-            if (displayWrap) {
-                displayWrap.style.display = v === 'pipeline' ? '' : 'none';
-            }
-            document.getElementById('lead-view-pipeline').style.display = v === 'pipeline' ? '' : 'none';
-            document.getElementById('lead-view-list').style.display      = v === 'list' ? '' : 'none';
-        };
-
-        window.crmSubmitAddLead = function() {
-            var btn = document.getElementById('add-lead-btn');
-            var t   = document.getElementById('add-lead-title').value.trim();
-            if (!t) { document.getElementById('add-lead-msg').innerHTML = '<div class="bntm-notice bntm-notice-error">Lead title is required.</div>'; return; }
-            btn.disabled = true;
-            var fd = new FormData();
-            fd.append('action', 'crm_add_lead');
-            fd.append('nonce', crm_nonce);
-            fd.append('title',          t);
-            fd.append('contact_id',     document.getElementById('add-lead-contact').value);
-            fd.append('value',          document.getElementById('add-lead-value').value || 0);
-            fd.append('pipeline_type',  document.getElementById('add-lead-pipeline-type').value);
-            fd.append('product_type',   document.getElementById('add-lead-product-type').value);
-            fd.append('service_type',   document.getElementById('add-lead-service-type').value);
-            fd.append('lead_source',    document.getElementById('add-lead-source').value);
-            fd.append('motm_uploaded',  document.getElementById('add-lead-motm').checked ? 1 : 0);
-            fd.append('ended_reason',   document.getElementById('add-lead-ended-reason').value);
-            fd.append('stage',          document.getElementById('add-lead-stage').value);
-            fd.append('priority',       document.getElementById('add-lead-priority').value);
-            fd.append('expected_close', document.getElementById('add-lead-close').value);
-            fd.append('notes',          document.getElementById('add-lead-notes').value.trim());
-            fetch(ajaxurl,{method:'POST',body:fd}).then(r=>r.json()).then(function(d){
-                btn.disabled=false;
-                if(d.success){crmShowToast('Lead added!','success');crmCloseModal('add-lead-modal');location.reload();}
-                else{document.getElementById('add-lead-msg').innerHTML='<div class="bntm-notice bntm-notice-error">'+d.data.message+'</div>';}
-            }).catch(function(){btn.disabled=false;crmShowToast('Request failed.','error');});
-        };
-
-        window.crmEditLead = function(data) {
-            document.getElementById('edit-lead-rand-id').value       = data.rand_id;
-            document.getElementById('edit-lead-title').value         = data.title;
-            document.getElementById('edit-lead-contact').value       = data.contact_id;
-            document.getElementById('edit-lead-value').value         = data.value;
-            document.getElementById('edit-lead-pipeline-type').value = data.pipeline_type || 'subscription';
-            document.getElementById('edit-lead-source').value        = data.lead_source || '';
-            document.getElementById('edit-lead-product-type').value  = data.product_type || '';
-            document.getElementById('edit-lead-service-type').value  = data.service_type || '';
-            document.getElementById('edit-lead-motm').checked        = parseInt(data.motm_uploaded || 0, 10) === 1;
-            document.getElementById('edit-lead-ended-reason').value  = data.ended_reason || '';
-            crmRefreshLeadFields('edit');
-            document.getElementById('edit-lead-stage').value       = data.stage;
-            document.getElementById('edit-lead-priority').value    = data.priority;
-            document.getElementById('edit-lead-close').value       = data.expected_close || '';
-            document.getElementById('edit-lead-status').value      = data.status;
-            document.getElementById('edit-lead-notes').value    = data.notes || '';
-            document.getElementById('edit-lead-msg').innerHTML  = '';
-            crmOpenModal('edit-lead-modal');
-        };
-
-        window.crmSubmitEditLead = function() {
-            var btn = document.getElementById('edit-lead-btn');
-            var t   = document.getElementById('edit-lead-title').value.trim();
-            if (!t) { document.getElementById('edit-lead-msg').innerHTML = '<div class="bntm-notice bntm-notice-error">Lead title is required.</div>'; return; }
-            btn.disabled = true;
-            var fd = new FormData();
-            fd.append('action', 'crm_edit_lead');
-            fd.append('nonce', crm_nonce);
-            fd.append('rand_id',        document.getElementById('edit-lead-rand-id').value);
-            fd.append('title',          t);
-            fd.append('contact_id',     document.getElementById('edit-lead-contact').value);
-            fd.append('value',          document.getElementById('edit-lead-value').value || 0);
-            fd.append('pipeline_type',  document.getElementById('edit-lead-pipeline-type').value);
-            fd.append('product_type',   document.getElementById('edit-lead-product-type').value);
-            fd.append('service_type',   document.getElementById('edit-lead-service-type').value);
-            fd.append('lead_source',    document.getElementById('edit-lead-source').value);
-            fd.append('motm_uploaded',  document.getElementById('edit-lead-motm').checked ? 1 : 0);
-            fd.append('ended_reason',   document.getElementById('edit-lead-ended-reason').value);
-            fd.append('stage',          document.getElementById('edit-lead-stage').value);
-            fd.append('priority',       document.getElementById('edit-lead-priority').value);
-            fd.append('expected_close', document.getElementById('edit-lead-close').value);
-            fd.append('status',         document.getElementById('edit-lead-status').value);
-            fd.append('notes',          document.getElementById('edit-lead-notes').value.trim());
-            fetch(ajaxurl,{method:'POST',body:fd}).then(r=>r.json()).then(function(d){
-                btn.disabled=false;
-                if(d.success){crmShowToast('Lead updated!','success');crmCloseModal('edit-lead-modal');location.reload();}
-                else{document.getElementById('edit-lead-msg').innerHTML='<div class="bntm-notice bntm-notice-error">'+d.data.message+'</div>';}
-            }).catch(function(){btn.disabled=false;crmShowToast('Request failed.','error');});
-        };
-
-        window.crmDeleteCurrentLead = function() {
-            var rand_id = document.getElementById('edit-lead-rand-id').value;
-            crmDeleteLead(rand_id, null);
-        };
-
-        window.crmDeleteLead = function(rand_id, btn) {
-            if (!confirm('Delete this lead?')) return;
-            if (btn) btn.disabled = true;
-            var fd = new FormData();
-            fd.append('action', 'crm_delete_lead');
-            fd.append('nonce', crm_nonce);
-            fd.append('rand_id', rand_id);
-            fetch(ajaxurl,{method:'POST',body:fd}).then(r=>r.json()).then(function(d){
-                if(btn) btn.disabled=false;
-                if(d.success){crmShowToast('Lead deleted.','success');crmCloseModal('edit-lead-modal');location.reload();}
-                else{crmShowToast(d.data.message,'error');}
-            }).catch(function(){if(btn)btn.disabled=false;crmShowToast('Request failed.','error');});
-        };
-
-        crmRefreshLeadFields('add');
-    })();
-    </script>
-    <?php
-    return ob_get_clean();
-}
-
-// ============================================================
-// TAB: INTERACTIONS
-// ============================================================
-
-/**
- * Render the interactions tab content for the CRM dashboard.
- * @param int $business_id Business ID to scope the CRM data.
- * @return array
- */
-function crm_interactions_tab($business_id) {
-    global $wpdb;
-
-    $interactions = $wpdb->get_results($wpdb->prepare(
-        "SELECT i.*, c.first_name, c.last_name
-         FROM {$wpdb->prefix}crm_interactions i
-         LEFT JOIN {$wpdb->prefix}crm_contacts c ON c.id = i.contact_id
-         WHERE i.business_id = %d AND i.status = 'active'
-         ORDER BY i.interaction_date DESC
-         LIMIT 100",
-        $business_id
-    ));
-
-    $contacts = $wpdb->get_results($wpdb->prepare(
-        "SELECT id, first_name, last_name FROM {$wpdb->prefix}crm_contacts WHERE business_id = %d AND status = 'active' ORDER BY first_name",
-        $business_id
-    ));
-
-    ob_start();
-    ?>
-    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:16px;">
-        <div class="crm-filter-bar" style="margin:0;flex:1;">
-            <select id="int-type-filter" class="crm-select" style="width:auto;min-width:130px;">
-                <option value="">All Types</option>
-                <option value="call">Call</option>
-                <option value="email">Email</option>
-                <option value="meeting">Meeting</option>
-                <option value="note">Note</option>
-            </select>
-        </div>
-        <button class="bntm-btn-primary" onclick="crmOpenModal('add-interaction-modal')">
-            <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="vertical-align:-3px;margin-right:4px;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
-            Log Interaction
-        </button>
-    </div>
-
-    <div class="bntm-table-wrapper">
-        <table class="bntm-table" id="interactions-table">
-            <thead><tr><th>Subject</th><th>Contact</th><th>Type</th><th>Date</th><th>Details</th><th>Actions</th></tr></thead>
-            <tbody>
-            <?php if (empty($interactions)): ?>
-            <tr><td colspan="6" style="text-align:center;color:#9ca3af;padding:32px;">No interactions logged yet.</td></tr>
-            <?php else: ?>
-            <?php foreach ($interactions as $i): ?>
-            <tr data-type="<?php echo esc_attr($i->type); ?>">
-                <td style="font-weight:500;color:#111827;"><?php echo esc_html($i->subject); ?></td>
-                <td><?php echo esc_html($i->first_name . ' ' . $i->last_name); ?></td>
-                <td><span class="crm-badge crm-badge-<?php echo esc_attr($i->type); ?>"><?php echo esc_html($i->type); ?></span></td>
-                <td style="font-size:13px;color:#6b7280;"><?php echo date('M j, Y g:i A', strtotime($i->interaction_date)); ?></td>
-                <td style="font-size:13px;color:#6b7280;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="<?php echo esc_attr($i->details); ?>"><?php echo esc_html($i->details ?: '—'); ?></td>
-                <td>
-                    <button class="bntm-btn-icon" title="Delete" onclick="crmDeleteInteraction('<?php echo esc_attr($i->rand_id); ?>', this)" style="color:#ef4444;">
-                        <svg width="15" height="15" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
-                    </button>
-                </td>
-            </tr>
-            <?php endforeach; ?>
-            <?php endif; ?>
-            </tbody>
-        </table>
-    </div>
-
-    <!-- Add Interaction Modal -->
-    <div class="crm-modal-overlay" id="add-interaction-modal">
-        <div class="crm-modal">
-            <div class="crm-modal-header">
-                <h3>Log Interaction</h3>
-                <button class="bntm-btn-icon" onclick="crmCloseModal('add-interaction-modal')"><svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
-            </div>
-            <div class="crm-modal-body">
-                <div class="crm-form-row">
-                    <div class="crm-form-group"><label>Contact *</label>
-                        <select id="add-int-contact" class="crm-select">
-                            <option value="">— Select Contact —</option>
-                            <?php foreach ($contacts as $c): ?><option value="<?php echo esc_attr($c->id); ?>"><?php echo esc_html($c->first_name . ' ' . $c->last_name); ?></option><?php endforeach; ?>
-                        </select>
-                    </div>
-                    <div class="crm-form-group"><label>Type *</label>
-                        <select id="add-int-type" class="crm-select"><option value="note">Note</option><option value="call">Call</option><option value="email">Email</option><option value="meeting">Meeting</option></select>
-                    </div>
-                </div>
-                <div class="crm-form-row single">
-                    <div class="crm-form-group"><label>Subject *</label><input type="text" id="add-int-subject" class="crm-input" placeholder="Brief description of the interaction"></div>
-                </div>
-                <div class="crm-form-row single">
-                    <div class="crm-form-group"><label>Date &amp; Time</label><input type="datetime-local" id="add-int-date" class="crm-input"></div>
-                </div>
-                <div class="crm-form-row single">
-                    <div class="crm-form-group"><label>Details</label><textarea id="add-int-details" class="crm-textarea" placeholder="Full notes about this interaction..."></textarea></div>
-                </div>
-                <div id="add-int-msg"></div>
-            </div>
-            <div class="crm-modal-footer">
-                <button class="bntm-btn-secondary" onclick="crmCloseModal('add-interaction-modal')">Cancel</button>
-                <button class="bntm-btn-primary" id="add-int-btn" onclick="crmSubmitAddInteraction()">Log Interaction</button>
-            </div>
-        </div>
-    </div>
-
-    <script>
-    (function() {
-        // Set default datetime
-        var dtInput = document.getElementById('add-int-date');
-        if (dtInput) {
-            var now = new Date();
-            now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
-            dtInput.value = now.toISOString().slice(0,16);
-        }
-
-        // Filter by type
-        var typeFilter = document.getElementById('int-type-filter');
-        if (typeFilter) {
-            typeFilter.addEventListener('change', function() {
-                var v = this.value;
-                document.querySelectorAll('#interactions-table tbody tr[data-type]').forEach(function(r){
-                    r.style.display = (!v || r.getAttribute('data-type') === v) ? '' : 'none';
-                });
-            });
-        }
-
-        window.crmSubmitAddInteraction = function() {
-            var btn  = document.getElementById('add-int-btn');
-            var con  = document.getElementById('add-int-contact').value;
-            var subj = document.getElementById('add-int-subject').value.trim();
-            if (!con || !subj) { document.getElementById('add-int-msg').innerHTML = '<div class="bntm-notice bntm-notice-error">Contact and subject are required.</div>'; return; }
-            btn.disabled = true;
-            var fd = new FormData();
-            fd.append('action', 'crm_add_interaction');
-            fd.append('nonce', crm_nonce);
-            fd.append('contact_id', con);
-            fd.append('type',       document.getElementById('add-int-type').value);
-            fd.append('subject',    subj);
-            fd.append('details',    document.getElementById('add-int-details').value.trim());
-            fd.append('interaction_date', document.getElementById('add-int-date').value);
-            fetch(ajaxurl,{method:'POST',body:fd}).then(r=>r.json()).then(function(d){
-                btn.disabled=false;
-                if(d.success){crmShowToast('Interaction logged!','success');crmCloseModal('add-interaction-modal');location.reload();}
-                else{document.getElementById('add-int-msg').innerHTML='<div class="bntm-notice bntm-notice-error">'+d.data.message+'</div>';}
-            }).catch(function(){btn.disabled=false;crmShowToast('Request failed.','error');});
-        };
-
-        window.crmDeleteInteraction = function(rand_id, btn) {
-            if (!confirm('Delete this interaction?')) return;
-            btn.disabled = true;
-            var fd = new FormData();
-            fd.append('action', 'crm_delete_interaction');
-            fd.append('nonce', crm_nonce);
-            fd.append('rand_id', rand_id);
-            fetch(ajaxurl,{method:'POST',body:fd}).then(r=>r.json()).then(function(d){
-                btn.disabled=false;
-                if(d.success){crmShowToast('Interaction deleted.','success');btn.closest('tr').remove();}
-                else{crmShowToast(d.data.message,'error');}
-            }).catch(function(){btn.disabled=false;crmShowToast('Request failed.','error');});
-        };
-    })();
-    </script>
-    <?php
-    return ob_get_clean();
-}
-
-// ============================================================
-// TAB: SETTINGS
-// ============================================================
-
-/**
- * Render the settings tab content for the CRM dashboard.
- * @param int $business_id Business ID to scope the CRM data.
- * @return array
- */
-function crm_settings_tab($business_id) {
-    $currency = bntm_get_setting('crm_currency', 'USD');
-    $pipeline_types = crm_get_pipeline_types();
-    $selected_pipeline = isset($_GET['pipeline']) && array_key_exists($_GET['pipeline'], $pipeline_types) ? sanitize_text_field($_GET['pipeline']) : 'subscription';
-    $stages   = crm_get_pipeline_stages($business_id, $selected_pipeline);
-    $int_types = ['call', 'email', 'meeting', 'note'];
-
-    ob_start();
-    ?>
-    <div class="bntm-form-section">
-        <h3>General Settings</h3>
-        <div class="crm-form-row" style="max-width:400px;">
-            <div class="crm-form-group">
-                <label>Currency</label>
-                <select id="settings-currency" class="crm-select">
-                    <option value="USD" <?php selected($currency,'USD'); ?>>USD — US Dollar ($)</option>
-                    <option value="EUR" <?php selected($currency,'EUR'); ?>>EUR — Euro (€)</option>
-                    <option value="GBP" <?php selected($currency,'GBP'); ?>>GBP — British Pound (£)</option>
-                    <option value="PHP" <?php selected($currency,'PHP'); ?>>PHP — Philippine Peso (₱)</option>
-                    <option value="AED" <?php selected($currency,'AED'); ?>>AED — UAE Dirham (AED)</option>
-                    <option value="SAR" <?php selected($currency,'SAR'); ?>>SAR — Saudi Riyal (SAR)</option>
-                </select>
-            </div>
-        </div>
-    </div>
-
-    <div class="bntm-form-section">
-        <h3>Pipeline Stages</h3>
-        <p style="font-size:14px;color:#6b7280;margin-bottom:16px;">Manage the stages of your sales pipeline. Stages are applied in order.</p>
-        <div class="crm-form-row" style="margin-bottom:16px;">
-            <div class="crm-form-group" style="flex:1;min-width:240px;">
-                <label>Pipeline Type</label>
-                <select id="settings-pipeline-type" class="crm-select" onchange="crmLoadPipelineStages(this.value)">
-                    <?php foreach ($pipeline_types as $key => $label): ?>
-                        <option value="<?php echo esc_attr($key); ?>" <?php selected($selected_pipeline, $key); ?>><?php echo esc_html($label); ?></option>
-                    <?php endforeach; ?>
-                </select>
-            </div>
-        </div>
-        <div id="pipeline-stages-list">
-            <?php foreach ($stages as $index => $stage): ?>
-            <div class="crm-stage-item" data-index="<?php echo $index; ?>" style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
-                <div style="color:#9ca3af;">
-                    <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
-                </div>
-                <input type="text" class="crm-input stage-name-input" value="<?php echo esc_attr($stage); ?>" style="flex:1;max-width:300px;">
-                <button class="bntm-btn-icon" style="color:#ef4444;" onclick="crmRemoveStage(this)" title="Remove stage">
-                    <svg width="15" height="15" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
-                </button>
-            </div>
-            <?php endforeach; ?>
-        </div>
-        <button class="bntm-btn-secondary bntm-btn-small" style="margin-top:8px;" onclick="crmAddStageRow()">
-            <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="vertical-align:-2px;margin-right:4px;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
-            Add Stage
-        </button>
-    </div>
-
-    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
-        <button class="bntm-btn-primary" id="save-settings-btn" onclick="crmSaveSettings()">Save Settings</button>
-        <div id="settings-msg" style="flex:1;"></div>
-    </div>
-
-    <script>
-    (function() {
-        window.crmAddStageRow = function() {
-            var list = document.getElementById('pipeline-stages-list');
-            var div  = document.createElement('div');
-            div.className = 'crm-stage-item';
-            div.style.cssText = 'display:flex;align-items:center;gap:10px;margin-bottom:8px;';
-            div.innerHTML = '<div style="color:#9ca3af;"><svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg></div>'
-                + '<input type="text" class="crm-input stage-name-input" placeholder="Stage name" style="flex:1;max-width:300px;">'
-                + '<button class="bntm-btn-icon" style="color:#ef4444;" onclick="crmRemoveStage(this)" title="Remove"><svg width="15" height="15" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button>';
-            list.appendChild(div);
-        };
-
-        window.crmRemoveStage = function(btn) {
-            btn.closest('.crm-stage-item').remove();
-        };
-
-        window.crmSaveSettings = function() {
-            var btn = document.getElementById('save-settings-btn');
-            var stageInputs = document.querySelectorAll('.stage-name-input');
-            var stages = [];
-            stageInputs.forEach(function(i){ var v=i.value.trim(); if(v) stages.push(v); });
-            if (!stages.length) { document.getElementById('settings-msg').innerHTML='<div class="bntm-notice bntm-notice-error">At least one pipeline stage is required.</div>'; return; }
-            btn.disabled = true;
-            var fd = new FormData();
-            fd.append('action', 'crm_save_settings');
-            fd.append('nonce', crm_nonce);
-            fd.append('currency', document.getElementById('settings-currency').value);
-            fd.append('stages', JSON.stringify(stages));
-            fetch(ajaxurl,{method:'POST',body:fd}).then(r=>r.json()).then(function(d){
-                btn.disabled=false;
-                if(d.success){crmShowToast('Settings saved!','success');document.getElementById('settings-msg').innerHTML='<div class="bntm-notice bntm-notice-success">Settings saved successfully.</div>';}
-                else{document.getElementById('settings-msg').innerHTML='<div class="bntm-notice bntm-notice-error">'+d.data.message+'</div>';}
-            }).catch(function(){btn.disabled=false;crmShowToast('Request failed.','error');});
-        };
-    })();
-    </script>
-    <?php
-    return ob_get_clean();
-}
-
-// ============================================================
-// PUBLIC CONTACT PAGE ROUTE + RENDERER
-// ============================================================
-
-add_action('init', 'bntm_crm_register_contact_route');
-add_filter('query_vars', 'bntm_crm_query_vars');
-add_action('template_redirect', 'bntm_crm_template_redirect');
-
-/**
- * Register the CRM contact page rewrite route.
- * @return void
- */
-function bntm_crm_register_contact_route() {
-    add_rewrite_tag('%crm_contact%', '([^&]+)');
-    add_rewrite_rule('^crm/contact/([^/]+)/?$', 'index.php?crm_contact=$matches[1]', 'top');
-
-    // Flush once after registering the rule (do not flush on every request)
-    if (!get_option('bntm_crm_rewrites_flushed')) {
-        flush_rewrite_rules(false);
-        update_option('bntm_crm_rewrites_flushed', 1);
-    }
-}
-
-/**
- * Add CRM-specific query vars to WordPress.
- * @param array $vars Query vars passed by WordPress.
- * @return void
- */
-function bntm_crm_query_vars($vars) {
-    $vars[] = 'crm_contact';
-    return $vars;
-}
-
-/**
- * Intercept requests and render CRM contact pages when appropriate.
- * @return void
- */
-function bntm_crm_template_redirect() {
-    $rand = get_query_var('crm_contact');
-    if (!$rand) return;
-    // Render contact page and exit
-    echo bntm_render_contact_page($rand);
-    exit;
-}
-
-/**
- * Render the public contact page from the CRM route.
- * @param string $rand_id Random identifier for the selected contact or lead.
- * @return string
- */
-function bntm_render_contact_page($rand_id) {
-    global $wpdb;
-    $rand_id = sanitize_text_field($rand_id);
-    $contact = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}crm_contacts WHERE rand_id = %s", $rand_id), ARRAY_A);
-    if (!$contact) {
-        status_header(404);
-        return '<h2>Contact not found</h2>';
-    }
-
-    // Simple permission: ensure current user owns the business record
-    if (!is_user_logged_in() || get_current_user_id() != intval($contact['business_id'])) {
-        status_header(403);
-        return '<h2>Not authorized</h2>';
-    }
-
-    $leads = $wpdb->get_results($wpdb->prepare("SELECT * FROM {$wpdb->prefix}crm_leads WHERE contact_id = %d AND business_id = %d ORDER BY created_at DESC", $contact['id'], $contact['business_id']));
-    $interactions = $wpdb->get_results($wpdb->prepare("SELECT * FROM {$wpdb->prefix}crm_interactions WHERE contact_id = %d AND business_id = %d AND status = 'active' ORDER BY interaction_date DESC", $contact['id'], $contact['business_id']));
-
-    ob_start();
-    ?>
-    <div class="bntm-crm-contact-page" style="padding:24px;max-width:1200px;margin:0 auto;">
-        <style>
-        .bntm-contact-grid { display:grid; grid-template-columns:260px 1fr 300px; gap:18px; align-items:start; }
-        .bntm-contact-panel { background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:16px; }
-        .contact-avatar { width:64px;height:64px;border-radius:12px;background:var(--bntm-primary,#6366f1);display:inline-flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:20px;margin-right:12px; }
-        .contact-meta { display:flex;align-items:center;margin-bottom:12px; }
-        .contact-detail { font-size:13px;color:#374151;margin-bottom:8px; }
-        .contact-label { font-size:11px;color:#9ca3af;text-transform:uppercase;font-weight:700;margin-bottom:6px; }
-        .feed-item { border-bottom:1px solid #f3f4f6;padding:12px 0; }
-        .feed-item:last-child { border-bottom:none; }
-        </style>
-
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;">
-            <div style="display:flex;align-items:center;gap:12px;">
-                <div class="contact-avatar"><?php echo esc_html(substr($contact['first_name'],0,1) . substr($contact['last_name'],0,1)); ?></div>
-                <div>
-                    <div style="font-size:20px;font-weight:700;color:#111827;"><?php echo esc_html($contact['first_name'] . ' ' . $contact['last_name']); ?></div>
-                    <div style="color:#6b7280;font-size:13px;"><?php echo esc_html($contact['company']); ?></div>
-                </div>
-            </div>
-            <div>
-                <a class="bntm-btn-secondary" href="<?php echo esc_url(admin_url('crm-dashboard/?tab=contacts')); ?>">Back to contacts</a>
-            </div>
-        </div>
-
-        <div class="bntm-contact-grid">
-            <!-- Left: Contact details -->
-            <div class="bntm-contact-panel">
-                <div class="contact-label">Contact Details</div>
-                <div class="contact-detail"><strong>Email:</strong> <?php echo esc_html($contact['email'] ?: '—'); ?></div>
-                <div class="contact-detail"><strong>Phone:</strong> <?php echo esc_html($contact['phone'] ?: '—'); ?></div>
-                <div class="contact-detail"><strong>Lead Status:</strong> <span class="crm-badge crm-badge-<?php echo esc_attr($contact['status']); ?>"><?php echo esc_html($contact['status']); ?></span></div>
-                <div class="contact-detail"><strong>Lead Owner:</strong> <?php $owner = get_userdata(intval($contact['business_id'])); echo $owner ? esc_html($owner->display_name) : esc_html('—'); ?></div>
-                <?php if ($contact['notes']): ?><div style="margin-top:12px;"><div class="contact-label">Notes</div><div style="font-size:13px;color:#374151;"><?php echo nl2br(esc_html($contact['notes'])); ?></div></div><?php endif; ?>
-            </div>
-
-            <!-- Middle: Main feed -->
-            <div class="bntm-contact-panel">
-                <div class="contact-label">Activity Feed</div>
-                <div style="margin-bottom:12px;display:flex;gap:8px;flex-wrap:wrap;">
-                    <button class="bntm-btn-primary">Add Note</button>
-                    <button class="bntm-btn-secondary">Log Interaction</button>
-                    <button class="bntm-btn-secondary">Upload File</button>
-                </div>
-                <div>
-                    <?php if (empty($interactions)): ?>
-                        <p style="color:#9ca3af">No activity yet.</p>
-                    <?php else: ?>
-                        <?php foreach ($interactions as $it): ?>
-                        <div class="feed-item">
-                            <div style="font-weight:600;color:#111827;"><?php echo esc_html($it->subject); ?></div>
-                            <div style="font-size:12px;color:#9ca3af;margin-top:6px;"><?php echo esc_html(ucfirst($it->type)); ?> &middot; <?php echo date('M j, Y g:i A', strtotime($it->interaction_date)); ?></div>
-                            <?php if ($it->details): ?><div style="margin-top:8px;color:#374151;font-size:13px;"><?php echo nl2br(esc_html($it->details)); ?></div><?php endif; ?>
-                        </div>
-                        <?php endforeach; ?>
-                    <?php endif; ?>
-                </div>
-            </div>
-
-            <!-- Right: Active deals & pinned notes -->
-            <div class="bntm-contact-panel">
-                <div class="contact-label">Active Deals</div>
-                <?php if (empty($leads)): ?>
-                    <p style="color:#9ca3af">No active deals.</p>
-                <?php else: ?>
-                    <?php foreach ($leads as $l): if ($l->status !== 'open') continue; ?>
-                        <div style="padding:10px;border-radius:8px;border:1px solid #f3f4f6;margin-bottom:8px;">
-                            <div style="font-weight:600;color:#111827"><?php echo esc_html($l->title); ?></div>
-                            <div style="font-size:13px;color:#6b7280;margin-top:6px;"><?php echo crm_format_price($l->value); ?> &middot; <span class="crm-badge crm-badge-<?php echo esc_attr($l->stage); ?>"><?php echo esc_html($l->stage); ?></span></div>
-                        </div>
-                    <?php endforeach; ?>
-                <?php endif; ?>
-
-                <div style="margin-top:18px;"><div class="contact-label">Pinned Notes</div>
-                    <?php // show up to 3 recent notes as pinned
-                    $pinned = array_filter($interactions, function($x){ return $x->type === 'note'; });
-                    $pinned = array_slice($pinned, 0, 3);
-                    if (empty($pinned)): ?><p style="color:#9ca3af">No pinned notes.</p><?php else: ?>
-                        <?php foreach ($pinned as $pn): ?>
-                            <div style="padding:8px;border-radius:8px;border:1px solid #f3f4f6;margin-bottom:8px;font-size:13px;color:#374151;"><?php echo nl2br(esc_html($pn->details ?: $pn->subject)); ?></div>
-                        <?php endforeach; ?>
-                    <?php endif; ?>
-                </div>
-            </div>
-        </div>
-    </div>
-    <?php
-    return ob_get_clean();
-}
-
-// ============================================================
-// AJAX HANDLERS
-// ============================================================
-
-/**
- * Handle AJAX requests for crm add contact.
- * @return void
- */
-function bntm_ajax_crm_add_contact() {
-    check_ajax_referer('crm_nonce', 'nonce');
-    if (!is_user_logged_in()) { wp_send_json_error(['message' => 'Unauthorized']); }
-
-    global $wpdb;
-    $business_id = get_current_user_id();
-    $first_name  = sanitize_text_field($_POST['first_name'] ?? '');
-    $last_name   = sanitize_text_field($_POST['last_name'] ?? '');
-    $email       = sanitize_email($_POST['email'] ?? '');
-    $phone       = sanitize_text_field($_POST['phone'] ?? '');
-    $company     = sanitize_text_field($_POST['company'] ?? '');
-    $notes       = sanitize_textarea_field($_POST['notes'] ?? '');
-
-    if (!$first_name || !$last_name) {
-        wp_send_json_error(['message' => 'First and last name are required.']);
-    }
-
-    $result = $wpdb->insert(
-        $wpdb->prefix . 'crm_contacts',
-        [
-            'rand_id'     => bntm_rand_id(),
-            'business_id' => $business_id,
-            'first_name'  => $first_name,
-            'last_name'   => $last_name,
-            'email'       => $email,
-            'phone'       => $phone,
-            'company'     => $company,
-            'notes'       => $notes,
-            'status'      => 'active',
-        ],
-        ['%s','%d','%s','%s','%s','%s','%s','%s','%s']
-    );
-
-    if ($result) {
-        wp_send_json_success(['message' => 'Contact added successfully!', 'id' => $wpdb->insert_id]);
-    } else {
-        wp_send_json_error(['message' => 'Failed to add contact. Please try again.']);
-    }
-}
-
-/**
- * Handle AJAX requests for crm edit contact.
- * @return void
- */
-function bntm_ajax_crm_edit_contact() {
-    check_ajax_referer('crm_nonce', 'nonce');
-    if (!is_user_logged_in()) { wp_send_json_error(['message' => 'Unauthorized']); }
-
-    global $wpdb;
-    $business_id = get_current_user_id();
-    $rand_id     = sanitize_text_field($_POST['rand_id'] ?? '');
-    $first_name  = sanitize_text_field($_POST['first_name'] ?? '');
-    $last_name   = sanitize_text_field($_POST['last_name'] ?? '');
-    $email       = sanitize_email($_POST['email'] ?? '');
-    $phone       = sanitize_text_field($_POST['phone'] ?? '');
-    $company     = sanitize_text_field($_POST['company'] ?? '');
-    $status      = sanitize_text_field($_POST['status'] ?? 'active');
-    $notes       = sanitize_textarea_field($_POST['notes'] ?? '');
-
-    if (!$first_name || !$last_name) {
-        wp_send_json_error(['message' => 'First and last name are required.']);
-    }
-
-    $result = $wpdb->update(
-        $wpdb->prefix . 'crm_contacts',
-        ['first_name'=>$first_name,'last_name'=>$last_name,'email'=>$email,'phone'=>$phone,'company'=>$company,'status'=>$status,'notes'=>$notes],
-        ['rand_id'=>$rand_id,'business_id'=>$business_id],
-        ['%s','%s','%s','%s','%s','%s','%s'],
-        ['%s','%d']
-    );
-
-    if ($result !== false) {
-        wp_send_json_success(['message' => 'Contact updated successfully!']);
-    } else {
-        wp_send_json_error(['message' => 'Failed to update contact.']);
-    }
-}
-
-/**
- * Handle AJAX requests for crm delete contact.
- * @return void
- */
-function bntm_ajax_crm_delete_contact() {
-    check_ajax_referer('crm_nonce', 'nonce');
-    if (!is_user_logged_in()) { wp_send_json_error(['message' => 'Unauthorized']); }
-
-    global $wpdb;
-    $business_id = get_current_user_id();
-    $rand_id     = sanitize_text_field($_POST['rand_id'] ?? '');
-
-    $contact = $wpdb->get_row($wpdb->prepare(
-        "SELECT id FROM {$wpdb->prefix}crm_contacts WHERE rand_id = %s AND business_id = %d",
-        $rand_id, $business_id
-    ));
-
-    if (!$contact) { wp_send_json_error(['message' => 'Contact not found.']); }
-
-    $wpdb->query('START TRANSACTION');
-    try {
-        $wpdb->delete($wpdb->prefix . 'crm_interactions', ['contact_id'=>$contact->id,'business_id'=>$business_id], ['%d','%d']);
-        $wpdb->delete($wpdb->prefix . 'crm_leads',        ['contact_id'=>$contact->id,'business_id'=>$business_id], ['%d','%d']);
-        $wpdb->delete($wpdb->prefix . 'crm_contacts',     ['id'=>$contact->id,'business_id'=>$business_id],         ['%d','%d']);
-        $wpdb->query('COMMIT');
-        wp_send_json_success(['message' => 'Contact deleted.']);
-    } catch (Exception $e) {
-        $wpdb->query('ROLLBACK');
-        wp_send_json_error(['message' => 'Failed to delete contact.']);
-    }
-}
-
-/**
- * Handle AJAX requests for crm get contact.
- * @return void
- */
-function bntm_ajax_crm_get_contact() {
-    check_ajax_referer('crm_nonce', 'nonce');
-    if (!is_user_logged_in()) { wp_send_json_error(['message' => 'Unauthorized']); }
-
-    global $wpdb;
-    $business_id = get_current_user_id();
-    $rand_id     = sanitize_text_field($_POST['rand_id'] ?? '');
-
-    $contact = $wpdb->get_row($wpdb->prepare(
-        "SELECT * FROM {$wpdb->prefix}crm_contacts WHERE rand_id = %s AND business_id = %d",
-        $rand_id, $business_id
-    ), ARRAY_A);
-
-    if (!$contact) { wp_send_json_error(['message' => 'Contact not found.']); }
-
-    $leads = $wpdb->get_results($wpdb->prepare(
-        "SELECT title, stage, value FROM {$wpdb->prefix}crm_leads WHERE contact_id = %d AND business_id = %d ORDER BY created_at DESC LIMIT 10",
-        $contact['id'], $business_id
-    ), ARRAY_A);
-
-    $interactions = $wpdb->get_results($wpdb->prepare(
-        "SELECT type, subject, interaction_date FROM {$wpdb->prefix}crm_interactions WHERE contact_id = %d AND business_id = %d AND status = 'active' ORDER BY interaction_date DESC LIMIT 10",
-        $contact['id'], $business_id
-    ), ARRAY_A);
-
-    wp_send_json_success(['contact' => $contact, 'leads' => $leads, 'interactions' => $interactions]);
-}
-
-// Resolve rand_id → id if passed from the contacts drawer
-if (!empty($_POST['contact_rand_id'])) {
-    $resolved = $wpdb->get_var($wpdb->prepare(
-        "SELECT id FROM {$wpdb->prefix}crm_contacts 
-         WHERE rand_id = %s AND business_id = %d",
-        sanitize_text_field($_POST['contact_rand_id']),
-        get_current_user_id()
-    ));
-    if ($resolved) $_POST['contact_id'] = $resolved;
-}
-
-/**
- * Handle AJAX requests for crm add lead.
- * @return void
- */
-function bntm_ajax_crm_add_lead() {
-    check_ajax_referer('crm_nonce', 'nonce');
-    if (!is_user_logged_in()) { wp_send_json_error(['message' => 'Unauthorized']); }
-
-    global $wpdb;
-    $business_id    = get_current_user_id();
-    $title          = sanitize_text_field($_POST['title'] ?? '');
-    $contact_id     = intval($_POST['contact_id'] ?? 0);
-    $value          = floatval($_POST['value'] ?? 0);
-    $pipeline_type  = sanitize_text_field($_POST['pipeline_type'] ?? 'subscription');
-    if (!in_array($pipeline_type, ['subscription', 'enterprise'])) {
-        $pipeline_type = 'subscription';
-    }
-    $product_type   = sanitize_text_field($_POST['product_type'] ?? '');
-    $service_type   = sanitize_text_field($_POST['service_type'] ?? '');
-    $lead_source    = sanitize_text_field($_POST['lead_source'] ?? '');
-    $motm_uploaded  = intval($_POST['motm_uploaded'] ?? 0) ? 1 : 0;
-    $ended_reason   = sanitize_text_field($_POST['ended_reason'] ?? '');
-    $stage          = sanitize_text_field($_POST['stage'] ?? 'new');
-    $priority       = sanitize_text_field($_POST['priority'] ?? 'medium');
-    $expected_close = sanitize_text_field($_POST['expected_close'] ?? '');
-    $notes          = sanitize_textarea_field($_POST['notes'] ?? '');
-
-    if (!$title) { wp_send_json_error(['message' => 'Lead title is required.']); }
-
-    $close_date = $expected_close ? date('Y-m-d', strtotime($expected_close)) : null;
-
-    $result = $wpdb->insert(
-        $wpdb->prefix . 'crm_leads',
-        [
-            'rand_id'        => bntm_rand_id(),
-            'business_id'    => $business_id,
-            'contact_id'     => $contact_id,
-            'title'          => $title,
-            'value'          => $value,
-            'pipeline_type'  => $pipeline_type,
-            'product_type'   => $product_type,
-            'service_type'   => $service_type,
-            'lead_source'    => $lead_source,
-            'motm_uploaded'  => $motm_uploaded,
-            'ended_reason'   => $ended_reason,
-            'stage'          => $stage,
-            'priority'       => $priority,
-            'expected_close' => $close_date,
-            'notes'          => $notes,
-            'status'         => 'open',
-        ],
-        ['%s','%d','%d','%s','%f','%s','%s','%s','%s','%d','%s','%s','%s','%s','%s']
-    );
-
-    if ($result) {
-        wp_send_json_success(['message' => 'Lead added successfully!', 'id' => $wpdb->insert_id]);
-    } else {
-        wp_send_json_error(['message' => 'Failed to add lead. Please try again.']);
-    }
-}
-
-/**
- * Handle AJAX requests for crm edit lead.
- * @return void
- */
-function bntm_ajax_crm_edit_lead() {
-    check_ajax_referer('crm_nonce', 'nonce');
-    if (!is_user_logged_in()) { wp_send_json_error(['message' => 'Unauthorized']); }
-
-    global $wpdb;
-    $business_id    = get_current_user_id();
-    $rand_id        = sanitize_text_field($_POST['rand_id'] ?? '');
-    $title          = sanitize_text_field($_POST['title'] ?? '');
-    $contact_id     = intval($_POST['contact_id'] ?? 0);
-    $value          = floatval($_POST['value'] ?? 0);
-    $pipeline_type  = sanitize_text_field($_POST['pipeline_type'] ?? 'subscription');
-    if (!in_array($pipeline_type, ['subscription', 'enterprise'])) {
-        $pipeline_type = 'subscription';
-    }
-    $product_type   = sanitize_text_field($_POST['product_type'] ?? '');
-    $service_type   = sanitize_text_field($_POST['service_type'] ?? '');
-    $lead_source    = sanitize_text_field($_POST['lead_source'] ?? '');
-    $motm_uploaded  = intval($_POST['motm_uploaded'] ?? 0) ? 1 : 0;
-    $ended_reason   = sanitize_text_field($_POST['ended_reason'] ?? '');
-    $stage          = sanitize_text_field($_POST['stage'] ?? 'new');
-    $priority       = sanitize_text_field($_POST['priority'] ?? 'medium');
-    $expected_close = sanitize_text_field($_POST['expected_close'] ?? '');
-    $status         = sanitize_text_field($_POST['status'] ?? 'open');
-    $notes          = sanitize_textarea_field($_POST['notes'] ?? '');
-
-    if (!$title) { wp_send_json_error(['message' => 'Lead title is required.']); }
-
-    $close_date = $expected_close ? date('Y-m-d', strtotime($expected_close)) : null;
-
-    $result = $wpdb->update(
-        $wpdb->prefix . 'crm_leads',
-        [
-            'title'         => $title,
-            'contact_id'    => $contact_id,
-            'value'         => $value,
-            'pipeline_type' => $pipeline_type,
-            'product_type'  => $product_type,
-            'service_type'  => $service_type,
-            'lead_source'   => $lead_source,
-            'motm_uploaded' => $motm_uploaded,
-            'ended_reason'  => $ended_reason,
-            'stage'         => $stage,
-            'priority'      => $priority,
-            'expected_close'=> $close_date,
-            'status'        => $status,
-            'notes'         => $notes,
-        ],
-        ['rand_id'=>$rand_id,'business_id'=>$business_id],
-        ['%s','%d','%f','%s','%s','%s','%s','%d','%s','%s','%s','%s','%s','%s'],
-        ['%s','%d']
-    );
-
-    if ($result !== false) {
-        wp_send_json_success(['message' => 'Lead updated successfully!']);
-    } else {
-        wp_send_json_error(['message' => 'Failed to update lead.']);
-    }
-}
-
-/**
- * Handle AJAX requests for crm delete lead.
- * @return void
- */
-function bntm_ajax_crm_delete_lead() {
-    check_ajax_referer('crm_nonce', 'nonce');
-    if (!is_user_logged_in()) { wp_send_json_error(['message' => 'Unauthorized']); }
-
-    global $wpdb;
-    $business_id = get_current_user_id();
-    $rand_id     = sanitize_text_field($_POST['rand_id'] ?? '');
-
-    $result = $wpdb->delete(
-        $wpdb->prefix . 'crm_leads',
-        ['rand_id'=>$rand_id,'business_id'=>$business_id],
-        ['%s','%d']
-    );
-
-    if ($result) {
-        wp_send_json_success(['message' => 'Lead deleted.']);
-    } else {
-        wp_send_json_error(['message' => 'Failed to delete lead.']);
-    }
-}
-
-/**
- * Handle AJAX requests for crm update lead stage.
- * @return void
- */
-function bntm_ajax_crm_update_lead_stage() {
-    check_ajax_referer('crm_nonce', 'nonce');
-    if (!is_user_logged_in()) { wp_send_json_error(['message' => 'Unauthorized']); }
-
-    global $wpdb;
-    $business_id = get_current_user_id();
-    $rand_id     = sanitize_text_field($_POST['rand_id'] ?? '');
-    $stage       = sanitize_text_field($_POST['stage'] ?? '');
-
-    if (!$stage) { wp_send_json_error(['message' => 'Stage is required.']); }
-
-    $result = $wpdb->update(
-        $wpdb->prefix . 'crm_leads',
-        ['stage' => $stage],
-        ['rand_id'=>$rand_id,'business_id'=>$business_id],
-        ['%s'],
-        ['%s','%d']
-    );
-
-    if ($result !== false) {
-        wp_send_json_success(['message' => 'Lead stage updated.']);
-    } else {
-        wp_send_json_error(['message' => 'Failed to update stage.']);
-    }
-}
-
-/**
- * Handle AJAX requests for crm add interaction.
- * @return void
- */
-function bntm_ajax_crm_add_interaction() {
-    check_ajax_referer('crm_nonce', 'nonce');
-    if (!is_user_logged_in()) { wp_send_json_error(['message' => 'Unauthorized']); }
-
-    global $wpdb;
-    $business_id       = get_current_user_id();
-    $contact_id        = intval($_POST['contact_id'] ?? 0);
-    $type              = sanitize_text_field($_POST['type'] ?? 'note');
-    $subject           = sanitize_text_field($_POST['subject'] ?? '');
-    $details           = sanitize_textarea_field($_POST['details'] ?? '');
-    $interaction_date  = sanitize_text_field($_POST['interaction_date'] ?? '');
-
-    if (!$contact_id || !$subject) { wp_send_json_error(['message' => 'Contact and subject are required.']); }
-
-    // Verify contact belongs to this business
-    $contact = $wpdb->get_var($wpdb->prepare(
-        "SELECT id FROM {$wpdb->prefix}crm_contacts WHERE id = %d AND business_id = %d",
-        $contact_id, $business_id
-    ));
-    if (!$contact) { wp_send_json_error(['message' => 'Invalid contact.']); }
-
-    $int_dt = $interaction_date ? date('Y-m-d H:i:s', strtotime($interaction_date)) : current_time('mysql');
-
-    $result = $wpdb->insert(
-        $wpdb->prefix . 'crm_interactions',
-        [
-            'rand_id'          => bntm_rand_id(),
-            'business_id'      => $business_id,
-            'contact_id'       => $contact_id,
-            'type'             => $type,
-            'subject'          => $subject,
-            'details'          => $details,
-            'interaction_date' => $int_dt,
-            'status'           => 'active',
-        ],
-        ['%s','%d','%d','%s','%s','%s','%s','%s']
-    );
-
-    if ($result) {
-        wp_send_json_success(['message' => 'Interaction logged successfully!']);
-    } else {
-        wp_send_json_error(['message' => 'Failed to log interaction.']);
-    }
-}
-
-/**
- * Handle AJAX requests for crm delete interaction.
- * @return void
- */
-function bntm_ajax_crm_delete_interaction() {
-    check_ajax_referer('crm_nonce', 'nonce');
-    if (!is_user_logged_in()) { wp_send_json_error(['message' => 'Unauthorized']); }
-
-    global $wpdb;
-    $business_id = get_current_user_id();
-    $rand_id     = sanitize_text_field($_POST['rand_id'] ?? '');
-
-    $result = $wpdb->delete(
-        $wpdb->prefix . 'crm_interactions',
-        ['rand_id'=>$rand_id,'business_id'=>$business_id],
-        ['%s','%d']
-    );
-
-    if ($result) {
-        wp_send_json_success(['message' => 'Interaction deleted.']);
-    } else {
-        wp_send_json_error(['message' => 'Failed to delete interaction.']);
-    }
-}
-
-/**
- * Handle AJAX requests for crm save settings.
- * @return void
- */
-function bntm_ajax_crm_save_settings() {
-    check_ajax_referer('crm_nonce', 'nonce');
-    if (!is_user_logged_in()) { wp_send_json_error(['message' => 'Unauthorized']); }
-
-    $business_id = get_current_user_id();
-    $currency    = sanitize_text_field($_POST['currency'] ?? 'USD');
-    $stages_json = sanitize_text_field($_POST['stages'] ?? '[]');
-
-    $allowed_currencies = ['USD','EUR','GBP','PHP','AED','SAR'];
-    if (!in_array($currency, $allowed_currencies)) { $currency = 'USD'; }
-
-    $stages = json_decode(stripslashes($stages_json), true);
-    if (!is_array($stages)) { $stages = ['new','contacted','qualified','won','lost']; }
-    $stages = array_values(array_filter(array_map('sanitize_text_field', $stages)));
-
-    bntm_set_setting('crm_currency', $currency);
-    bntm_set_setting('crm_pipeline_stages_' . $business_id, json_encode($stages));
-
-    wp_send_json_success(['message' => 'Settings saved successfully!']);
-}
-
-// ============================================================
-// FRONTEND SHORTCODE: CONTACT FORM
-// ============================================================
-
-/**
- * Render the CRM shortcode output.
- * @return string
- */
-function bntm_shortcode_crm_contact_form() {
-    ob_start();
-    ?>
-    <div class="crm-public-page">
-        <div class="crm-public-form-card">
-            <div class="crm-public-form-header">
-                <div class="crm-public-form-icon">
-                    <svg width="32" height="32" fill="none" stroke="white" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-                </div>
-                <h2>Get In Touch</h2>
-                <p>Fill out the form below and we'll get back to you shortly.</p>
-            </div>
-            <div class="crm-public-form-body">
-                <div id="crm-public-success" style="display:none;" class="crm-public-success-msg">
-                    <svg width="40" height="40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                    <h3>Thank you!</h3>
-                    <p>Your message has been received. We'll be in touch soon.</p>
-                </div>
-                <div id="crm-public-form-inner">
-                    <div class="crm-pub-row">
-                        <div class="crm-pub-group"><label>First Name *</label><input type="text" id="pub-first-name" class="crm-pub-input" placeholder="John"></div>
-                        <div class="crm-pub-group"><label>Last Name *</label><input type="text" id="pub-last-name" class="crm-pub-input" placeholder="Doe"></div>
-                    </div>
-                    <div class="crm-pub-row">
-                        <div class="crm-pub-group"><label>Email *</label><input type="email" id="pub-email" class="crm-pub-input" placeholder="john@example.com"></div>
-                        <div class="crm-pub-group"><label>Phone</label><input type="text" id="pub-phone" class="crm-pub-input" placeholder="+1 555 000 0000"></div>
-                    </div>
-                    <div class="crm-pub-row single">
-                        <div class="crm-pub-group"><label>Company</label><input type="text" id="pub-company" class="crm-pub-input" placeholder="Your company (optional)"></div>
-                    </div>
-                    <div class="crm-pub-row single">
-                        <div class="crm-pub-group"><label>Message</label><textarea id="pub-message" class="crm-pub-textarea" placeholder="How can we help you?"></textarea></div>
-                    </div>
-                    <div id="crm-pub-error" class="crm-pub-error" style="display:none;"></div>
-                    <button class="crm-pub-submit" id="crm-pub-submit-btn" onclick="crmPublicSubmit()">
-                        <span id="crm-pub-btn-text">Send Message</span>
-                        <span id="crm-pub-btn-spinner" style="display:none;">
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:crmSpin 1s linear infinite;"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
-                        </span>
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <script>
-    var ajaxurl_crm_pub = '<?php echo admin_url('admin-ajax.php'); ?>';
-    var crm_pub_nonce   = '<?php echo wp_create_nonce('crm_nonce'); ?>';
-
-    function crmPublicSubmit() {
-        var btn   = document.getElementById('crm-pub-submit-btn');
-        var errEl = document.getElementById('crm-pub-error');
-        var fn    = document.getElementById('pub-first-name').value.trim();
-        var ln    = document.getElementById('pub-last-name').value.trim();
-        var em    = document.getElementById('pub-email').value.trim();
-
-        errEl.style.display = 'none';
-        if (!fn || !ln || !em) {
-            errEl.textContent = 'First name, last name, and email are required.';
-            errEl.style.display = 'block';
+    }, $crm_users ) ); ?>;
+    window.bntmWhenCrmCoreReady = window.bntmWhenCrmCoreReady || function(cb, tries) {
+        tries = tries || 0;
+
+        var coreReady =
+            typeof window.crmPost === 'function' &&
+            typeof window.crmToast === 'function' &&
+            typeof window.crmEsc === 'function' &&
+            typeof window.crmBuildUrl === 'function';
+
+        if ( document.readyState !== 'loading' && coreReady ) {
+            cb();
             return;
         }
 
-        btn.disabled = true;
-        document.getElementById('crm-pub-btn-text').style.display    = 'none';
-        document.getElementById('crm-pub-btn-spinner').style.display = 'inline-flex';
+        if ( tries > 200 ) {
+            return;
+        }
 
-        var fd = new FormData();
-        fd.append('action',     'crm_submit_contact_form');
-        fd.append('nonce',      crm_pub_nonce);
-        fd.append('first_name', fn);
-        fd.append('last_name',  ln);
-        fd.append('email',      em);
-        fd.append('phone',      document.getElementById('pub-phone').value.trim());
-        fd.append('company',    document.getElementById('pub-company').value.trim());
-        fd.append('message',    document.getElementById('pub-message').value.trim());
+        setTimeout(function() {
+            window.bntmWhenCrmCoreReady(cb, tries + 1);
+        }, 25);
+    };
+    </script>
 
-        fetch(ajaxurl_crm_pub, { method:'POST', body:fd })
-            .then(r => r.json())
-            .then(function(d) {
-                btn.disabled = false;
-                document.getElementById('crm-pub-btn-text').style.display    = 'inline';
-                document.getElementById('crm-pub-btn-spinner').style.display = 'none';
-                if (d.success) {
-                    document.getElementById('crm-public-form-inner').style.display = 'none';
-                    document.getElementById('crm-public-success').style.display    = 'block';
+    <div class="bntm-crm-container">
+
+        <div class="bntm-tabs">
+            <a href="<?php echo crm_get_tab_url( 'dashboard' ); ?>" class="bntm-tab <?php echo $active_tab === 'dashboard' ? 'active' : ''; ?>">
+                <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                          d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/>
+                </svg>
+                Dashboard
+            </a>
+            <a href="<?php echo crm_get_tab_url( 'contacts' ); ?>" class="bntm-tab <?php echo $active_tab === 'contacts' ? 'active' : ''; ?>">
+                <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                          d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/>
+                </svg>
+                Contacts
+            </a>
+            <a href="<?php echo crm_get_tab_url( 'companies' ); ?>" class="bntm-tab <?php echo $active_tab === 'companies' ? 'active' : ''; ?>">
+                <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                          d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/>
+                </svg>
+                Companies
+            </a>
+            <a href="<?php echo crm_get_tab_url( 'deals' ); ?>" class="bntm-tab <?php echo $active_tab === 'deals' ? 'active' : ''; ?>">
+                <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                          d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+                Deals
+            </a>
+            <a href="<?php echo crm_get_tab_url( 'tasks' ); ?>" class="bntm-tab <?php echo $active_tab === 'tasks' ? 'active' : ''; ?>">
+                <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                          d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/>
+                </svg>
+                Tasks
+            </a>
+            <?php if ( $is_admin ) : ?>
+            <a href="<?php echo crm_get_tab_url( 'settings' ); ?>" class="bntm-tab <?php echo $active_tab === 'settings' ? 'active' : ''; ?>">
+                <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                          d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                </svg>
+                Settings
+            </a>
+            <?php endif; ?>
+        </div>
+
+        <div class="bntm-tab-content">
+            <?php if ( $active_tab === 'dashboard' ) : ?>
+                <?php echo crm_dashboard_tab( $business_id ); ?>
+            <?php elseif ( $active_tab === 'contacts' ) : ?>
+                <?php echo ( $active_view === 'contact' && $record_id > 0 )
+                    ? crm_contacts_tab( $business_id, $record_id )
+                    : crm_contacts_tab( $business_id ); ?>
+            <?php elseif ( $active_tab === 'companies' ) : ?>
+                <?php echo ( $active_view === 'company' && $record_id > 0 )
+                    ? crm_companies_tab( $business_id, $record_id )
+                    : crm_companies_tab( $business_id ); ?>
+            <?php elseif ( $active_tab === 'deals' ) : ?>
+                <?php echo ( $active_view === 'deal' && $record_id > 0 )
+                    ? crm_deals_tab( $business_id, $record_id )
+                    : crm_deals_tab( $business_id ); ?>
+            <?php elseif ( $active_tab === 'tasks' ) : ?>
+                <?php echo crm_tasks_tab( $business_id ); ?>
+            <?php elseif ( $active_tab === 'settings' && $is_admin ) : ?>
+                <?php echo crm_settings_tab( $business_id ); ?>
+            <?php endif; ?>
+        </div>
+    </div>
+
+    <style>
+    .bntm-crm-container { width: 100%; }
+
+    /* ── Tab Navigation ── */
+    .bntm-crm-container .bntm-tabs {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+        border-bottom: 2px solid #e5e7eb;
+        margin-bottom: 24px;
+        padding-bottom: 0;
+    }
+    .bntm-crm-container .bntm-tab {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 10px 18px;
+        font-size: 14px;
+        font-weight: 500;
+        color: #6b7280;
+        text-decoration: none;
+        border-bottom: 2px solid transparent;
+        margin-bottom: -2px;
+        transition: color .2s, border-color .2s;
+        white-space: nowrap;
+    }
+    .bntm-crm-container .bntm-tab:hover { color: var(--bntm-primary); }
+    .bntm-crm-container .bntm-tab.active {
+        color: var(--bntm-primary);
+        border-bottom-color: var(--bntm-primary);
+    }
+
+    /* ── Stat Cards ── */
+    .bntm-stats-row {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+        gap: 16px;
+        margin-bottom: 24px;
+    }
+    .bntm-stat-card {
+        background: #fff;
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        padding: 20px;
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        box-shadow: 0 1px 3px rgba(0,0,0,.05);
+    }
+    .bntm-stat-card .stat-icon {
+        width: 48px;
+        height: 48px;
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        background: var(--bntm-primary);
+    }
+    .bntm-stat-card .stat-content h3 {
+        font-size: 12px;
+        font-weight: 500;
+        color: #6b7280;
+        margin: 0 0 4px;
+        text-transform: uppercase;
+        letter-spacing: .5px;
+    }
+    .bntm-stat-card .stat-number {
+        font-size: 26px;
+        font-weight: 700;
+        color: #111827;
+        margin: 0 0 2px;
+        line-height: 1;
+    }
+    .bntm-stat-card .stat-label {
+        font-size: 11px;
+        color: #9ca3af;
+    }
+
+    /* ── Form Sections ── */
+    .bntm-form-section {
+        background: #fff;
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        padding: 24px;
+        margin-bottom: 20px;
+        box-shadow: 0 1px 3px rgba(0,0,0,.05);
+    }
+    .bntm-form-section h3 {
+        font-size: 16px;
+        font-weight: 600;
+        color: #111827;
+        margin: 0 0 16px;
+        padding-bottom: 12px;
+        border-bottom: 1px solid #f3f4f6;
+    }
+
+    /* ── Two-column layout for record detail feel ── */
+    .crm-two-col {
+        display: grid;
+        grid-template-columns: 1fr 340px;
+        gap: 20px;
+        align-items: start;
+    }
+    @media (max-width: 900px) {
+        .crm-two-col { grid-template-columns: 1fr; }
+    }
+
+    /* ── Table ── */
+    .bntm-table-wrapper {
+        width: 100%;
+        overflow-x: auto;
+        border-radius: 10px;
+        border: 1px solid #e5e7eb;
+    }
+    .bntm-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 14px;
+    }
+    .bntm-table thead tr {
+        background: #f9fafb;
+        border-bottom: 1px solid #e5e7eb;
+    }
+    .bntm-table th {
+        padding: 12px 16px;
+        text-align: left;
+        font-weight: 600;
+        color: #374151;
+        white-space: nowrap;
+    }
+    .bntm-table td {
+        padding: 12px 16px;
+        color: #374151;
+        border-bottom: 1px solid #f3f4f6;
+        vertical-align: middle;
+    }
+    .bntm-table tbody tr:last-child td { border-bottom: none; }
+    .bntm-table tbody tr:hover { background: #f9fafb; }
+
+    /* ── Badges ── */
+    .crm-badge {
+        display: inline-block;
+        padding: 3px 10px;
+        border-radius: 20px;
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: .4px;
+    }
+    .crm-badge-lead       { background: #eff6ff; color: #2563eb; }
+    .crm-badge-prospect   { background: #f0fdf4; color: #16a34a; }
+    .crm-badge-customer   { background: #fdf4ff; color: #9333ea; }
+    .crm-badge-churned    { background: #fef2f2; color: #dc2626; }
+    .crm-badge-active     { background: #f0fdf4; color: #15803d; }
+    .crm-badge-open       { background: #eff6ff; color: #2563eb; }
+    .crm-badge-closed     { background: #f3f4f6; color: #6b7280; }
+    .crm-badge-pending    { background: #fffbeb; color: #d97706; }
+    .crm-badge-complete   { background: #f0fdf4; color: #16a34a; }
+    .crm-badge-overdue    { background: #fef2f2; color: #dc2626; }
+
+    /* ── Search / Filter Row ── */
+    .crm-filter-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        align-items: center;
+        margin-bottom: 16px;
+    }
+    .crm-filter-row input,
+    .crm-filter-row select {
+        padding: 8px 12px;
+        border: 1px solid #d1d5db;
+        border-radius: 8px;
+        font-size: 14px;
+        color: #374151;
+        background: #fff;
+        outline: none;
+        transition: border-color .2s;
+    }
+    .crm-filter-row input:focus,
+    .crm-filter-row select:focus { border-color: var(--bntm-primary); }
+    .crm-filter-row input { min-width: 220px; }
+
+    /* ── Modal ── */
+    .crm-modal-overlay {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,.45);
+        z-index: 99990;
+        align-items: center;
+        justify-content: center;
+    }
+    .crm-modal-overlay.open { display: flex; }
+    .crm-modal {
+        background: #fff;
+        border-radius: 14px;
+        width: 100%;
+        max-width: 560px;
+        max-height: 90vh;
+        overflow-y: auto;
+        box-shadow: 0 20px 60px rgba(0,0,0,.2);
+        animation: crmModalIn .2s ease;
+    }
+    @keyframes crmModalIn {
+        from { opacity: 0; transform: translateY(-16px) scale(.97); }
+        to   { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    .crm-modal-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 20px 24px 16px;
+        border-bottom: 1px solid #e5e7eb;
+    }
+    .crm-modal-header h3 {
+        font-size: 17px;
+        font-weight: 700;
+        color: #111827;
+        margin: 0;
+    }
+    .crm-modal-close {
+        background: none;
+        border: none;
+        cursor: pointer;
+        color: #9ca3af;
+        padding: 4px;
+        border-radius: 6px;
+        display: flex;
+        align-items: center;
+        transition: color .2s, background .2s;
+    }
+    .crm-modal-close:hover { color: #374151; background: #f3f4f6; }
+    .crm-modal-body { padding: 20px 24px; }
+    .crm-modal-footer {
+        padding: 16px 24px;
+        border-top: 1px solid #e5e7eb;
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+    }
+
+    /* ── Form fields inside modals ── */
+    .crm-field-group {
+        margin-bottom: 16px;
+    }
+    .crm-field-group label {
+        display: block;
+        font-size: 13px;
+        font-weight: 600;
+        color: #374151;
+        margin-bottom: 6px;
+    }
+    .crm-field-group input,
+    .crm-field-group select,
+    .crm-field-group textarea {
+        width: 100%;
+        padding: 9px 12px;
+        border: 1px solid #d1d5db;
+        border-radius: 8px;
+        font-size: 14px;
+        color: #374151;
+        background: #fff;
+        box-sizing: border-box;
+        outline: none;
+        transition: border-color .2s;
+    }
+    .crm-field-group input:focus,
+    .crm-field-group select:focus,
+    .crm-field-group textarea:focus { border-color: var(--bntm-primary); }
+    .crm-field-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+    }
+    @media (max-width: 480px) { .crm-field-row { grid-template-columns: 1fr; } }
+
+    /* ── Toast ── */
+    #crm-toast {
+        position: fixed;
+        bottom: 24px;
+        right: 24px;
+        z-index: 999999;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        pointer-events: none;
+    }
+    .crm-toast-item {
+        background: #1f2937;
+        color: #fff;
+        padding: 12px 18px;
+        border-radius: 10px;
+        font-size: 14px;
+        font-weight: 500;
+        box-shadow: 0 4px 16px rgba(0,0,0,.2);
+        animation: crmToastIn .25s ease;
+        pointer-events: all;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 240px;
+    }
+    .crm-toast-item.success { border-left: 4px solid #22c55e; }
+    .crm-toast-item.error   { border-left: 4px solid #ef4444; }
+    @keyframes crmToastIn {
+        from { opacity: 0; transform: translateY(10px); }
+        to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ── Pipeline board ── */
+    .crm-board {
+        display: flex;
+        gap: 14px;
+        overflow-x: auto;
+        padding-bottom: 12px;
+        align-items: flex-start;
+    }
+    .crm-board-col {
+        min-width: 230px;
+        max-width: 230px;
+        background: #f9fafb;
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        padding: 14px;
+        flex-shrink: 0;
+    }
+    .crm-board-col-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 12px;
+    }
+    .crm-board-col-header h4 {
+        font-size: 13px;
+        font-weight: 700;
+        color: #374151;
+        margin: 0;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+    .crm-stage-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        display: inline-block;
+        flex-shrink: 0;
+    }
+    .crm-board-col-count {
+        font-size: 11px;
+        font-weight: 600;
+        color: #9ca3af;
+        background: #e5e7eb;
+        padding: 2px 7px;
+        border-radius: 20px;
+    }
+    .crm-deal-card {
+        background: #fff;
+        border: 1px solid #e5e7eb;
+        border-radius: 9px;
+        padding: 12px;
+        margin-bottom: 8px;
+        cursor: grab;
+        transition: box-shadow .2s, transform .15s;
+    }
+    .crm-deal-card:hover {
+        box-shadow: 0 4px 12px rgba(0,0,0,.08);
+        transform: translateY(-1px);
+    }
+    .crm-deal-card.dragging {
+        opacity: .5;
+        cursor: grabbing;
+    }
+    .crm-board-col.drag-over { background: #eff6ff; border-color: var(--bntm-primary); }
+    .crm-deal-card-name {
+        font-size: 13px;
+        font-weight: 600;
+        color: #111827;
+        margin-bottom: 4px;
+    }
+    .crm-deal-card-amount {
+        font-size: 14px;
+        font-weight: 700;
+        color: var(--bntm-primary);
+        margin-bottom: 4px;
+    }
+    .crm-deal-card-meta {
+        font-size: 11px;
+        color: #9ca3af;
+    }
+
+    /* ── Activity timeline ── */
+    .crm-timeline { padding: 4px 0; }
+    .crm-timeline-item {
+        display: flex;
+        gap: 12px;
+        padding-bottom: 20px;
+        position: relative;
+    }
+    .crm-timeline-item:not(:last-child)::before {
+        content: '';
+        position: absolute;
+        left: 15px;
+        top: 32px;
+        bottom: 0;
+        width: 2px;
+        background: #e5e7eb;
+    }
+    .crm-timeline-icon {
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        background: #f3f4f6;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        border: 2px solid #e5e7eb;
+    }
+    .crm-timeline-content { flex: 1; }
+    .crm-timeline-meta {
+        font-size: 11px;
+        color: #9ca3af;
+        margin-top: 2px;
+    }
+
+    /* ── Record detail ── */
+    .crm-detail-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 20px;
+    }
+    .crm-detail-header h2 {
+        margin: 8px 0 4px;
+        font-size: 28px;
+        line-height: 1.1;
+        color: #111827;
+    }
+    .crm-detail-eyebrow {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        color: #6b7280;
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: .08em;
+        text-transform: uppercase;
+    }
+    .crm-detail-back {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        color: #6b7280;
+        font-size: 13px;
+        font-weight: 600;
+        text-decoration: none;
+    }
+    .crm-detail-back:hover { color: var(--bntm-primary); }
+    .crm-detail-layout {
+        display: grid;
+        grid-template-columns: minmax(280px, 35%) minmax(0, 1fr);
+        gap: 20px;
+        align-items: start;
+    }
+    .crm-detail-sidebar,
+    .crm-detail-main {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+    }
+    .crm-detail-card {
+        background: #fff;
+        border: 1px solid #e5e7eb;
+        border-radius: 14px;
+        padding: 18px 20px;
+        box-shadow: 0 1px 3px rgba(0,0,0,.05);
+    }
+    .crm-detail-card h3 {
+        margin: 0 0 14px;
+        font-size: 14px;
+        font-weight: 700;
+        color: #111827;
+    }
+    .crm-detail-fields {
+        display: grid;
+        gap: 12px;
+    }
+    .crm-detail-field {
+        position: relative;
+        padding: 10px 12px;
+        border: 1px solid transparent;
+        border-radius: 10px;
+        transition: background .15s ease, border-color .15s ease, box-shadow .15s ease;
+    }
+    .crm-detail-field-editable:hover,
+    .crm-detail-field-editable:focus-within {
+        background: #f9fafb;
+        border-color: #e5e7eb;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, .04);
+    }
+    .crm-detail-field-head {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 10px;
+    }
+    .crm-detail-field-label {
+        display: block;
+        font-size: 11px;
+        font-weight: 700;
+        color: #9ca3af;
+        letter-spacing: .08em;
+        text-transform: uppercase;
+        margin-bottom: 4px;
+    }
+    .crm-detail-field-editable .crm-detail-field-label {
+        margin-bottom: 0;
+    }
+    .crm-detail-field-value {
+        font-size: 14px;
+        color: #111827;
+        line-height: 1.5;
+        word-break: break-word;
+    }
+    .crm-detail-field-value.muted { color: #9ca3af; }
+    .crm-detail-field-edit-btn {
+        appearance: none;
+        border: 0;
+        border-radius: 999px;
+        background: #eef2ff;
+        color: var(--bntm-primary);
+        font-size: 11px;
+        font-weight: 700;
+        line-height: 1;
+        padding: 5px 10px;
+        cursor: pointer;
+        opacity: 0;
+        transform: translateY(-1px);
+        transition: opacity .15s ease, transform .15s ease, background .15s ease, color .15s ease;
+        pointer-events: none;
+        flex-shrink: 0;
+    }
+    .crm-detail-field-edit-btn:hover {
+        background: var(--bntm-primary);
+        color: #fff;
+    }
+    .crm-detail-field-editable:hover .crm-detail-field-edit-btn,
+    .crm-detail-field-editable:focus-within .crm-detail-field-edit-btn {
+        opacity: 1;
+        transform: translateY(0);
+        pointer-events: auto;
+    }
+    @media (max-width: 768px), (hover: none) and (pointer: coarse) {
+        .crm-detail-field-edit-btn {
+            opacity: 1;
+            transform: none;
+            pointer-events: auto;
+        }
+    }
+    .crm-detail-field-value {
+        margin-top: 4px;
+    }
+    .crm-detail-inline-link {
+        color: var(--bntm-primary);
+        text-decoration: none;
+        font-weight: 600;
+    }
+    .crm-detail-inline-link:hover { text-decoration: underline; }
+    .crm-detail-association-list {
+        display: grid;
+        gap: 10px;
+    }
+    .crm-detail-association-item {
+        border: 1px solid #eef2f7;
+        border-radius: 10px;
+        padding: 10px 12px;
+        background: #fbfdff;
+    }
+    .crm-detail-association-title {
+        margin: 0 0 3px;
+        font-size: 13px;
+        font-weight: 700;
+        color: #111827;
+    }
+    .crm-detail-association-meta {
+        font-size: 12px;
+        color: #6b7280;
+    }
+    .crm-detail-tabs {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-bottom: 16px;
+    }
+    .crm-detail-tab {
+        border: 1px solid #e5e7eb;
+        background: #fff;
+        color: #6b7280;
+        font-size: 13px;
+        font-weight: 700;
+        padding: 9px 14px;
+        border-radius: 999px;
+        cursor: pointer;
+        transition: all .18s ease;
+    }
+    .crm-detail-tab:hover {
+        border-color: #cbd5e1;
+        color: #111827;
+    }
+    .crm-detail-tab.active {
+        background: var(--bntm-primary);
+        border-color: var(--bntm-primary);
+        color: #fff;
+    }
+    .crm-record-detail-panel {
+        min-height: 240px;
+    }
+    .crm-note-composer {
+        display: grid;
+        gap: 10px;
+        margin-bottom: 16px;
+    }
+    .crm-note-composer textarea {
+        width: 100%;
+        min-height: 110px;
+        border: 1px solid #d1d5db;
+        border-radius: 10px;
+        padding: 12px 14px;
+        font-size: 14px;
+        resize: vertical;
+        outline: none;
+    }
+    .crm-note-composer textarea:focus { border-color: var(--bntm-primary); }
+    .crm-note-composer-actions {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        justify-content: flex-end;
+    }
+    .crm-note-list {
+        display: grid;
+        gap: 12px;
+    }
+    .crm-note-card {
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        padding: 14px 16px;
+        background: #fff;
+    }
+    .crm-note-meta {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 8px;
+        font-size: 12px;
+        color: #6b7280;
+    }
+    .crm-note-body {
+        font-size: 14px;
+        color: #111827;
+        line-height: 1.6;
+        white-space: pre-wrap;
+    }
+    .crm-note-actions {
+        display: flex;
+        gap: 8px;
+        margin-top: 12px;
+    }
+    .crm-detail-task-list {
+        display: grid;
+        gap: 12px;
+    }
+    .crm-detail-task-item {
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        padding: 14px 16px;
+        background: #fff;
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 12px;
+    }
+    .crm-detail-task-title {
+        margin: 0 0 6px;
+        font-size: 14px;
+        font-weight: 700;
+        color: #111827;
+    }
+    .crm-detail-task-meta {
+        font-size: 12px;
+        color: #6b7280;
+        line-height: 1.6;
+    }
+    .crm-detail-task-toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 14px;
+    }
+    .crm-detail-task-toolbar p {
+        margin: 0;
+        font-size: 12px;
+        color: #6b7280;
+    }
+    .crm-detail-task-composer {
+        display: none;
+        border: 1px solid #e5e7eb;
+        background: #f9fafb;
+        border-radius: 12px;
+        padding: 14px;
+        margin-bottom: 16px;
+    }
+    .crm-detail-task-composer.open { display: block; }
+    .crm-detail-task-composer-grid {
+        display: grid;
+        grid-template-columns: 2fr 1fr 1fr 1fr;
+        gap: 10px;
+    }
+    .crm-detail-task-composer input,
+    .crm-detail-task-composer select {
+        width: 100%;
+        padding: 9px 12px;
+        border: 1px solid #d1d5db;
+        border-radius: 8px;
+        font-size: 14px;
+        background: #fff;
+        box-sizing: border-box;
+    }
+    .crm-detail-task-composer-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+        margin-top: 12px;
+    }
+    .crm-settings-cta {
+        background: var(--bntm-primary) !important;
+        border-color: var(--bntm-primary) !important;
+        color: #fff !important;
+    }
+    .crm-settings-cta:hover {
+        background: #1d4ed8 !important;
+        border-color: #1d4ed8 !important;
+        color: #fff !important;
+    }
+    @media (max-width: 900px) {
+        .crm-detail-layout { grid-template-columns: 1fr; }
+        .crm-detail-header { flex-direction: column; }
+        .crm-detail-task-composer-grid { grid-template-columns: 1fr; }
+    }
+
+    /* ── Empty state ── */
+    .crm-empty {
+        text-align: center;
+        padding: 48px 24px;
+        color: #9ca3af;
+    }
+    .crm-empty svg { margin: 0 auto 12px; display: block; opacity: .4; }
+    .crm-empty p { font-size: 14px; }
+
+    /* ── Overdue highlight ── */
+    .crm-overdue-section { border-left: 3px solid #ef4444; }
+    .crm-upcoming-section { border-left: 3px solid #22c55e; }
+
+    /* ── Settings: sortable stages ── */
+    .crm-stage-list { list-style: none; margin: 0; padding: 0; }
+    .crm-stage-item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        background: #f9fafb;
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        padding: 10px 14px;
+        margin-bottom: 8px;
+        cursor: grab;
+    }
+    .crm-stage-item.drag-over { background: #eff6ff; border-color: var(--bntm-primary); }
+    .crm-stage-item .crm-stage-drag-handle { color: #d1d5db; cursor: grab; flex-shrink: 0; }
+    .crm-stage-item .crm-stage-name { flex: 1; font-size: 14px; font-weight: 500; color: #111827; }
+    .crm-stage-item .crm-stage-color-dot {
+        width: 14px; height: 14px; border-radius: 50%; flex-shrink: 0;
+    }
+
+    /* ── Custom props table ── */
+    .crm-prop-type-badge {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 6px;
+        font-size: 11px;
+        font-weight: 600;
+        background: #f3f4f6;
+        color: #374151;
+        text-transform: uppercase;
+    }
+
+    @media (max-width: 640px) {
+        .bntm-stats-row { grid-template-columns: 1fr 1fr; }
+        .crm-filter-row input { min-width: 100%; }
+    }
+    </style>
+
+    <div id="crm-toast"></div>
+
+    <script>
+    (function() {
+        // ── Toast utility ──
+        window.crmToast = function(msg, type) {
+            type = type || 'success';
+            var container = document.getElementById('crm-toast');
+            var item = document.createElement('div');
+            item.className = 'crm-toast-item ' + type;
+            var icon = type === 'success'
+                ? '<svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>'
+                : '<svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>';
+            item.innerHTML = icon + msg;
+            container.appendChild(item);
+            setTimeout(function() {
+                item.style.opacity = '0';
+                item.style.transition = 'opacity .3s';
+                setTimeout(function() { item.remove(); }, 300);
+            }, 3200);
+        };
+
+        // ── Modal open/close utility ──
+        window.crmOpenModal = function(id) {
+            var el = document.getElementById(id);
+            if (el) el.classList.add('open');
+        };
+        window.crmCloseModal = function(id) {
+            var el = document.getElementById(id);
+            if (el) {
+                el.classList.remove('open');
+                var form = el.querySelector('form');
+                if (form) form.reset();
+                var hiddenId = el.querySelector('[name="record_id"]');
+                if (hiddenId) hiddenId.value = '';
+                var title = el.querySelector('.crm-modal-header h3');
+                if (title && title.dataset.default) title.textContent = title.dataset.default;
+            }
+        };
+
+        // ── Close modal on overlay click ──
+        document.addEventListener('click', function(e) {
+            if (e.target.classList.contains('crm-modal-overlay')) {
+                e.target.classList.remove('open');
+            }
+        });
+
+        // ── Generic AJAX POST utility ──
+        window.crmPost = function(action, data, onSuccess, onError) {
+            data.action = action;
+            data.nonce  = crm_nonce;
+            var body = new URLSearchParams(data);
+            return fetch(ajaxurl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: body.toString()
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(res) {
+                if (res.success) {
+                    if (onSuccess) onSuccess(res.data);
                 } else {
-                    errEl.textContent   = d.data.message || 'Submission failed.';
-                    errEl.style.display = 'block';
+                    var msg = (res.data && res.data.message) ? res.data.message : 'An error occurred.';
+                    crmToast(msg, 'error');
+                    if (onError) onError(res.data);
                 }
             })
             .catch(function() {
-                btn.disabled = false;
-                document.getElementById('crm-pub-btn-text').style.display    = 'inline';
-                document.getElementById('crm-pub-btn-spinner').style.display = 'none';
-                errEl.textContent   = 'Network error. Please try again.';
-                errEl.style.display = 'block';
+                crmToast('Network error. Please try again.', 'error');
+                if (onError) onError();
             });
-    }
+        };
+
+        // ── Confirm dialog utility ──
+        window.crmConfirm = function(msg, onConfirm) {
+            if (window.confirm(msg)) onConfirm();
+        };
+
+        // ── Format currency (client-side) ──
+        window.crmFormatCurrency = function(amount) {
+            return '&#8369;' + parseFloat(amount).toLocaleString('en-US', {
+                minimumFractionDigits: 2, maximumFractionDigits: 2
+            });
+        };
+
+        // ── Escape HTML ──
+        window.crmEsc = function(str) {
+            if (!str) return '';
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;');
+        };
+
+        window.crmBuildUrl = function(params) {
+            var url = new URL(window.location.href);
+            Object.keys(params || {}).forEach(function(key) {
+                var value = params[key];
+                if (value === null || value === undefined || value === '') {
+                    url.searchParams.delete(key);
+                } else {
+                    url.searchParams.set(key, value);
+                }
+            });
+            return url.pathname + '?' + url.searchParams.toString();
+        };
+
+        window.crmRenderActivityTimeline = function(activities) {
+            if (!activities || !activities.length) {
+                return '<div class="crm-empty"><p>No activity recorded yet.</p></div>';
+            }
+
+            var iconMap = {
+                note: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z"/>',
+                task_created: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2"/>',
+                task_completed: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>',
+                deal_moved: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"/>',
+                status_changed: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>'
+            };
+            var labelMap = {
+                note: 'Note added',
+                task_created: 'Task created',
+                task_completed: 'Task completed',
+                deal_moved: 'Deal stage changed',
+                status_changed: 'Record updated'
+            };
+
+            var html = '<div class="crm-timeline">';
+            activities.forEach(function(act) {
+                var type = act.activity_type || 'note';
+                var title = labelMap[type] || type.replace(/_/g, ' ');
+                var body = act.body ? crmEsc(act.body) : 'No details';
+                html += '<div class="crm-timeline-item">'
+                    + '<div class="crm-timeline-icon"><svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">'
+                    + (iconMap[type] || iconMap.note)
+                    + '</svg></div>'
+                    + '<div class="crm-timeline-content">'
+                    + '<div style="font-size:14px;font-weight:700;color:#111827;">' + crmEsc(title) + '</div>'
+                    + '<div style="font-size:14px;color:#374151;line-height:1.6;margin-top:4px;">' + body + '</div>'
+                    + '<div class="crm-timeline-meta">'
+                    + (act.author_name ? crmEsc(act.author_name) + ' · ' : '')
+                    + crmEsc(act.created_at || '')
+                    + '</div></div></div>';
+            });
+            html += '</div>';
+            return html;
+        };
+
+        window.crmRenderDetailTasks = function(taskGroups, config) {
+            var tasks = (taskGroups && taskGroups.tasks) ? taskGroups.tasks : [];
+            var users = Array.isArray(window.crm_users) ? window.crm_users : [];
+            var assigneeOptions = '<option value="">Unassigned</option>';
+            users.forEach(function(user) {
+                assigneeOptions += '<option value="' + parseInt(user.id, 10) + '">' + crmEsc(user.display_name || 'User') + '</option>';
+            });
+
+            var html = '<div class="crm-detail-task-toolbar">'
+                + '<div><p>Create a follow-up task linked to this ' + crmEsc(config.objectType || 'record') + '.</p></div>'
+                + '<button type="button" class="bntm-btn-primary crm-detail-task-add-btn">Add Task</button>'
+                + '</div>'
+                + '<div class="crm-detail-task-composer" id="' + config.containerId + '-task-composer">'
+                + '<div class="crm-detail-task-composer-grid">'
+                + '<input type="text" id="' + config.containerId + '-task-title" placeholder="Task title">'
+                + '<select id="' + config.containerId + '-task-assignee">' + assigneeOptions + '</select>'
+                + '<input type="date" id="' + config.containerId + '-task-due-date">'
+                + '<input type="number" id="' + config.containerId + '-task-reminder" placeholder="Reminder days" min="0" max="365">'
+                + '</div>'
+                + '<div class="crm-detail-task-composer-actions">'
+                + '<button type="button" class="bntm-btn-secondary crm-detail-task-cancel-btn">Cancel</button>'
+                + '<button type="button" class="bntm-btn-primary crm-detail-task-save-btn">Save Task</button>'
+                + '</div></div>';
+
+            if (!tasks.length) {
+                html += '<div class="crm-empty"><p>No linked tasks yet.</p></div>';
+                return html;
+            }
+
+            html += '<div class="crm-detail-task-list">';
+            tasks.forEach(function(task) {
+                var statusClass = 'crm-badge-' + (task.status || 'pending');
+                html += '<div class="crm-detail-task-item">'
+                    + '<div>'
+                    + '<p class="crm-detail-task-title">' + crmEsc(task.title || 'Untitled task') + '</p>'
+                    + '<div class="crm-detail-task-meta">'
+                    + 'Due: ' + (task.due_date ? crmEsc(task.due_date) : 'No due date') + '<br>'
+                    + 'Assignee: ' + (task.assignee_name ? crmEsc(task.assignee_name) : 'Unassigned')
+                    + '</div></div>'
+                    + '<span class="crm-badge ' + statusClass + '">' + crmEsc(task.status || 'pending') + '</span>'
+                    + '</div>';
+            });
+            html += '</div>';
+            return html;
+        };
+
+        window.crmRecordDetailInstances = window.crmRecordDetailInstances || {};
+        window.crmRecordDetailEditors = window.crmRecordDetailEditors || {};
+
+        window.crmRegisterDetailEditor = function(objectType, handler) {
+            if (!objectType || typeof handler !== 'function') return;
+            window.crmRecordDetailEditors[objectType] = handler;
+        };
+
+        window.crmInitRecordDetailView = function(config) {
+            var root = document.getElementById(config.containerId);
+            if (!root) return null;
+
+            var existing = window.crmRecordDetailInstances[config.containerId];
+            if (existing) {
+                if (config.initialTab) {
+                    existing.loadTab(config.initialTab);
+                }
+                return existing;
+            }
+
+            var panel = root.querySelector('.crm-record-detail-panel');
+            var buttons = root.querySelectorAll('[data-detail-tab]');
+            var activeTab = config.initialTab || 'activity';
+            var editingNoteId = 0;
+
+            function setActive(tab) {
+                activeTab = tab;
+                buttons.forEach(function(btn) {
+                    btn.classList.toggle('active', btn.dataset.detailTab === tab);
+                });
+            }
+
+            function loadActivity() {
+                panel.innerHTML = '<div class="crm-empty"><p>Loading activity...</p></div>';
+                crmPost('crm_get_record_activity', {
+                    object_type: config.objectType,
+                    record_id: config.recordId
+                }, function(data) {
+                    panel.innerHTML = crmRenderActivityTimeline(data.activities || []);
+                });
+            }
+
+            function renderNotes(notes) {
+                var html = '<div class="crm-note-composer">'
+                    + '<textarea id="' + config.containerId + '-note-body" placeholder="Write a note..."></textarea>'
+                    + '<div class="crm-note-composer-actions">'
+                    + '<button type="button" class="bntm-btn-secondary" id="' + config.containerId + '-note-cancel" style="display:none;">Cancel</button>'
+                    + '<button type="button" class="bntm-btn-primary" id="' + config.containerId + '-note-save">Save Note</button>'
+                    + '</div></div>';
+
+                if (!notes.length) {
+                    html += '<div class="crm-empty"><p>No notes yet.</p></div>';
+                } else {
+                    html += '<div class="crm-note-list">';
+                    notes.forEach(function(note) {
+                        html += '<div class="crm-note-card">'
+                            + '<div class="crm-note-meta">'
+                            + '<span>' + (note.author_name ? crmEsc(note.author_name) : 'Unknown') + '</span>'
+                            + '<span>' + crmEsc(note.updated_at || note.created_at || '') + '</span>'
+                            + '</div>'
+                            + '<div class="crm-note-body">' + crmEsc(note.body || '') + '</div>'
+                            + '<div class="crm-note-actions">'
+                            + '<button type="button" class="bntm-btn-secondary bntm-btn-small crm-note-edit" data-id="' + note.id + '" data-body="' + crmEsc(note.body || '') + '">Edit</button>'
+                            + '<button type="button" class="bntm-btn-danger bntm-btn-small crm-note-delete" data-id="' + note.id + '">Delete</button>'
+                            + '</div></div>';
+                    });
+                    html += '</div>';
+                }
+
+                panel.innerHTML = html;
+
+                var bodyEl = document.getElementById(config.containerId + '-note-body');
+                var saveEl = document.getElementById(config.containerId + '-note-save');
+                var cancelEl = document.getElementById(config.containerId + '-note-cancel');
+
+                saveEl.addEventListener('click', function() {
+                    var body = bodyEl.value.trim();
+                    if (!body) {
+                        crmToast('Note body is required.', 'error');
+                        return;
+                    }
+
+                    crmPost('crm_save_note', {
+                        note_id: editingNoteId,
+                        object_type: config.objectType,
+                        record_id: config.recordId,
+                        body: body
+                    }, function(data) {
+                        crmToast(data.message || 'Note saved.', 'success');
+                        loadNotes();
+                    });
+                });
+
+                cancelEl.addEventListener('click', function() {
+                    editingNoteId = 0;
+                    bodyEl.value = '';
+                    saveEl.textContent = 'Save Note';
+                    cancelEl.style.display = 'none';
+                });
+
+                panel.querySelectorAll('.crm-note-edit').forEach(function(btn) {
+                    btn.addEventListener('click', function() {
+                        editingNoteId = this.dataset.id;
+                        bodyEl.value = this.dataset.body || '';
+                        saveEl.textContent = 'Update Note';
+                        cancelEl.style.display = 'inline-flex';
+                        bodyEl.focus();
+                    });
+                });
+
+                panel.querySelectorAll('.crm-note-delete').forEach(function(btn) {
+                    btn.addEventListener('click', function() {
+                        var noteId = this.dataset.id;
+                        crmConfirm('Delete this note?', function() {
+                            crmPost('crm_delete_note', { note_id: noteId }, function(data) {
+                                crmToast(data.message || 'Note deleted.', 'success');
+                                loadNotes();
+                            });
+                        });
+                    });
+                });
+            }
+
+            function loadNotes() {
+                panel.innerHTML = '<div class="crm-empty"><p>Loading notes...</p></div>';
+                crmPost('crm_get_notes', {
+                    object_type: config.objectType,
+                    record_id: config.recordId
+                }, function(data) {
+                    editingNoteId = 0;
+                    renderNotes(data.notes || []);
+                });
+            }
+
+            function loadTasks() {
+                panel.innerHTML = '<div class="crm-empty"><p>Loading tasks...</p></div>';
+                crmPost('crm_get_tasks', {
+                    linked_type: config.objectType,
+                    linked_id: config.recordId
+                }, function(data) {
+                    panel.innerHTML = crmRenderDetailTasks(data || {}, config);
+                    bindTaskComposer();
+                });
+            }
+
+            function bindTaskComposer() {
+                var addBtn = panel.querySelector('.crm-detail-task-add-btn');
+                var composer = panel.querySelector('.crm-detail-task-composer');
+                var cancelBtn = panel.querySelector('.crm-detail-task-cancel-btn');
+                var saveBtn = panel.querySelector('.crm-detail-task-save-btn');
+                var titleEl = panel.querySelector('#' + config.containerId + '-task-title');
+                var assigneeEl = panel.querySelector('#' + config.containerId + '-task-assignee');
+                var dueDateEl = panel.querySelector('#' + config.containerId + '-task-due-date');
+                var reminderEl = panel.querySelector('#' + config.containerId + '-task-reminder');
+
+                if (!addBtn || !composer || !saveBtn || !titleEl || !assigneeEl || !dueDateEl || !reminderEl) {
+                    return;
+                }
+
+                function resetComposer() {
+                    titleEl.value = '';
+                    assigneeEl.value = '';
+                    dueDateEl.value = '';
+                    reminderEl.value = '';
+                    composer.classList.remove('open');
+                }
+
+                addBtn.addEventListener('click', function() {
+                    composer.classList.add('open');
+                    titleEl.focus();
+                });
+
+                if (cancelBtn) {
+                    cancelBtn.addEventListener('click', function() {
+                        resetComposer();
+                    });
+                }
+
+                saveBtn.addEventListener('click', function() {
+                    var title = titleEl.value.trim();
+                    if (!title) {
+                        crmToast('Task title is required.', 'error');
+                        return;
+                    }
+
+                    saveBtn.disabled = true;
+                    saveBtn.textContent = 'Saving...';
+
+                    crmPost('crm_create_task', {
+                        title: title,
+                        assignee_id: assigneeEl.value || '',
+                        due_date: dueDateEl.value || '',
+                        reminder_days: reminderEl.value || 0,
+                        linked_type: config.objectType,
+                        linked_id: config.recordId
+                    }, function(data) {
+                        crmToast(data.message || 'Task created successfully.', 'success');
+                        saveBtn.disabled = false;
+                        saveBtn.textContent = 'Save Task';
+                        resetComposer();
+                        loadTasks();
+                    }, function() {
+                        saveBtn.disabled = false;
+                        saveBtn.textContent = 'Save Task';
+                    });
+                });
+            }
+
+            function loadFiles() {
+                panel.innerHTML = '<div class="crm-empty"><p>Files are coming soon.</p></div>';
+            }
+
+            function loadTab(tab) {
+                setActive(tab);
+                if (tab === 'activity') loadActivity();
+                if (tab === 'notes') loadNotes();
+                if (tab === 'tasks') loadTasks();
+                if (tab === 'files') loadFiles();
+            }
+
+            buttons.forEach(function(btn) {
+                btn.addEventListener('click', function() {
+                    loadTab(this.dataset.detailTab);
+                });
+            });
+
+            var instance = {
+                root: root,
+                panel: panel,
+                config: config,
+                loadTab: loadTab
+            };
+            window.crmRecordDetailInstances[config.containerId] = instance;
+            loadTab(activeTab);
+            return instance;
+        };
+
+        window.crmAutoInitDetailViews = function() {
+            document.querySelectorAll('.crm-detail-layout[data-object-type][data-record-id]').forEach(function(root) {
+                var containerId = root.id;
+                var objectType = root.dataset.objectType || '';
+                var recordId = parseInt(root.dataset.recordId || '0', 10);
+                if (!containerId || !objectType || !recordId) return;
+                window.crmInitRecordDetailView({
+                    containerId: containerId,
+                    objectType: objectType,
+                    recordId: recordId,
+                    initialTab: 'activity'
+                });
+            });
+        };
+
+        window.crmDetailEditFieldSelectors = window.crmDetailEditFieldSelectors || {
+            contact: {
+                phone: '#crm-contact-phone',
+                email: '#crm-contact-email',
+                company: '#crm-contact-company',
+                job_title: '#crm-contact-job-title',
+                address: '#crm-contact-address',
+                lead_source: '#crm-contact-lead-source',
+                status: '#crm-contact-lifecycle',
+                owner: '#crm-contact-owner',
+            },
+            company: {
+                phone: '#crm-company-phone',
+                email: '#crm-company-email',
+                website: '#crm-company-website',
+                industry: '#crm-company-industry',
+                address: '#crm-company-address',
+                lead_source: '#crm-company-lead-source',
+                owner: '#crm-company-owner',
+                tags: '#crm-company-tags',
+            },
+            deal: {
+                name: '#crm-deal-name',
+                amount: '#crm-deal-amount',
+                stage: '#crm-deal-stage',
+                expected_close_date: '#crm-deal-close-date',
+                status: '#crm-deal-status',
+                contact: '#crm-deal-contact',
+                company: '#crm-deal-company',
+                owner: '#crm-deal-owner',
+            }
+        };
+
+        window.crmFocusDetailEditField = function(objectType, fieldKey) {
+            var selectors = window.crmDetailEditFieldSelectors[objectType] || {};
+            var selector = selectors[fieldKey];
+            if (!selector) return;
+
+            setTimeout(function() {
+                var el = document.querySelector(selector);
+                if (!el) return;
+                if (typeof el.focus === 'function') {
+                    try { el.focus({ preventScroll: true }); }
+                    catch (e) { el.focus(); }
+                }
+                if (typeof el.select === 'function') {
+                    el.select();
+                }
+            }, 80);
+        };
+
+        window.crmOpenDetailEditor = function(objectType, fieldKey) {
+            var editor = window.crmRecordDetailEditors[objectType];
+            if (typeof editor !== 'function') return;
+            editor(fieldKey || '');
+        };
+
+        document.addEventListener('click', function(e) {
+            var tabBtn = e.target.closest('[data-detail-tab]');
+            if (tabBtn) {
+                var detailRoot = tabBtn.closest('.crm-detail-layout');
+                if (detailRoot && detailRoot.id) {
+                    var instance = window.crmRecordDetailInstances[detailRoot.id];
+                    if (instance) {
+                        e.preventDefault();
+                        instance.loadTab(tabBtn.dataset.detailTab);
+                        return;
+                    }
+                }
+            }
+
+            var fieldBtn = e.target.closest('.crm-detail-field-edit-btn');
+            if (fieldBtn) {
+                var objectType = fieldBtn.dataset.detailObjectType || '';
+                var fieldKey = fieldBtn.dataset.detailField || '';
+                if (objectType && typeof window.crmRecordDetailEditors[objectType] === 'function') {
+                    e.preventDefault();
+                    window.crmOpenDetailEditor(objectType, fieldKey);
+                    return;
+                }
+            }
+
+            var editBtn = e.target.closest('.crm-detail-edit-trigger');
+            if (editBtn) {
+                var objectType = editBtn.dataset.objectType || '';
+                if (objectType && typeof window.crmRecordDetailEditors[objectType] === 'function') {
+                    e.preventDefault();
+                    window.crmRecordDetailEditors[objectType]();
+                }
+            }
+        });
+
+        window.crmAutoInitDetailViews();
+    })();
     </script>
+    <?php
+    $content = ob_get_clean();
+    return bntm_universal_container( 'CRM', $content );
+}
+
+function crm_render_detail_field( $label, $value, $is_html = false, $edit = [] ) {
+    $display = $value;
+    $edit = is_array( $edit ) ? $edit : [];
+    $editable = ! empty( $edit['editable'] );
+    $object_type = sanitize_key( $edit['object_type'] ?? '' );
+    $field_key = sanitize_key( $edit['field_key'] ?? '' );
+
+    if ( ! $is_html ) {
+        $display = $display !== '' && $display !== null
+            ? esc_html( (string) $display )
+            : '<span class="crm-detail-field-value muted">&mdash;</span>';
+    } elseif ( $display === '' || $display === null ) {
+        $display = '<span class="crm-detail-field-value muted">&mdash;</span>';
+    }
+
+    $classes = [ 'crm-detail-field' ];
+    if ( $editable && $object_type !== '' && $field_key !== '' ) {
+        $classes[] = 'crm-detail-field-editable';
+    }
+
+    $edit_button = '';
+    if ( $editable && $object_type !== '' && $field_key !== '' ) {
+        $edit_button = '<button type="button" class="crm-detail-field-edit-btn"'
+            . ' data-detail-object-type="' . esc_attr( $object_type ) . '"'
+            . ' data-detail-field="' . esc_attr( $field_key ) . '"'
+            . ' aria-label="Edit ' . esc_attr( $label ) . '">'
+            . 'Edit</button>';
+    }
+
+    return '<div class="' . esc_attr( implode( ' ', $classes ) ) . '">'
+        . '<div class="crm-detail-field-head">'
+        . '<span class="crm-detail-field-label">' . esc_html( $label ) . '</span>'
+        . $edit_button
+        . '</div>'
+        . '<div class="crm-detail-field-value">' . $display . '</div>'
+        . '</div>';
+}
+
+function crm_render_status_badge_html( $value ) {
+    $value = sanitize_key( $value );
+    if ( $value === '' ) {
+        return '<span class="crm-detail-field-value muted">&mdash;</span>';
+    }
+    return '<span class="crm-badge crm-badge-' . esc_attr( $value ) . '">' . esc_html( ucfirst( str_replace( '_', ' ', $value ) ) ) . '</span>';
+}
+
+function crm_render_record_detail_page( $object_type, $detail, $back_url, $edit_label = 'Edit Record' ) {
+    $tab_map = [
+        'contact' => 'contacts',
+        'company' => 'companies',
+        'deal'    => 'deals',
+    ];
+
+    if ( ! $detail ) {
+        return '<div class="bntm-form-section"><p>Record not found.</p><p><a class="crm-detail-inline-link" href="' . esc_url( $back_url ) . '">Back to list</a></p></div>';
+    }
+
+    $fields = [];
+    $associations = '';
+    $title = $detail['display_name'] ?? '';
+
+    if ( $object_type === 'contact' ) {
+        $company_html = '';
+        if ( ! empty( $detail['company_id'] ) && ! empty( $detail['company_name'] ) ) {
+            $company_html = '<a class="crm-detail-inline-link" href="' . crm_get_detail_url( 'companies', 'company', $detail['company_id'] ) . '">' . esc_html( $detail['company_name'] ) . '</a>';
+        }
+
+        $fields = [
+            crm_render_detail_field( 'Phone', $detail['phone'] !== '' ? '<a class="crm-detail-inline-link" href="tel:' . esc_attr( $detail['phone'] ) . '">' . esc_html( $detail['phone'] ) . '</a>' : '', true, [ 'editable' => true, 'object_type' => 'contact', 'field_key' => 'phone' ] ),
+            crm_render_detail_field( 'Email', $detail['email'] !== '' ? '<a class="crm-detail-inline-link" href="mailto:' . esc_attr( $detail['email'] ) . '">' . esc_html( $detail['email'] ) . '</a>' : '', true, [ 'editable' => true, 'object_type' => 'contact', 'field_key' => 'email' ] ),
+            crm_render_detail_field( 'Company', $company_html, true, [ 'editable' => true, 'object_type' => 'contact', 'field_key' => 'company' ] ),
+            crm_render_detail_field( 'Job Title', $detail['job_title'] ?? '', false, [ 'editable' => true, 'object_type' => 'contact', 'field_key' => 'job_title' ] ),
+            crm_render_detail_field( 'Address', ! empty( $detail['address'] ) ? nl2br( esc_html( $detail['address'] ) ) : '', true, [ 'editable' => true, 'object_type' => 'contact', 'field_key' => 'address' ] ),
+            crm_render_detail_field( 'Status', crm_render_status_badge_html( $detail['lifecycle_status'] ?? '' ), true, [ 'editable' => true, 'object_type' => 'contact', 'field_key' => 'status' ] ),
+            crm_render_detail_field( 'Lead Source', $detail['lead_source'] ?? '', false, [ 'editable' => true, 'object_type' => 'contact', 'field_key' => 'lead_source' ] ),
+            crm_render_detail_field( 'Owner', $detail['owner_name'] ?? '', false, [ 'editable' => true, 'object_type' => 'contact', 'field_key' => 'owner' ] ),
+        ];
+
+        if ( ! empty( $detail['related_deals'] ) ) {
+            $items = '';
+            foreach ( $detail['related_deals'] as $deal ) {
+                $items .= '<div class="crm-detail-association-item">'
+                    . '<a class="crm-detail-inline-link crm-detail-association-title" href="' . crm_get_detail_url( 'deals', 'deal', $deal['id'] ) . '">' . esc_html( $deal['name'] ) . '</a>'
+                    . '<div class="crm-detail-association-meta">' . crm_format_currency( $deal['amount'] ) . ' · ' . esc_html( $deal['stage_name'] ?: 'No stage' ) . '</div>'
+                    . '</div>';
+            }
+            $associations = '<div class="crm-detail-card"><h3>Related Deals</h3><div class="crm-detail-association-list">' . $items . '</div></div>';
+        }
+    } elseif ( $object_type === 'company' ) {
+        $website_html = ! empty( $detail['website'] )
+            ? '<a class="crm-detail-inline-link" target="_blank" rel="noopener noreferrer" href="' . esc_url( $detail['website'] ) . '">' . esc_html( preg_replace( '#^https?://#', '', $detail['website'] ) ) . '</a>'
+            : '';
+
+        $fields = [
+            crm_render_detail_field( 'Phone', $detail['phone'] !== '' ? '<a class="crm-detail-inline-link" href="tel:' . esc_attr( $detail['phone'] ) . '">' . esc_html( $detail['phone'] ) . '</a>' : '', true, [ 'editable' => true, 'object_type' => 'company', 'field_key' => 'phone' ] ),
+            crm_render_detail_field( 'Email', $detail['email'] !== '' ? '<a class="crm-detail-inline-link" href="mailto:' . esc_attr( $detail['email'] ) . '">' . esc_html( $detail['email'] ) . '</a>' : '', true, [ 'editable' => true, 'object_type' => 'company', 'field_key' => 'email' ] ),
+            crm_render_detail_field( 'Website', $website_html, true, [ 'editable' => true, 'object_type' => 'company', 'field_key' => 'website' ] ),
+            crm_render_detail_field( 'Industry', $detail['industry'] ?? '', false, [ 'editable' => true, 'object_type' => 'company', 'field_key' => 'industry' ] ),
+            crm_render_detail_field( 'Address', ! empty( $detail['address'] ) ? nl2br( esc_html( $detail['address'] ) ) : '', true, [ 'editable' => true, 'object_type' => 'company', 'field_key' => 'address' ] ),
+            crm_render_detail_field( 'Lead Source', $detail['lead_source'] ?? '', false, [ 'editable' => true, 'object_type' => 'company', 'field_key' => 'lead_source' ] ),
+            crm_render_detail_field( 'Owner', $detail['owner_name'] ?? '', false, [ 'editable' => true, 'object_type' => 'company', 'field_key' => 'owner' ] ),
+            crm_render_detail_field( 'Status', crm_render_status_badge_html( $detail['status'] ?? '' ), true ),
+        ];
+
+        $related_html = '';
+        if ( ! empty( $detail['related_contacts'] ) ) {
+            $contact_items = '';
+            foreach ( $detail['related_contacts'] as $contact ) {
+                $contact_items .= '<div class="crm-detail-association-item">'
+                    . '<a class="crm-detail-inline-link crm-detail-association-title" href="' . crm_get_detail_url( 'contacts', 'contact', $contact['id'] ) . '">' . esc_html( trim( $contact['first_name'] . ' ' . $contact['last_name'] ) ) . '</a>'
+                    . '<div class="crm-detail-association-meta">' . esc_html( $contact['email'] ?: 'No email' ) . ' · ' . esc_html( ucfirst( $contact['lifecycle_status'] ?: 'lead' ) ) . '</div>'
+                    . '</div>';
+            }
+            $related_html .= '<div class="crm-detail-card"><h3>Related Contacts</h3><div class="crm-detail-association-list">' . $contact_items . '</div></div>';
+        }
+        if ( ! empty( $detail['related_deals'] ) ) {
+            $deal_items = '';
+            foreach ( $detail['related_deals'] as $deal ) {
+                $deal_items .= '<div class="crm-detail-association-item">'
+                    . '<a class="crm-detail-inline-link crm-detail-association-title" href="' . crm_get_detail_url( 'deals', 'deal', $deal['id'] ) . '">' . esc_html( $deal['name'] ) . '</a>'
+                    . '<div class="crm-detail-association-meta">' . crm_format_currency( $deal['amount'] ) . ' · ' . esc_html( $deal['stage_name'] ?: 'No stage' ) . '</div>'
+                    . '</div>';
+            }
+            $related_html .= '<div class="crm-detail-card"><h3>Related Deals</h3><div class="crm-detail-association-list">' . $deal_items . '</div></div>';
+        }
+        $associations = $related_html;
+    } else {
+        $contact_html = ! empty( $detail['contact_id'] ) && ! empty( $detail['contact_name'] )
+            ? '<a class="crm-detail-inline-link" href="' . crm_get_detail_url( 'contacts', 'contact', $detail['contact_id'] ) . '">' . esc_html( trim( $detail['contact_name'] ) ) . '</a>'
+            : '';
+        $company_html = ! empty( $detail['company_id'] ) && ! empty( $detail['company_name'] )
+            ? '<a class="crm-detail-inline-link" href="' . crm_get_detail_url( 'companies', 'company', $detail['company_id'] ) . '">' . esc_html( $detail['company_name'] ) . '</a>'
+            : '';
+        $stage_html = ! empty( $detail['stage_name'] )
+            ? '<span style="display:inline-flex;align-items:center;gap:8px;"><span class="crm-stage-dot" style="background:' . esc_attr( $detail['stage_color'] ?: '#9ca3af' ) . ';"></span>' . esc_html( $detail['stage_name'] ) . '</span>'
+            : '';
+
+        $fields = [
+            crm_render_detail_field( 'Name', $detail['name'] ?? '', false, [ 'editable' => true, 'object_type' => 'deal', 'field_key' => 'name' ] ),
+            crm_render_detail_field( 'Amount', crm_format_currency( $detail['amount'] ?? 0 ), true, [ 'editable' => true, 'object_type' => 'deal', 'field_key' => 'amount' ] ),
+            crm_render_detail_field( 'Stage', $stage_html, true, [ 'editable' => true, 'object_type' => 'deal', 'field_key' => 'stage' ] ),
+            crm_render_detail_field( 'Expected Close', $detail['expected_close_date'] ?? '', false, [ 'editable' => true, 'object_type' => 'deal', 'field_key' => 'expected_close_date' ] ),
+            crm_render_detail_field( 'Status', crm_render_status_badge_html( $detail['status'] ?? '' ), true, [ 'editable' => true, 'object_type' => 'deal', 'field_key' => 'status' ] ),
+            crm_render_detail_field( 'Contact', $contact_html, true, [ 'editable' => true, 'object_type' => 'deal', 'field_key' => 'contact' ] ),
+            crm_render_detail_field( 'Company', $company_html, true, [ 'editable' => true, 'object_type' => 'deal', 'field_key' => 'company' ] ),
+            crm_render_detail_field( 'Owner', $detail['owner_name'] ?? '', false, [ 'editable' => true, 'object_type' => 'deal', 'field_key' => 'owner' ] ),
+        ];
+    }
+
+    ob_start();
+    ?>
+    <div class="crm-detail-header">
+        <div>
+            <a class="crm-detail-back" href="<?php echo esc_url( $back_url ); ?>">
+                <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+                </svg>
+                Back to <?php echo esc_html( ucfirst( $tab_map[ $object_type ] ) ); ?>
+            </a>
+            <div class="crm-detail-eyebrow"><?php echo esc_html( ucfirst( $object_type ) ); ?> Record</div>
+            <h2><?php echo esc_html( $title ); ?></h2>
+        </div>
+        <div>
+            <button type="button"
+                    class="bntm-btn-primary crm-detail-edit-trigger"
+                    data-object-type="<?php echo esc_attr( $object_type ); ?>">
+                <?php echo esc_html( $edit_label ); ?>
+            </button>
+        </div>
+    </div>
+
+    <div class="crm-detail-layout"
+         id="crm-record-detail-<?php echo esc_attr( $object_type ); ?>"
+         data-object-type="<?php echo esc_attr( $object_type ); ?>"
+         data-record-id="<?php echo intval( $detail['id'] ?? 0 ); ?>">
+        <div class="crm-detail-sidebar">
+            <div class="crm-detail-card">
+                <h3>About This <?php echo esc_html( ucfirst( $object_type ) ); ?></h3>
+                <div class="crm-detail-fields"><?php echo implode( '', $fields ); ?></div>
+            </div>
+            <?php echo $associations; ?>
+        </div>
+        <div class="crm-detail-main">
+            <div class="crm-detail-card">
+                <div class="crm-detail-tabs">
+                    <button type="button" class="crm-detail-tab active" data-detail-tab="activity">Activity Feed</button>
+                    <button type="button" class="crm-detail-tab" data-detail-tab="notes">Notes</button>
+                    <button type="button" class="crm-detail-tab" data-detail-tab="tasks">Tasks</button>
+                    <button type="button" class="crm-detail-tab" data-detail-tab="files">Files</button>
+                </div>
+                <div class="crm-record-detail-panel"></div>
+            </div>
+        </div>
+    </div>
+    <?php
+
+    return ob_get_clean();
+}
+
+// =============================================================================
+// TAB 1 — DASHBOARD
+// =============================================================================
+
+function crm_dashboard_tab( $business_id ) {
+    global $wpdb;
+
+    $today = current_time( 'Y-m-d' );
+
+    $total_contacts = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(*) FROM {$wpdb->prefix}crm_contacts
+         WHERE business_id = %d AND status = 'active'",
+        $business_id
+    ) );
+
+    $total_companies = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(*) FROM {$wpdb->prefix}crm_companies
+         WHERE business_id = %d AND status = 'active'",
+        $business_id
+    ) );
+
+    $total_open_deals = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(*) FROM {$wpdb->prefix}crm_deals
+         WHERE business_id = %d AND status = 'open'",
+        $business_id
+    ) );
+
+    $pipeline_value = (float) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COALESCE(SUM(amount), 0) FROM {$wpdb->prefix}crm_deals
+         WHERE business_id = %d AND status = 'open'",
+        $business_id
+    ) );
+
+    $overdue_tasks = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(*) FROM {$wpdb->prefix}crm_tasks
+         WHERE business_id = %d AND status = 'pending' AND due_date < %s",
+        $business_id, $today
+    ) );
+
+    $stage_breakdown = $wpdb->get_results( $wpdb->prepare(
+        "SELECT ps.name, ps.color, COUNT(d.id) AS deal_count,
+                COALESCE(SUM(d.amount), 0) AS stage_value
+         FROM {$wpdb->prefix}crm_pipeline_stages ps
+         LEFT JOIN {$wpdb->prefix}crm_deals d
+           ON d.stage_id = ps.id AND d.business_id = %d AND d.status = 'open'
+         WHERE ps.business_id = %d AND ps.status = 'active'
+         GROUP BY ps.id, ps.name, ps.color, ps.sort_order
+         ORDER BY ps.sort_order ASC",
+        $business_id, $business_id
+    ) );
+
+    $recent_activities = $wpdb->get_results( $wpdb->prepare(
+        "SELECT a.*, u.display_name AS author_name
+         FROM {$wpdb->prefix}crm_activities a
+         LEFT JOIN {$wpdb->users} u ON u.ID = a.author_id
+         WHERE a.business_id = %d AND a.status = 'active'
+         ORDER BY a.created_at DESC
+         LIMIT 10",
+        $business_id
+    ) );
+
+    $overdue_task_list = $wpdb->get_results( $wpdb->prepare(
+        "SELECT t.*, u.display_name AS assignee_name
+         FROM {$wpdb->prefix}crm_tasks t
+         LEFT JOIN {$wpdb->users} u ON u.ID = t.assignee_id
+         WHERE t.business_id = %d AND t.status = 'pending' AND t.due_date < %s
+         ORDER BY t.due_date ASC
+         LIMIT 5",
+        $business_id, $today
+    ) );
+
+    ob_start();
+    ?>
+    <div class="bntm-stats-row">
+
+        <div class="bntm-stat-card">
+            <div class="stat-icon" style="background: var(--bntm-primary);">
+                <svg width="24" height="24" fill="none" stroke="white" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                          d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/>
+                </svg>
+            </div>
+            <div class="stat-content">
+                <h3>Contacts</h3>
+                <p class="stat-number"><?php echo number_format( $total_contacts ); ?></p>
+                <span class="stat-label">Total active</span>
+            </div>
+        </div>
+
+        <div class="bntm-stat-card">
+            <div class="stat-icon" style="background: #0ea5e9;">
+                <svg width="24" height="24" fill="none" stroke="white" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                          d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/>
+                </svg>
+            </div>
+            <div class="stat-content">
+                <h3>Companies</h3>
+                <p class="stat-number"><?php echo number_format( $total_companies ); ?></p>
+                <span class="stat-label">Total active</span>
+            </div>
+        </div>
+
+        <div class="bntm-stat-card">
+            <div class="stat-icon" style="background: #10b981;">
+                <svg width="24" height="24" fill="none" stroke="white" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                          d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+            </div>
+            <div class="stat-content">
+                <h3>Open Deals</h3>
+                <p class="stat-number"><?php echo number_format( $total_open_deals ); ?></p>
+                <span class="stat-label">In pipeline</span>
+            </div>
+        </div>
+
+        <div class="bntm-stat-card">
+            <div class="stat-icon" style="background: #f59e0b;">
+                <svg width="24" height="24" fill="none" stroke="white" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                          d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+                </svg>
+            </div>
+            <div class="stat-content">
+                <h3>Pipeline Value</h3>
+                <p class="stat-number" style="font-size:20px;"><?php echo crm_format_currency( $pipeline_value ); ?></p>
+                <span class="stat-label">Open deals total</span>
+            </div>
+        </div>
+
+        <div class="bntm-stat-card">
+            <div class="stat-icon" style="background: #ef4444;">
+                <svg width="24" height="24" fill="none" stroke="white" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                          d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+            </div>
+            <div class="stat-content">
+                <h3>Overdue Tasks</h3>
+                <p class="stat-number"><?php echo number_format( $overdue_tasks ); ?></p>
+                <span class="stat-label">Need attention</span>
+            </div>
+        </div>
+
+    </div>
+
+    <div class="crm-two-col">
+
+        <div>
+            <!-- Pipeline Stage Breakdown -->
+            <div class="bntm-form-section">
+                <h3>Pipeline Stage Breakdown</h3>
+                <?php if ( empty( $stage_breakdown ) ) : ?>
+                    <div class="crm-empty">
+                        <svg width="36" height="36" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                  d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                        </svg>
+                        <p>No pipeline stages configured yet.</p>
+                    </div>
+                <?php else : ?>
+                    <?php foreach ( $stage_breakdown as $stage ) :
+                        $pct = $pipeline_value > 0
+                            ? round( ( $stage->stage_value / $pipeline_value ) * 100 )
+                            : 0;
+                    ?>
+                    <div class="crm-stage-breakdown-row">
+                        <div class="crm-stage-breakdown-label">
+                            <span class="crm-stage-dot" style="background:<?php echo esc_attr( $stage->color ); ?>;"></span>
+                            <span class="crm-stage-breakdown-name"><?php echo esc_html( $stage->name ); ?></span>
+                            <span class="crm-stage-breakdown-count"><?php echo intval( $stage->deal_count ); ?> deal<?php echo $stage->deal_count == 1 ? '' : 's'; ?></span>
+                        </div>
+                        <div class="crm-stage-bar-wrap">
+                            <div class="crm-stage-bar-fill" style="width:<?php echo $pct; ?>%;background:<?php echo esc_attr( $stage->color ); ?>;"></div>
+                        </div>
+                        <div class="crm-stage-breakdown-value">
+                            <?php echo crm_format_currency( $stage->stage_value ); ?>
+                        </div>
+                    </div>
+                    <?php endforeach; ?>
+                <?php endif; ?>
+            </div>
+
+            <!-- Recent Activity -->
+            <div class="bntm-form-section">
+                <h3>Recent Activity</h3>
+                <?php if ( empty( $recent_activities ) ) : ?>
+                    <div class="crm-empty">
+                        <svg width="36" height="36" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                  d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z"/>
+                        </svg>
+                        <p>No activity recorded yet.</p>
+                    </div>
+                <?php else : ?>
+                    <div class="crm-timeline">
+                        <?php foreach ( $recent_activities as $act ) :
+                            $icon_map = [
+                                'note'             => '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z"/>',
+                                'task_created'     => '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>',
+                                'task_completed'   => '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2m-6 9l2 2 4-4"/>',
+                                'deal_moved'       => '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"/>',
+                                'status_changed'   => '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>',
+                            ];
+                            $svg_path = $icon_map[ $act->activity_type ] ?? $icon_map['note'];
+                            $time_diff = crm_time_ago( $act->created_at );
+                        ?>
+                        <div class="crm-timeline-item">
+                            <div class="crm-timeline-icon">
+                                <svg width="14" height="14" fill="none" stroke="#6b7280" viewBox="0 0 24 24">
+                                    <?php echo $svg_path; ?>
+                                </svg>
+                            </div>
+                            <div class="crm-timeline-content">
+                                <div style="font-size:13px;font-weight:500;color:#111827;">
+                                    <?php echo esc_html( crm_activity_label( $act->activity_type ) ); ?>
+                                    <span style="font-weight:400;color:#374151;">
+                                        — <?php echo esc_html( $act->body ? wp_trim_words( $act->body, 12 ) : '' ); ?>
+                                    </span>
+                                </div>
+                                <div class="crm-timeline-meta">
+                                    <?php echo esc_html( $act->author_name ); ?>
+                                    &middot; <?php echo esc_html( $time_diff ); ?>
+                                    &middot; <?php echo esc_html( ucfirst( $act->linked_type ) ); ?>
+                                </div>
+                            </div>
+                        </div>
+                        <?php endforeach; ?>
+                    </div>
+                <?php endif; ?>
+            </div>
+        </div>
+
+        <!-- Right column -->
+        <div>
+            <!-- Overdue Tasks -->
+            <div class="bntm-form-section crm-overdue-section">
+                <h3 style="color:#dc2626;">
+                    <svg width="16" height="16" fill="none" stroke="#dc2626" viewBox="0 0 24 24" style="display:inline;vertical-align:middle;margin-right:6px;">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                              d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                    </svg>
+                    Overdue Tasks
+                </h3>
+                <?php if ( empty( $overdue_task_list ) ) : ?>
+                    <p style="font-size:13px;color:#9ca3af;text-align:center;padding:12px 0;">
+                        No overdue tasks. All caught up.
+                    </p>
+                <?php else : ?>
+                    <?php foreach ( $overdue_task_list as $task ) :
+                        $days_over = (int) ( ( strtotime( $today ) - strtotime( $task->due_date ) ) / DAY_IN_SECONDS );
+                    ?>
+                    <div class="crm-overdue-task-row">
+                        <div class="crm-overdue-task-title">
+                            <?php echo esc_html( $task->title ); ?>
+                        </div>
+                        <div class="crm-overdue-task-meta">
+                            <span class="crm-badge crm-badge-overdue">
+                                <?php echo $days_over; ?> day<?php echo $days_over == 1 ? '' : 's'; ?> overdue
+                            </span>
+                            &nbsp;
+                            <span style="font-size:11px;color:#9ca3af;">
+                                <?php echo esc_html( $task->assignee_name ); ?>
+                            </span>
+                        </div>
+                    </div>
+                    <?php endforeach; ?>
+                    <?php if ( $overdue_tasks > 5 ) : ?>
+                        <a href="?tab=tasks" style="display:block;text-align:center;font-size:13px;color:var(--bntm-primary);margin-top:12px;text-decoration:none;">
+                            View all <?php echo intval( $overdue_tasks ); ?> overdue tasks &rarr;
+                        </a>
+                    <?php endif; ?>
+                <?php endif; ?>
+            </div>
+
+            <!-- Quick Stats Summary -->
+            <div class="bntm-form-section">
+                <h3>Quick Summary</h3>
+                <?php
+                $won_deals = (int) $wpdb->get_var( $wpdb->prepare(
+                    "SELECT COUNT(*) FROM {$wpdb->prefix}crm_deals
+                     WHERE business_id = %d AND status = 'closed'
+                     AND stage_id IN (
+                         SELECT id FROM {$wpdb->prefix}crm_pipeline_stages
+                         WHERE business_id = %d AND name LIKE %s
+                     )",
+                    $business_id, $business_id, '%Won%'
+                ) );
+                $this_month_contacts = (int) $wpdb->get_var( $wpdb->prepare(
+                    "SELECT COUNT(*) FROM {$wpdb->prefix}crm_contacts
+                     WHERE business_id = %d AND status = 'active'
+                     AND MONTH(created_at) = MONTH(%s) AND YEAR(created_at) = YEAR(%s)",
+                    $business_id, $today, $today
+                ) );
+                $pending_tasks_count = (int) $wpdb->get_var( $wpdb->prepare(
+                    "SELECT COUNT(*) FROM {$wpdb->prefix}crm_tasks
+                     WHERE business_id = %d AND status = 'pending' AND due_date >= %s",
+                    $business_id, $today
+                ) );
+                ?>
+                <div class="crm-quick-summary-list">
+                    <div class="crm-quick-summary-row">
+                        <span class="crm-quick-summary-label">New contacts this month</span>
+                        <span class="crm-quick-summary-value"><?php echo number_format( $this_month_contacts ); ?></span>
+                    </div>
+                    <div class="crm-quick-summary-row">
+                        <span class="crm-quick-summary-label">Deals won</span>
+                        <span class="crm-quick-summary-value" style="color:#16a34a;"><?php echo number_format( $won_deals ); ?></span>
+                    </div>
+                    <div class="crm-quick-summary-row">
+                        <span class="crm-quick-summary-label">Upcoming tasks</span>
+                        <span class="crm-quick-summary-value"><?php echo number_format( $pending_tasks_count ); ?></span>
+                    </div>
+                    <div class="crm-quick-summary-row">
+                        <span class="crm-quick-summary-label">Open pipeline value</span>
+                        <span class="crm-quick-summary-value" style="color:var(--bntm-primary);">
+                            <?php echo crm_format_currency( $pipeline_value ); ?>
+                        </span>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
 
     <style>
-    @keyframes crmSpin { to { transform: rotate(360deg); } }
-
-    .crm-public-page {
-        min-height: 60vh;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        padding: 40px 16px;
-        box-sizing: border-box;
-    }
-
-    .crm-public-form-card {
-        background: #fff;
-        border: 1px solid #e5e7eb;
-        border-radius: 20px;
-        box-shadow: 0 8px 40px rgba(0,0,0,.1);
-        width: 100%;
-        max-width: 540px;
-        overflow: hidden;
-    }
-
-    .crm-public-form-header {
-        background: var(--bntm-primary, #6366f1);
-        padding: 36px 36px 28px;
-        text-align: center;
-        color: #fff;
-    }
-
-    .crm-public-form-icon {
-        width: 64px;
-        height: 64px;
-        background: rgba(255,255,255,.2);
-        border-radius: 50%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        margin: 0 auto 16px;
-    }
-
-    .crm-public-form-header h2 {
-        margin: 0 0 8px;
-        font-size: 26px;
-        font-weight: 700;
-        color: #fff;
-    }
-
-    .crm-public-form-header p {
-        margin: 0;
-        font-size: 15px;
-        color: rgba(255,255,255,.8);
-    }
-
-    .crm-public-form-body {
-        padding: 32px 36px;
-    }
-
-    .crm-pub-row {
+    .crm-stage-breakdown-row {
         display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 14px;
-        margin-bottom: 14px;
+        grid-template-columns: 1fr 120px 100px;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 12px;
     }
-
-    .crm-pub-row.single { grid-template-columns: 1fr; }
-
-    .crm-pub-group {
+    .crm-stage-breakdown-label {
         display: flex;
-        flex-direction: column;
-        gap: 5px;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
     }
-
-    .crm-pub-group label {
+    .crm-stage-breakdown-name {
         font-size: 13px;
         font-weight: 500;
         color: #374151;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
     }
-
-    .crm-pub-input, .crm-pub-textarea {
-        padding: 10px 14px;
-        border: 1px solid #d1d5db;
-        border-radius: 10px;
-        font-size: 14px;
-        color: #111827;
-        transition: border-color .15s, box-shadow .15s;
-        box-sizing: border-box;
-        width: 100%;
+    .crm-stage-breakdown-count {
+        font-size: 11px;
+        color: #9ca3af;
+        white-space: nowrap;
     }
-
-    .crm-pub-input:focus, .crm-pub-textarea:focus {
-        outline: none;
-        border-color: var(--bntm-primary, #6366f1);
-        box-shadow: 0 0 0 3px rgba(99,102,241,.12);
+    .crm-stage-bar-wrap {
+        height: 8px;
+        background: #f3f4f6;
+        border-radius: 4px;
+        overflow: hidden;
     }
-
-    .crm-pub-textarea {
-        resize: vertical;
-        min-height: 100px;
+    .crm-stage-bar-fill {
+        height: 100%;
+        border-radius: 4px;
+        transition: width .4s ease;
+        min-width: 2px;
     }
-
-    .crm-pub-submit {
-        width: 100%;
-        padding: 13px;
-        background: var(--bntm-primary, #6366f1);
-        color: #fff;
-        border: none;
-        border-radius: 10px;
-        font-size: 15px;
+    .crm-stage-breakdown-value {
+        font-size: 13px;
         font-weight: 600;
-        cursor: pointer;
-        transition: background .15s, opacity .15s;
-        margin-top: 8px;
+        color: #111827;
+        text-align: right;
+        white-space: nowrap;
+    }
+    .crm-overdue-task-row {
+        padding: 10px 0;
+        border-bottom: 1px solid #fef2f2;
+    }
+    .crm-overdue-task-row:last-child { border-bottom: none; }
+    .crm-overdue-task-title {
+        font-size: 13px;
+        font-weight: 500;
+        color: #111827;
+        margin-bottom: 4px;
+    }
+    .crm-overdue-task-meta {
         display: flex;
         align-items: center;
-        justify-content: center;
-        gap: 8px;
+        gap: 6px;
     }
-
-    .crm-pub-submit:hover:not(:disabled) { background: var(--bntm-primary-hover, #4f46e5); }
-    .crm-pub-submit:disabled { opacity: .6; cursor: not-allowed; }
-
-    .crm-pub-error {
-        background: #fef2f2;
-        color: #991b1b;
-        border: 1px solid #fecaca;
-        border-radius: 8px;
-        padding: 10px 14px;
+    .crm-quick-summary-list { padding: 4px 0; }
+    .crm-quick-summary-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 9px 0;
+        border-bottom: 1px solid #f3f4f6;
+    }
+    .crm-quick-summary-row:last-child { border-bottom: none; }
+    .crm-quick-summary-label {
+        font-size: 13px;
+        color: #6b7280;
+    }
+    .crm-quick-summary-value {
         font-size: 14px;
-        margin-bottom: 12px;
+        font-weight: 700;
+        color: #111827;
     }
-
-    .crm-public-success-msg {
-        text-align: center;
-        padding: 20px 0;
-        color: #059669;
+    @media (max-width: 640px) {
+        .crm-stage-breakdown-row {
+            grid-template-columns: 1fr 80px;
+        }
+        .crm-stage-breakdown-value { display: none; }
     }
+    </style>
 
-    .crm-public-success-msg svg { margin-bottom: 12px; }
-    .crm-public-success-msg h3 { margin: 0 0 8px; font-size: 22px; font-weight: 700; color: #111827; }
-    .crm-public-success-msg p  { margin: 0; font-size: 15px; color: #6b7280; }
+    <script>
+    (function() {
+        // Dashboard tab has no interactive AJAX — data is server-rendered on load.
+        // Refresh button could be added in a future iteration.
+    })();
+    </script>
+    <?php
+    return ob_get_clean();
+}
 
-    @media (max-width: 480px) {
-        .crm-pub-row { grid-template-columns: 1fr; }
-        .crm-public-form-body { padding: 24px 20px; }
-        .crm-public-form-header { padding: 28px 20px 20px; }
+// =============================================================================
+// TAB 2 — CONTACTS
+// =============================================================================
+
+function crm_contacts_tab( $business_id, $detail_record_id = 0 ) {
+    global $wpdb;
+
+    $is_detail_view = $detail_record_id > 0;
+    $detail_record  = $is_detail_view ? crm_get_detail_record( 'contact', $detail_record_id, $business_id ) : null;
+
+    $companies = $wpdb->get_results( $wpdb->prepare(
+        "SELECT id, name FROM {$wpdb->prefix}crm_companies
+         WHERE business_id = %d AND status = 'active'
+         ORDER BY name ASC",
+        $business_id
+    ) );
+
+    $users = get_users( [ 'fields' => [ 'ID', 'display_name' ] ] );
+
+    $custom_props = $wpdb->get_results( $wpdb->prepare(
+        "SELECT * FROM {$wpdb->prefix}crm_custom_properties
+         WHERE business_id = %d AND object_type = 'contact' AND status = 'active'
+         ORDER BY sort_order ASC",
+        $business_id
+    ) );
+
+    ob_start();
+    ?>
+
+    <?php if ( $is_detail_view ) : ?>
+        <?php echo crm_render_record_detail_page(
+            'contact',
+            $detail_record,
+            crm_get_tab_url( 'contacts' ),
+            'Edit Contact'
+        ); ?>
+    <?php endif; ?>
+
+    <!-- Filter Row -->
+    <div class="crm-contact-list-shell" style="<?php echo $is_detail_view ? 'display:none;' : ''; ?>">
+    <div class="crm-filter-row">
+        <input type="text" id="crm-contact-search"
+               placeholder="Search name, email, phone..."
+               style="flex:1;min-width:200px;">
+        <select id="crm-contact-filter-status">
+            <option value="">All Statuses</option>
+            <option value="lead">Lead</option>
+            <option value="prospect">Prospect</option>
+            <option value="customer">Customer</option>
+            <option value="churned">Churned</option>
+        </select>
+        <select id="crm-contact-filter-owner">
+            <option value="">All Owners</option>
+            <?php foreach ( $users as $u ) : ?>
+                <option value="<?php echo intval( $u->ID ); ?>">
+                    <?php echo esc_html( $u->display_name ); ?>
+                </option>
+            <?php endforeach; ?>
+        </select>
+        <button class="bntm-btn-primary" id="crm-contact-add-btn">
+            <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+            </svg>
+            Add Contact
+        </button>
+    </div>
+
+    <!-- Contacts Table -->
+    <div class="bntm-form-section" style="padding:0;overflow:hidden;">
+        <div id="crm-contacts-table-wrap">
+            <div class="crm-empty" style="padding:48px;">
+                <svg width="36" height="36" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                          d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/>
+                </svg>
+                <p>Loading contacts...</p>
+            </div>
+        </div>
+        <div id="crm-contacts-pagination" style="padding:16px 20px;border-top:1px solid #f3f4f6;display:flex;align-items:center;gap:8px;flex-wrap:wrap;"></div>
+    </div>
+    </div>
+
+    <!-- Add / Edit Contact Modal -->
+    <div class="crm-modal-overlay" id="crm-contact-modal">
+        <div class="crm-modal">
+            <div class="crm-modal-header">
+                <h3 data-default="Add Contact">Add Contact</h3>
+                <button class="crm-modal-close" onclick="crmCloseModal('crm-contact-modal')">
+                    <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="crm-modal-body">
+                <input type="hidden" id="crm-contact-id" name="record_id" value="">
+                <div class="crm-field-row">
+                    <div class="crm-field-group">
+                        <label>First Name <span style="color:#ef4444;">*</span></label>
+                        <input type="text" id="crm-contact-first-name" placeholder="First name">
+                    </div>
+                    <div class="crm-field-group">
+                        <label>Last Name</label>
+                        <input type="text" id="crm-contact-last-name" placeholder="Last name">
+                    </div>
+                </div>
+                <div class="crm-field-row">
+                    <div class="crm-field-group">
+                        <label>Email</label>
+                        <input type="email" id="crm-contact-email" placeholder="email@example.com">
+                    </div>
+                    <div class="crm-field-group">
+                        <label>Phone</label>
+                        <input type="text" id="crm-contact-phone" placeholder="+1 555 000 0000">
+                    </div>
+                </div>
+                <div class="crm-field-row">
+                    <div class="crm-field-group">
+                        <label>Job Title</label>
+                        <input type="text" id="crm-contact-job-title" placeholder="e.g. Operations Manager">
+                    </div>
+                    <div class="crm-field-group">
+                        <label>Lead Source</label>
+                        <input type="text" id="crm-contact-lead-source" placeholder="e.g. Referral, Website, Event">
+                    </div>
+                </div>
+                <div class="crm-field-row">
+                    <div class="crm-field-group">
+                        <label>Lifecycle Status</label>
+                        <select id="crm-contact-lifecycle">
+                            <option value="lead">Lead</option>
+                            <option value="prospect">Prospect</option>
+                            <option value="customer">Customer</option>
+                            <option value="churned">Churned</option>
+                        </select>
+                    </div>
+                    <div class="crm-field-group">
+                        <label>Owner</label>
+                        <select id="crm-contact-owner">
+                            <option value="">Unassigned</option>
+                            <?php foreach ( $users as $u ) : ?>
+                                <option value="<?php echo intval( $u->ID ); ?>">
+                                    <?php echo esc_html( $u->display_name ); ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                </div>
+                <div class="crm-field-group">
+                    <label>Company</label>
+                    <select id="crm-contact-company">
+                        <option value="0">No company (individual)</option>
+                        <?php foreach ( $companies as $co ) : ?>
+                            <option value="<?php echo intval( $co->id ); ?>">
+                                <?php echo esc_html( $co->name ); ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="crm-field-group">
+                    <label>Address</label>
+                    <textarea id="crm-contact-address" rows="3" placeholder="Street, city, state, postal code"></textarea>
+                </div>
+                <div class="crm-field-group">
+                    <label>Tags <span style="font-weight:400;color:#9ca3af;">(comma separated)</span></label>
+                    <input type="text" id="crm-contact-tags" placeholder="e.g. vip, referral, partner">
+                </div>
+                <?php if ( ! empty( $custom_props ) ) : ?>
+                    <div style="border-top:1px solid #f3f4f6;padding-top:16px;margin-top:4px;">
+                        <p style="font-size:12px;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px;">
+                            Custom Properties
+                        </p>
+                        <?php foreach ( $custom_props as $prop ) : ?>
+                            <div class="crm-field-group">
+                                <label><?php echo esc_html( $prop->field_label ); ?></label>
+                                <?php if ( $prop->field_type === 'textarea' ) : ?>
+                                    <textarea id="crm-cprop-<?php echo esc_attr( $prop->field_name ); ?>"
+                                              data-prop="<?php echo esc_attr( $prop->field_name ); ?>"
+                                              class="crm-custom-prop-field" rows="3"></textarea>
+                                <?php elseif ( $prop->field_type === 'select' ) :
+                                    $opts = json_decode( $prop->field_options, true ) ?: [];
+                                ?>
+                                    <select id="crm-cprop-<?php echo esc_attr( $prop->field_name ); ?>"
+                                            data-prop="<?php echo esc_attr( $prop->field_name ); ?>"
+                                            class="crm-custom-prop-field">
+                                        <option value="">Select...</option>
+                                        <?php foreach ( $opts as $opt ) : ?>
+                                            <option value="<?php echo esc_attr( $opt ); ?>">
+                                                <?php echo esc_html( $opt ); ?>
+                                            </option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                <?php else : ?>
+                                    <input type="<?php echo $prop->field_type === 'number' ? 'number' : ( $prop->field_type === 'date' ? 'date' : 'text' ); ?>"
+                                           id="crm-cprop-<?php echo esc_attr( $prop->field_name ); ?>"
+                                           data-prop="<?php echo esc_attr( $prop->field_name ); ?>"
+                                           class="crm-custom-prop-field">
+                                <?php endif; ?>
+                            </div>
+                        <?php endforeach; ?>
+                    </div>
+                <?php endif; ?>
+            </div>
+            <div class="crm-modal-footer">
+                <button class="bntm-btn-secondary" onclick="crmCloseModal('crm-contact-modal')">Cancel</button>
+                <button class="bntm-btn-primary" id="crm-contact-save-btn">Save Contact</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    (function() {
+        var page        = 1;
+        var perPage     = 20;
+        var totalPages  = 1;
+        var searchTimer = null;
+        var isDetailView = <?php echo $is_detail_view ? 'true' : 'false'; ?>;
+        var detailRecord = <?php echo wp_json_encode( $detail_record ); ?>;
+        var initialLoadStarted = false;
+
+        function whenDetailApiReady(cb, tries) {
+            tries = tries || 0;
+            if (typeof crmInitRecordDetailView === 'function' && typeof crmRegisterDetailEditor === 'function') {
+                cb();
+                return;
+            }
+            if (tries > 80) return;
+            setTimeout(function() { whenDetailApiReady(cb, tries + 1); }, 25);
+        }
+
+        function loadContacts() {
+            var search     = document.getElementById('crm-contact-search').value;
+            var status     = document.getElementById('crm-contact-filter-status').value;
+            var owner      = document.getElementById('crm-contact-filter-owner').value;
+            var wrap       = document.getElementById('crm-contacts-table-wrap');
+
+            wrap.innerHTML = '<div class="crm-empty" style="padding:48px;"><p>Loading...</p></div>';
+
+            crmPost( 'crm_get_contacts', {
+                search: search,
+                lifecycle_status: status,
+                owner_id: owner,
+                page: page,
+                per_page: perPage
+            }, function(data) {
+                totalPages = data.total_pages || 1;
+                renderContactsTable( data.contacts || [] );
+                renderPagination( data.total || 0 );
+            });
+        }
+
+        function renderContactsTable(contacts) {
+            var wrap = document.getElementById('crm-contacts-table-wrap');
+            if ( contacts.length === 0 ) {
+                wrap.innerHTML = '<div class="crm-empty" style="padding:48px;">'
+                    + '<svg width="36" height="36" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>'
+                    + '<p>No contacts found.</p></div>';
+                return;
+            }
+
+            var lifecycle_labels = {
+                lead: 'Lead', prospect: 'Prospect',
+                customer: 'Customer', churned: 'Churned'
+            };
+
+            var html = '<div class="bntm-table-wrapper" style="border:none;border-radius:0;">'
+                + '<table class="bntm-table"><thead><tr>'
+                + '<th>Name</th><th>Email</th><th>Phone</th>'
+                + '<th>Status</th><th>Owner</th><th>Company</th>'
+                + '<th>Tags</th><th>Created</th><th>Actions</th>'
+                + '</tr></thead><tbody>';
+
+            contacts.forEach(function(c) {
+                var statusClass = 'crm-badge-' + (c.lifecycle_status || 'lead');
+                var label       = lifecycle_labels[c.lifecycle_status] || c.lifecycle_status;
+                var tags        = c.tags
+                    ? c.tags.split(',').map(function(t){
+                        return '<span class="crm-tag">' + crmEsc(t.trim()) + '</span>';
+                      }).join('')
+                    : '—';
+                var created = c.created_at ? c.created_at.substring(0,10) : '—';
+                var detailUrl = crmBuildUrl({ tab: 'contacts', view: 'contact', id: c.id });
+
+                html += '<tr>'
+                    + '<td><a href="' + crmEsc(detailUrl) + '" class="crm-detail-inline-link" style="font-weight:600;">'
+                    + crmEsc(c.first_name) + ' ' + crmEsc(c.last_name)
+                    + '</a></td>'
+                    + '<td>' + (c.email ? crmEsc(c.email) : '—') + '</td>'
+                    + '<td>' + (c.phone ? crmEsc(c.phone) : '—') + '</td>'
+                    + '<td><span class="crm-badge ' + statusClass + '">' + crmEsc(label) + '</span></td>'
+                    + '<td>' + (c.owner_name ? crmEsc(c.owner_name) : '—') + '</td>'
+                    + '<td>' + (c.company_name ? crmEsc(c.company_name) : '<span style="color:#9ca3af;">Individual</span>') + '</td>'
+                    + '<td><div class="crm-tags-wrap">' + tags + '</div></td>'
+                    + '<td style="white-space:nowrap;">' + crmEsc(created) + '</td>'
+                    + '<td style="white-space:nowrap;">'
+                    + '<button class="bntm-btn-secondary bntm-btn-small crm-contact-edit-btn" data-id="' + c.id + '">Edit</button> '
+                    + '<button class="bntm-btn-danger bntm-btn-small crm-contact-delete-btn" data-id="' + c.id + '">Delete</button>'
+                    + '</td>'
+                    + '</tr>';
+            });
+
+            html += '</tbody></table></div>';
+            wrap.innerHTML = html;
+
+            wrap.querySelectorAll('.crm-contact-edit-btn').forEach(function(btn) {
+                btn.addEventListener('click', function() {
+                    openEditContact( this.dataset.id, contacts );
+                });
+            });
+            wrap.querySelectorAll('.crm-contact-delete-btn').forEach(function(btn) {
+                btn.addEventListener('click', function() {
+                    deleteContact( this.dataset.id );
+                });
+            });
+        }
+
+        function renderPagination(total) {
+            var pag = document.getElementById('crm-contacts-pagination');
+            if ( totalPages <= 1 ) { pag.innerHTML = '<span style="font-size:13px;color:#9ca3af;">Showing ' + total + ' contact(s)</span>'; return; }
+
+            var html = '<span style="font-size:13px;color:#6b7280;margin-right:8px;">Page ' + page + ' of ' + totalPages + ' &nbsp;|&nbsp; ' + total + ' total</span>';
+
+            if ( page > 1 ) {
+                html += '<button class="bntm-btn-secondary bntm-btn-small" id="crm-contact-prev">Prev</button> ';
+            }
+            if ( page < totalPages ) {
+                html += '<button class="bntm-btn-secondary bntm-btn-small" id="crm-contact-next">Next</button>';
+            }
+            pag.innerHTML = html;
+
+            var prevBtn = document.getElementById('crm-contact-prev');
+            var nextBtn = document.getElementById('crm-contact-next');
+            if ( prevBtn ) prevBtn.addEventListener('click', function() { page--; loadContacts(); });
+            if ( nextBtn ) nextBtn.addEventListener('click', function() { page++; loadContacts(); });
+        }
+
+        function resetContactForm() {
+            document.getElementById('crm-contact-id').value = '';
+            document.getElementById('crm-contact-first-name').value = '';
+            document.getElementById('crm-contact-last-name').value = '';
+            document.getElementById('crm-contact-email').value = '';
+            document.getElementById('crm-contact-phone').value = '';
+            document.getElementById('crm-contact-job-title').value = '';
+            document.getElementById('crm-contact-address').value = '';
+            document.getElementById('crm-contact-lead-source').value = '';
+            document.getElementById('crm-contact-lifecycle').value = 'lead';
+            document.getElementById('crm-contact-owner').value = '';
+            document.getElementById('crm-contact-company').value = 0;
+            document.getElementById('crm-contact-tags').value = '';
+            document.querySelectorAll('.crm-custom-prop-field').forEach(function(el) {
+                el.value = '';
+            });
+        }
+
+        function populateContactForm(c) {
+            document.getElementById('crm-contact-id').value          = c.id || '';
+            document.getElementById('crm-contact-first-name').value  = c.first_name || '';
+            document.getElementById('crm-contact-last-name').value   = c.last_name  || '';
+            document.getElementById('crm-contact-email').value       = c.email      || '';
+            document.getElementById('crm-contact-phone').value       = c.phone      || '';
+            document.getElementById('crm-contact-job-title').value   = c.job_title  || '';
+            document.getElementById('crm-contact-address').value     = c.address    || '';
+            document.getElementById('crm-contact-lead-source').value = c.lead_source || '';
+            document.getElementById('crm-contact-lifecycle').value   = c.lifecycle_status || 'lead';
+            document.getElementById('crm-contact-owner').value       = c.owner_id   || '';
+            document.getElementById('crm-contact-company').value     = c.company_id || 0;
+            document.getElementById('crm-contact-tags').value        = c.tags       || '';
+
+            var customProps = {};
+            try { customProps = JSON.parse(c.custom_properties || '{}'); } catch(e){}
+            document.querySelectorAll('.crm-custom-prop-field').forEach(function(el) {
+                var prop = el.dataset.prop;
+                el.value = ( prop && customProps[prop] !== undefined ) ? customProps[prop] : '';
+            });
+        }
+
+        function openEditContact(id, contacts) {
+            var c = contacts.find(function(x){ return x.id == id; });
+            if (!c) return;
+            populateContactForm(c);
+
+            var title = document.querySelector('#crm-contact-modal .crm-modal-header h3');
+            title.textContent = 'Edit Contact';
+
+            crmOpenModal('crm-contact-modal');
+        }
+
+        function deleteContact(id) {
+            crmConfirm('Delete this contact? This cannot be undone.', function() {
+                crmPost( 'crm_delete_contact', { contact_id: id }, function(data) {
+                    crmToast(data.message || 'Contact deleted.', 'success');
+                    loadContacts();
+                });
+            });
+        }
+
+        // Add button
+        document.getElementById('crm-contact-add-btn').addEventListener('click', function() {
+            resetContactForm();
+            var title = document.querySelector('#crm-contact-modal .crm-modal-header h3');
+            title.textContent = 'Add Contact';
+            crmOpenModal('crm-contact-modal');
+        });
+
+        // Save button
+        document.getElementById('crm-contact-save-btn').addEventListener('click', function() {
+            var btn        = this;
+            var contactId  = document.getElementById('crm-contact-id').value;
+            var firstName  = document.getElementById('crm-contact-first-name').value.trim();
+
+            if ( ! firstName ) {
+                crmToast('First name is required.', 'error');
+                return;
+            }
+
+            var customProps = {};
+            document.querySelectorAll('.crm-custom-prop-field').forEach(function(el) {
+                if (el.dataset.prop) customProps[el.dataset.prop] = el.value;
+            });
+
+            var action = contactId ? 'crm_update_contact' : 'crm_create_contact';
+            btn.disabled = true;
+            btn.textContent = 'Saving...';
+
+            crmPost( action, {
+                contact_id:        contactId,
+                first_name:        firstName,
+                last_name:         document.getElementById('crm-contact-last-name').value.trim(),
+                email:             document.getElementById('crm-contact-email').value.trim(),
+                phone:             document.getElementById('crm-contact-phone').value.trim(),
+                job_title:         document.getElementById('crm-contact-job-title').value.trim(),
+                address:           document.getElementById('crm-contact-address').value.trim(),
+                lead_source:       document.getElementById('crm-contact-lead-source').value.trim(),
+                lifecycle_status:  document.getElementById('crm-contact-lifecycle').value,
+                owner_id:          document.getElementById('crm-contact-owner').value,
+                company_id:        document.getElementById('crm-contact-company').value,
+                tags:              document.getElementById('crm-contact-tags').value.trim(),
+                custom_properties: JSON.stringify(customProps)
+            }, function(data) {
+                crmToast(data.message || 'Saved.', 'success');
+                crmCloseModal('crm-contact-modal');
+                if (isDetailView) {
+                    window.location.reload();
+                    return;
+                }
+                loadContacts();
+                btn.disabled = false;
+                btn.textContent = 'Save Contact';
+            }, function() {
+                btn.disabled = false;
+                btn.textContent = 'Save Contact';
+            });
+        });
+
+        // Search with debounce
+        document.getElementById('crm-contact-search').addEventListener('input', function() {
+            clearTimeout(searchTimer);
+            searchTimer = setTimeout(function() { page = 1; loadContacts(); }, 380);
+        });
+
+        document.getElementById('crm-contact-filter-status').addEventListener('change', function() {
+            page = 1; loadContacts();
+        });
+        document.getElementById('crm-contact-filter-owner').addEventListener('change', function() {
+            page = 1; loadContacts();
+        });
+
+        function startInitialLoad() {
+            if (initialLoadStarted) return;
+            initialLoadStarted = true;
+
+            if (isDetailView && detailRecord && detailRecord.id) {
+                window.crmDetailViewContext = { objectType: 'contact', recordId: detailRecord.id };
+                whenDetailApiReady(function() {
+                    crmInitRecordDetailView({
+                        containerId: 'crm-record-detail-contact',
+                        objectType: 'contact',
+                        recordId: detailRecord.id,
+                        initialTab: 'activity'
+                    });
+                    crmRegisterDetailEditor('contact', function(fieldKey) {
+                        populateContactForm(detailRecord);
+                        document.querySelector('#crm-contact-modal .crm-modal-header h3').textContent = 'Edit Contact';
+                        crmOpenModal('crm-contact-modal');
+                        if (fieldKey) {
+                            window.crmFocusDetailEditField('contact', fieldKey);
+                        }
+                    });
+                });
+                return;
+            }
+
+            loadContacts();
+        }
+
+        window.bntmWhenCrmCoreReady(startInitialLoad);
+    })();
+    </script>
+
+    <style>
+    .crm-tag {
+        display: inline-block;
+        background: #f3f4f6;
+        color: #374151;
+        font-size: 11px;
+        font-weight: 500;
+        padding: 2px 8px;
+        border-radius: 20px;
+        margin: 1px 2px;
     }
+    .crm-tags-wrap { display: flex; flex-wrap: wrap; gap: 2px; }
     </style>
     <?php
     return ob_get_clean();
 }
 
-// ============================================================
-// AJAX: PUBLIC CONTACT FORM SUBMISSION
-// ============================================================
+// =============================================================================
+// TAB 3 — COMPANIES
+// =============================================================================
 
-/**
- * Handle AJAX requests for crm submit contact form.
- * @return void
- */
-function bntm_ajax_crm_submit_contact_form() {
-    check_ajax_referer('crm_nonce', 'nonce');
-
+function crm_companies_tab( $business_id, $detail_record_id = 0 ) {
     global $wpdb;
 
-    $first_name = sanitize_text_field($_POST['first_name'] ?? '');
-    $last_name  = sanitize_text_field($_POST['last_name'] ?? '');
-    $email      = sanitize_email($_POST['email'] ?? '');
-    $phone      = sanitize_text_field($_POST['phone'] ?? '');
-    $company    = sanitize_text_field($_POST['company'] ?? '');
-    $message    = sanitize_textarea_field($_POST['message'] ?? '');
+    $is_detail_view = $detail_record_id > 0;
+    $detail_record  = $is_detail_view ? crm_get_detail_record( 'company', $detail_record_id, $business_id ) : null;
 
-    if (!$first_name || !$last_name || !$email) {
-        wp_send_json_error(['message' => 'First name, last name, and email are required.']);
-    }
+    $users = get_users( [ 'fields' => [ 'ID', 'display_name' ] ] );
 
-    if (!is_email($email)) {
-        wp_send_json_error(['message' => 'Please enter a valid email address.']);
-    }
+    $custom_props = $wpdb->get_results( $wpdb->prepare(
+        "SELECT * FROM {$wpdb->prefix}crm_custom_properties
+         WHERE business_id = %d AND object_type = 'company' AND status = 'active'
+         ORDER BY sort_order ASC",
+        $business_id
+    ) );
 
-    // Assign to a default business (first admin user)
-    $admin_users = get_users(['role' => 'administrator', 'number' => 1]);
-    $business_id = !empty($admin_users) ? $admin_users[0]->ID : 1;
+    ob_start();
+    ?>
 
-    $wpdb->query('START TRANSACTION');
-    try {
-        // Check for existing contact by email for this business
-        $existing = $wpdb->get_var($wpdb->prepare(
-            "SELECT id FROM {$wpdb->prefix}crm_contacts WHERE email = %s AND business_id = %d LIMIT 1",
-            $email, $business_id
-        ));
+    <?php if ( $is_detail_view ) : ?>
+        <?php echo crm_render_record_detail_page(
+            'company',
+            $detail_record,
+            crm_get_tab_url( 'companies' ),
+            'Edit Company'
+        ); ?>
+    <?php endif; ?>
 
-        $contact_id = $existing;
+    <!-- Filter Row -->
+    <div class="crm-company-list-shell" style="<?php echo $is_detail_view ? 'display:none;' : ''; ?>">
+    <div class="crm-filter-row">
+        <input type="text" id="crm-company-search"
+               placeholder="Search name, industry, website..."
+               style="flex:1;min-width:200px;">
+        <select id="crm-company-filter-owner">
+            <option value="">All Owners</option>
+            <?php foreach ( $users as $u ) : ?>
+                <option value="<?php echo intval( $u->ID ); ?>">
+                    <?php echo esc_html( $u->display_name ); ?>
+                </option>
+            <?php endforeach; ?>
+        </select>
+        <button class="bntm-btn-primary" id="crm-company-add-btn">
+            <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+            </svg>
+            Add Company
+        </button>
+    </div>
 
-        if (!$existing) {
-            $wpdb->insert(
-                $wpdb->prefix . 'crm_contacts',
-                ['rand_id'=>bntm_rand_id(),'business_id'=>$business_id,'first_name'=>$first_name,'last_name'=>$last_name,'email'=>$email,'phone'=>$phone,'company'=>$company,'notes'=>$message,'status'=>'active'],
-                ['%s','%d','%s','%s','%s','%s','%s','%s','%s']
-            );
-            $contact_id = $wpdb->insert_id;
+    <!-- Companies Table -->
+    <div class="bntm-form-section" style="padding:0;overflow:hidden;">
+        <div id="crm-companies-table-wrap">
+            <div class="crm-empty" style="padding:48px;">
+                <p>Loading companies...</p>
+            </div>
+        </div>
+        <div id="crm-companies-pagination"
+             style="padding:16px 20px;border-top:1px solid #f3f4f6;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        </div>
+    </div>
+    </div>
+
+    <!-- Add / Edit Company Modal -->
+    <div class="crm-modal-overlay" id="crm-company-modal">
+        <div class="crm-modal">
+            <div class="crm-modal-header">
+                <h3 data-default="Add Company">Add Company</h3>
+                <button class="crm-modal-close" onclick="crmCloseModal('crm-company-modal')">
+                    <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                              d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="crm-modal-body">
+                <input type="hidden" id="crm-company-id" name="record_id" value="">
+
+                <div class="crm-field-group">
+                    <label>Company Name <span style="color:#ef4444;">*</span></label>
+                    <input type="text" id="crm-company-name" placeholder="Acme Corporation">
+                </div>
+
+                <div class="crm-field-row">
+                    <div class="crm-field-group">
+                        <label>Industry</label>
+                        <select id="crm-company-industry">
+                            <option value="">Select industry...</option>
+                            <option value="Technology">Technology</option>
+                            <option value="Finance">Finance</option>
+                            <option value="Healthcare">Healthcare</option>
+                            <option value="Retail">Retail</option>
+                            <option value="Manufacturing">Manufacturing</option>
+                            <option value="Real Estate">Real Estate</option>
+                            <option value="Education">Education</option>
+                            <option value="Hospitality">Hospitality</option>
+                            <option value="Construction">Construction</option>
+                            <option value="Legal">Legal</option>
+                            <option value="Marketing">Marketing</option>
+                            <option value="Logistics">Logistics</option>
+                            <option value="Non-Profit">Non-Profit</option>
+                            <option value="Government">Government</option>
+                            <option value="Other">Other</option>
+                        </select>
+                    </div>
+                    <div class="crm-field-group">
+                        <label>Phone</label>
+                        <input type="text" id="crm-company-phone" placeholder="+1 555 000 0000">
+                    </div>
+                </div>
+
+                <div class="crm-field-row">
+                    <div class="crm-field-group">
+                        <label>Email</label>
+                        <input type="email" id="crm-company-email" placeholder="team@example.com">
+                    </div>
+                    <div class="crm-field-group">
+                        <label>Website</label>
+                        <input type="text" id="crm-company-website" placeholder="https://example.com">
+                    </div>
+                </div>
+                <div class="crm-field-row">
+                    <div class="crm-field-group">
+                        <label>Lead Source</label>
+                        <input type="text" id="crm-company-lead-source" placeholder="e.g. Referral, Website, Event">
+                    </div>
+                    <div class="crm-field-group">
+                        <label>Owner</label>
+                        <select id="crm-company-owner">
+                            <option value="">Unassigned</option>
+                            <?php foreach ( $users as $u ) : ?>
+                                <option value="<?php echo intval( $u->ID ); ?>">
+                                    <?php echo esc_html( $u->display_name ); ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                </div>
+                <div class="crm-field-group">
+                    <label>Address</label>
+                    <textarea id="crm-company-address" rows="3" placeholder="Street, city, state, postal code"></textarea>
+                </div>
+
+                <div class="crm-field-group">
+                    <label>Tags <span style="font-weight:400;color:#9ca3af;">(comma separated)</span></label>
+                    <input type="text" id="crm-company-tags" placeholder="e.g. enterprise, partner, key-account">
+                </div>
+
+                <?php if ( ! empty( $custom_props ) ) : ?>
+                    <div style="border-top:1px solid #f3f4f6;padding-top:16px;margin-top:4px;">
+                        <p style="font-size:12px;font-weight:600;color:#6b7280;text-transform:uppercase;
+                                  letter-spacing:.5px;margin-bottom:12px;">
+                            Custom Properties
+                        </p>
+                        <?php foreach ( $custom_props as $prop ) : ?>
+                            <div class="crm-field-group">
+                                <label><?php echo esc_html( $prop->field_label ); ?></label>
+                                <?php if ( $prop->field_type === 'textarea' ) : ?>
+                                    <textarea id="crm-co-cprop-<?php echo esc_attr( $prop->field_name ); ?>"
+                                              data-prop="<?php echo esc_attr( $prop->field_name ); ?>"
+                                              class="crm-company-custom-prop-field"
+                                              rows="3"></textarea>
+                                <?php elseif ( $prop->field_type === 'select' ) :
+                                    $opts = json_decode( $prop->field_options, true ) ?: [];
+                                ?>
+                                    <select id="crm-co-cprop-<?php echo esc_attr( $prop->field_name ); ?>"
+                                            data-prop="<?php echo esc_attr( $prop->field_name ); ?>"
+                                            class="crm-company-custom-prop-field">
+                                        <option value="">Select...</option>
+                                        <?php foreach ( $opts as $opt ) : ?>
+                                            <option value="<?php echo esc_attr( $opt ); ?>">
+                                                <?php echo esc_html( $opt ); ?>
+                                            </option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                <?php else : ?>
+                                    <input type="<?php echo $prop->field_type === 'number'
+                                                        ? 'number'
+                                                        : ( $prop->field_type === 'date' ? 'date' : 'text' ); ?>"
+                                           id="crm-co-cprop-<?php echo esc_attr( $prop->field_name ); ?>"
+                                           data-prop="<?php echo esc_attr( $prop->field_name ); ?>"
+                                           class="crm-company-custom-prop-field">
+                                <?php endif; ?>
+                            </div>
+                        <?php endforeach; ?>
+                    </div>
+                <?php endif; ?>
+            </div>
+            <div class="crm-modal-footer">
+                <button class="bntm-btn-secondary" onclick="crmCloseModal('crm-company-modal')">Cancel</button>
+                <button class="bntm-btn-primary" id="crm-company-save-btn">Save Company</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Linked Contacts / Deals Drawer -->
+    <div class="crm-modal-overlay" id="crm-company-detail-modal">
+        <div class="crm-modal" style="max-width:680px;">
+            <div class="crm-modal-header">
+                <h3 id="crm-company-detail-title">Company Details</h3>
+                <button class="crm-modal-close" onclick="crmCloseModal('crm-company-detail-modal')">
+                    <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                              d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="crm-modal-body" id="crm-company-detail-body">
+                <p style="color:#9ca3af;text-align:center;padding:24px 0;">Loading...</p>
+            </div>
+            <div class="crm-modal-footer">
+                <button class="bntm-btn-secondary" onclick="crmCloseModal('crm-company-detail-modal')">
+                    Close
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    (function() {
+        var page        = 1;
+        var perPage     = 20;
+        var totalPages  = 1;
+        var searchTimer = null;
+        var cachedList  = [];
+        var isDetailView = <?php echo $is_detail_view ? 'true' : 'false'; ?>;
+        var detailRecord = <?php echo wp_json_encode( $detail_record ); ?>;
+        var initialLoadStarted = false;
+
+        function whenDetailApiReady(cb, tries) {
+            tries = tries || 0;
+            if (typeof crmInitRecordDetailView === 'function' && typeof crmRegisterDetailEditor === 'function') {
+                cb();
+                return;
+            }
+            if (tries > 80) return;
+            setTimeout(function() { whenDetailApiReady(cb, tries + 1); }, 25);
         }
 
-        // Create lead
-        $lead_title = 'Enquiry from ' . $first_name . ' ' . $last_name;
-        $wpdb->insert(
-            $wpdb->prefix . 'crm_leads',
-            ['rand_id'=>bntm_rand_id(),'business_id'=>$business_id,'contact_id'=>$contact_id,'title'=>$lead_title,'value'=>0,'stage'=>'new','priority'=>'medium','notes'=>$message,'status'=>'open'],
-            ['%s','%d','%d','%s','%f','%s','%s','%s','%s']
-        );
+        function loadCompanies() {
+            var search = document.getElementById('crm-company-search').value;
+            var owner  = document.getElementById('crm-company-filter-owner').value;
+            var wrap   = document.getElementById('crm-companies-table-wrap');
 
-        // Log interaction
-        if ($message) {
-            $wpdb->insert(
-                $wpdb->prefix . 'crm_interactions',
-                ['rand_id'=>bntm_rand_id(),'business_id'=>$business_id,'contact_id'=>$contact_id,'type'=>'note','subject'=>'Contact form submission','details'=>$message,'interaction_date'=>current_time('mysql'),'status'=>'active'],
-                ['%s','%d','%d','%s','%s','%s','%s','%s']
+            wrap.innerHTML = '<div class="crm-empty" style="padding:48px;"><p>Loading...</p></div>';
+
+            crmPost( 'crm_get_companies', {
+                search:   search,
+                owner_id: owner,
+                page:     page,
+                per_page: perPage
+            }, function(data) {
+                cachedList = data.companies || [];
+                totalPages = data.total_pages || 1;
+                renderCompaniesTable( cachedList );
+                renderPagination( data.total || 0 );
+            });
+        }
+
+        function renderCompaniesTable( companies ) {
+            var wrap = document.getElementById('crm-companies-table-wrap');
+
+            if ( companies.length === 0 ) {
+                wrap.innerHTML = '<div class="crm-empty" style="padding:48px;">'
+                    + '<svg width="36" height="36" fill="none" stroke="currentColor" viewBox="0 0 24 24">'
+                    + '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" '
+                    + 'd="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 '
+                    + '0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/>'
+                    + '</svg><p>No companies found.</p></div>';
+                return;
+            }
+
+            var html = '<div class="bntm-table-wrapper" style="border:none;border-radius:0;">'
+                + '<table class="bntm-table"><thead><tr>'
+                + '<th>Company</th><th>Industry</th><th>Website</th>'
+                + '<th>Phone</th><th>Owner</th><th>Tags</th>'
+                + '<th>Contacts</th><th>Deals</th><th>Actions</th>'
+                + '</tr></thead><tbody>';
+
+            companies.forEach(function(co) {
+                var tags = co.tags
+                    ? co.tags.split(',').map(function(t) {
+                        return '<span class="crm-tag">' + crmEsc(t.trim()) + '</span>';
+                      }).join('')
+                    : '—';
+
+                var website = co.website
+                    ? '<a href="' + crmEsc(co.website) + '" target="_blank" '
+                      + 'style="color:var(--bntm-primary);text-decoration:none;">'
+                      + crmEsc(co.website.replace(/^https?:\/\//, '').replace(/\/$/, ''))
+                      + '</a>'
+                    : '—';
+                var detailUrl = crmBuildUrl({ tab: 'companies', view: 'company', id: co.id });
+
+                html += '<tr>'
+                    + '<td>'
+                    + '<a href="' + crmEsc(detailUrl) + '" class="crm-detail-inline-link" '
+                    + 'style="font-weight:600;font-size:14px;text-align:left;">'
+                    + crmEsc(co.name)
+                    + '</a></td>'
+                    + '<td>' + ( co.industry ? crmEsc(co.industry) : '—' ) + '</td>'
+                    + '<td>' + website + '</td>'
+                    + '<td>' + ( co.phone ? crmEsc(co.phone) : '—' ) + '</td>'
+                    + '<td>' + ( co.owner_name ? crmEsc(co.owner_name) : '—' ) + '</td>'
+                    + '<td><div class="crm-tags-wrap">' + tags + '</div></td>'
+                    + '<td style="text-align:center;">'
+                    + '<span class="crm-count-pill">' + parseInt(co.contact_count || 0) + '</span>'
+                    + '</td>'
+                    + '<td style="text-align:center;">'
+                    + '<span class="crm-count-pill">' + parseInt(co.deal_count || 0) + '</span>'
+                    + '</td>'
+                    + '<td style="white-space:nowrap;">'
+                    + '<button class="bntm-btn-secondary bntm-btn-small crm-company-edit-btn" '
+                    + 'data-id="' + co.id + '">Edit</button> '
+                    + '<button class="bntm-btn-danger bntm-btn-small crm-company-delete-btn" '
+                    + 'data-id="' + co.id + '">Delete</button>'
+                    + '</td>'
+                    + '</tr>';
+            });
+
+            html += '</tbody></table></div>';
+            wrap.innerHTML = html;
+            wrap.querySelectorAll('.crm-company-edit-btn').forEach(function(btn) {
+                btn.addEventListener('click', function() {
+                    openEditCompany( this.dataset.id );
+                });
+            });
+            wrap.querySelectorAll('.crm-company-delete-btn').forEach(function(btn) {
+                btn.addEventListener('click', function() {
+                    deleteCompany( this.dataset.id );
+                });
+            });
+        }
+
+        function renderPagination(total) {
+            var pag = document.getElementById('crm-companies-pagination');
+            if ( totalPages <= 1 ) {
+                pag.innerHTML = '<span style="font-size:13px;color:#9ca3af;">'
+                    + 'Showing ' + total + ' compan' + (total === 1 ? 'y' : 'ies') + '</span>';
+                return;
+            }
+            var html = '<span style="font-size:13px;color:#6b7280;margin-right:8px;">'
+                + 'Page ' + page + ' of ' + totalPages + ' &nbsp;|&nbsp; ' + total + ' total</span>';
+            if ( page > 1 ) {
+                html += '<button class="bntm-btn-secondary bntm-btn-small" id="crm-co-prev">Prev</button> ';
+            }
+            if ( page < totalPages ) {
+                html += '<button class="bntm-btn-secondary bntm-btn-small" id="crm-co-next">Next</button>';
+            }
+            pag.innerHTML = html;
+
+            var prevBtn = document.getElementById('crm-co-prev');
+            var nextBtn = document.getElementById('crm-co-next');
+            if ( prevBtn ) prevBtn.addEventListener('click', function() { page--; loadCompanies(); });
+            if ( nextBtn ) nextBtn.addEventListener('click', function() { page++; loadCompanies(); });
+        }
+
+        function resetCompanyForm() {
+            document.getElementById('crm-company-id').value = '';
+            document.getElementById('crm-company-name').value = '';
+            document.getElementById('crm-company-industry').value = '';
+            document.getElementById('crm-company-phone').value = '';
+            document.getElementById('crm-company-email').value = '';
+            document.getElementById('crm-company-website').value = '';
+            document.getElementById('crm-company-address').value = '';
+            document.getElementById('crm-company-lead-source').value = '';
+            document.getElementById('crm-company-owner').value = '';
+            document.getElementById('crm-company-tags').value = '';
+            document.querySelectorAll('.crm-company-custom-prop-field').forEach(function(el) {
+                el.value = '';
+            });
+        }
+
+        function populateCompanyForm(co) {
+            document.getElementById('crm-company-id').value       = co.id || '';
+            document.getElementById('crm-company-name').value     = co.name        || '';
+            document.getElementById('crm-company-industry').value = co.industry    || '';
+            document.getElementById('crm-company-phone').value    = co.phone       || '';
+            document.getElementById('crm-company-email').value    = co.email       || '';
+            document.getElementById('crm-company-website').value  = co.website     || '';
+            document.getElementById('crm-company-address').value  = co.address     || '';
+            document.getElementById('crm-company-lead-source').value = co.lead_source || '';
+            document.getElementById('crm-company-owner').value    = co.owner_id    || '';
+            document.getElementById('crm-company-tags').value     = co.tags        || '';
+
+            var customProps = {};
+            try { customProps = JSON.parse(co.custom_properties || '{}'); } catch(e) {}
+            document.querySelectorAll('.crm-company-custom-prop-field').forEach(function(el) {
+                var prop = el.dataset.prop;
+                el.value = ( prop && customProps[prop] !== undefined ) ? customProps[prop] : '';
+            });
+        }
+
+        function openEditCompany(id) {
+            var co = cachedList.find(function(x) { return x.id == id; });
+            if ( ! co ) return;
+            populateCompanyForm(co);
+
+            var title = document.querySelector('#crm-company-modal .crm-modal-header h3');
+            title.textContent = 'Edit Company';
+            crmOpenModal('crm-company-modal');
+        }
+
+        function openCompanyDetail(id) {
+            var titleEl = document.getElementById('crm-company-detail-title');
+            var bodyEl  = document.getElementById('crm-company-detail-body');
+            var co      = cachedList.find(function(x) { return x.id == id; });
+
+            titleEl.textContent = co ? co.name : 'Company Details';
+            bodyEl.innerHTML    = '<p style="color:#9ca3af;text-align:center;padding:24px 0;">Loading...</p>';
+            crmOpenModal('crm-company-detail-modal');
+
+            crmPost( 'crm_get_companies', {
+                company_id: id,
+                detail:     '1',
+                page:       1,
+                per_page:   999
+            }, function(data) {
+                var detail   = data.detail   || {};
+                var contacts = data.contacts || [];
+                var deals    = data.deals    || [];
+
+                var html = '';
+
+                // Meta strip
+                html += '<div class="crm-detail-meta-strip">';
+                if (detail.industry) html += '<span><strong>Industry:</strong> ' + crmEsc(detail.industry) + '</span>';
+                if (detail.phone)    html += '<span><strong>Phone:</strong> '    + crmEsc(detail.phone)    + '</span>';
+                if (detail.website)  html += '<span><strong>Website:</strong> <a href="'
+                    + crmEsc(detail.website) + '" target="_blank" style="color:var(--bntm-primary);">'
+                    + crmEsc(detail.website) + '</a></span>';
+                html += '</div>';
+
+                // Linked contacts
+                html += '<div style="margin-top:20px;">';
+                html += '<h4 style="font-size:14px;font-weight:700;color:#111827;margin:0 0 10px;">'
+                    + 'Linked Contacts (' + contacts.length + ')</h4>';
+
+                if ( contacts.length === 0 ) {
+                    html += '<p style="font-size:13px;color:#9ca3af;">No contacts linked to this company.</p>';
+                } else {
+                    html += '<div class="bntm-table-wrapper"><table class="bntm-table">'
+                        + '<thead><tr><th>Name</th><th>Email</th><th>Status</th></tr></thead><tbody>';
+                    contacts.forEach(function(c) {
+                        var lc = c.lifecycle_status || 'lead';
+                        html += '<tr>'
+                            + '<td style="font-weight:500;">' + crmEsc(c.first_name) + ' ' + crmEsc(c.last_name) + '</td>'
+                            + '<td>' + ( c.email ? crmEsc(c.email) : '—' ) + '</td>'
+                            + '<td><span class="crm-badge crm-badge-' + lc + '">' + crmEsc(lc) + '</span></td>'
+                            + '</tr>';
+                    });
+                    html += '</tbody></table></div>';
+                }
+                html += '</div>';
+
+                // Linked deals
+                html += '<div style="margin-top:20px;">';
+                html += '<h4 style="font-size:14px;font-weight:700;color:#111827;margin:0 0 10px;">'
+                    + 'Linked Deals (' + deals.length + ')</h4>';
+
+                if ( deals.length === 0 ) {
+                    html += '<p style="font-size:13px;color:#9ca3af;">No deals linked to this company.</p>';
+                } else {
+                    html += '<div class="bntm-table-wrapper"><table class="bntm-table">'
+                        + '<thead><tr><th>Deal</th><th>Amount</th><th>Stage</th><th>Status</th></tr></thead><tbody>';
+                    deals.forEach(function(d) {
+                        var st = d.status || 'open';
+                        html += '<tr>'
+                            + '<td style="font-weight:500;">' + crmEsc(d.name) + '</td>'
+                            + '<td>' + crmFormatCurrency(d.amount) + '</td>'
+                            + '<td>' + ( d.stage_name ? crmEsc(d.stage_name) : '—' ) + '</td>'
+                            + '<td><span class="crm-badge crm-badge-' + st + '">' + crmEsc(st) + '</span></td>'
+                            + '</tr>';
+                    });
+                    html += '</tbody></table></div>';
+                }
+                html += '</div>';
+
+                bodyEl.innerHTML = html;
+            });
+        }
+
+        function deleteCompany(id) {
+            crmConfirm(
+                'Delete this company? Contacts will be unlinked. '
+                + 'Companies with open deals cannot be deleted.',
+                function() {
+                    crmPost( 'crm_delete_company', { company_id: id }, function(data) {
+                        crmToast(data.message || 'Company deleted.', 'success');
+                        loadCompanies();
+                    });
+                }
             );
         }
 
-        $wpdb->query('COMMIT');
-        wp_send_json_success(['message' => 'Thank you! Your message has been received.']);
-    } catch (Exception $e) {
-        $wpdb->query('ROLLBACK');
-        wp_send_json_error(['message' => 'Submission failed. Please try again.']);
+        // Add button
+        document.getElementById('crm-company-add-btn').addEventListener('click', function() {
+            resetCompanyForm();
+            var title = document.querySelector('#crm-company-modal .crm-modal-header h3');
+            title.textContent = 'Add Company';
+            crmOpenModal('crm-company-modal');
+        });
+
+        // Save button
+        document.getElementById('crm-company-save-btn').addEventListener('click', function() {
+            var btn       = this;
+            var companyId = document.getElementById('crm-company-id').value;
+            var name      = document.getElementById('crm-company-name').value.trim();
+
+            if ( ! name ) {
+                crmToast('Company name is required.', 'error');
+                return;
+            }
+
+            var customProps = {};
+            document.querySelectorAll('.crm-company-custom-prop-field').forEach(function(el) {
+                if ( el.dataset.prop ) customProps[el.dataset.prop] = el.value;
+            });
+
+            var action   = companyId ? 'crm_update_company' : 'crm_create_company';
+            btn.disabled = true;
+            btn.textContent = 'Saving...';
+
+            crmPost( action, {
+                company_id:        companyId,
+                name:              name,
+                industry:          document.getElementById('crm-company-industry').value,
+                phone:             document.getElementById('crm-company-phone').value.trim(),
+                email:             document.getElementById('crm-company-email').value.trim(),
+                website:           document.getElementById('crm-company-website').value.trim(),
+                address:           document.getElementById('crm-company-address').value.trim(),
+                lead_source:       document.getElementById('crm-company-lead-source').value.trim(),
+                owner_id:          document.getElementById('crm-company-owner').value,
+                tags:              document.getElementById('crm-company-tags').value.trim(),
+                custom_properties: JSON.stringify(customProps)
+            }, function(data) {
+                crmToast(data.message || 'Saved.', 'success');
+                crmCloseModal('crm-company-modal');
+                if (isDetailView) {
+                    window.location.reload();
+                    return;
+                }
+                loadCompanies();
+                btn.disabled    = false;
+                btn.textContent = 'Save Company';
+            }, function() {
+                btn.disabled    = false;
+                btn.textContent = 'Save Company';
+            });
+        });
+
+        // Filters
+        document.getElementById('crm-company-search').addEventListener('input', function() {
+            clearTimeout(searchTimer);
+            searchTimer = setTimeout(function() { page = 1; loadCompanies(); }, 380);
+        });
+        document.getElementById('crm-company-filter-owner').addEventListener('change', function() {
+            page = 1; loadCompanies();
+        });
+
+        function startInitialLoad() {
+            if (initialLoadStarted) return;
+            initialLoadStarted = true;
+
+            if (isDetailView && detailRecord && detailRecord.id) {
+                window.crmDetailViewContext = { objectType: 'company', recordId: detailRecord.id };
+                whenDetailApiReady(function() {
+                    crmInitRecordDetailView({
+                        containerId: 'crm-record-detail-company',
+                        objectType: 'company',
+                        recordId: detailRecord.id,
+                        initialTab: 'activity'
+                    });
+                    crmRegisterDetailEditor('company', function(fieldKey) {
+                        populateCompanyForm(detailRecord);
+                        document.querySelector('#crm-company-modal .crm-modal-header h3').textContent = 'Edit Company';
+                        crmOpenModal('crm-company-modal');
+                        if (fieldKey) {
+                            window.crmFocusDetailEditField('company', fieldKey);
+                        }
+                    });
+                });
+                return;
+            }
+
+            loadCompanies();
+        }
+
+        window.bntmWhenCrmCoreReady(startInitialLoad);
+    })();
+    </script>
+
+    <style>
+    .crm-count-pill {
+        display: inline-block;
+        background: #f3f4f6;
+        color: #374151;
+        font-size: 12px;
+        font-weight: 600;
+        padding: 2px 10px;
+        border-radius: 20px;
+        min-width: 28px;
+        text-align: center;
     }
+    .crm-detail-meta-strip {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 16px;
+        background: #f9fafb;
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        padding: 12px 16px;
+        font-size: 13px;
+        color: #374151;
+    }
+    .crm-detail-meta-strip span { display: flex; gap: 4px; align-items: center; }
+    </style>
+    <?php
+    return ob_get_clean();
 }
 
-// ============================================================
-// HELPER FUNCTIONS
-// ============================================================
+// =============================================================================
+// TAB 4 — DEALS
+// =============================================================================
 
-/**
- * Format a numeric amount as a CRM currency string.
- * @param float $amount Numeric amount to format.
- * @return string
- */
-function crm_format_price($amount) {
-    $currency = bntm_get_setting('crm_currency', 'USD');
+function crm_deals_tab( $business_id, $detail_record_id = 0 ) {
+    global $wpdb;
+
+    $is_detail_view = $detail_record_id > 0;
+    $detail_record  = $is_detail_view ? crm_get_detail_record( 'deal', $detail_record_id, $business_id ) : null;
+
+    $users = get_users( [ 'fields' => [ 'ID', 'display_name' ] ] );
+
+    $stages = $wpdb->get_results( $wpdb->prepare(
+        "SELECT * FROM {$wpdb->prefix}crm_pipeline_stages
+         WHERE business_id = %d AND pipeline_id = 1 AND status = 'active'
+         ORDER BY sort_order ASC",
+        $business_id
+    ) );
+
+    $contacts = $wpdb->get_results( $wpdb->prepare(
+        "SELECT id, first_name, last_name FROM {$wpdb->prefix}crm_contacts
+         WHERE business_id = %d AND status = 'active'
+         ORDER BY first_name ASC",
+        $business_id
+    ) );
+
+    $companies = $wpdb->get_results( $wpdb->prepare(
+        "SELECT id, name FROM {$wpdb->prefix}crm_companies
+         WHERE business_id = %d AND status = 'active'
+         ORDER BY name ASC",
+        $business_id
+    ) );
+
+    $custom_props = $wpdb->get_results( $wpdb->prepare(
+        "SELECT * FROM {$wpdb->prefix}crm_custom_properties
+         WHERE business_id = %d AND object_type = 'deal' AND status = 'active'
+         ORDER BY sort_order ASC",
+        $business_id
+    ) );
+
+    ob_start();
+    ?>
+
+    <?php if ( $is_detail_view ) : ?>
+        <?php echo crm_render_record_detail_page(
+            'deal',
+            $detail_record,
+            crm_get_tab_url( 'deals' ),
+            'Edit Deal'
+        ); ?>
+    <?php endif; ?>
+
+    <!-- View Toggle + Filter Row -->
+    <div class="crm-deal-list-shell" style="<?php echo $is_detail_view ? 'display:none;' : ''; ?>">
+    <div class="crm-filter-row" style="justify-content:space-between;">
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;flex:1;">
+            <input type="text" id="crm-deal-search"
+                   placeholder="Search deals..."
+                   style="min-width:200px;flex:1;">
+            <select id="crm-deal-filter-stage">
+                <option value="">All Stages</option>
+                <?php foreach ( $stages as $stage ) : ?>
+                    <option value="<?php echo intval( $stage->id ); ?>">
+                        <?php echo esc_html( $stage->name ); ?>
+                    </option>
+                <?php endforeach; ?>
+            </select>
+            <select id="crm-deal-filter-status">
+                <option value="">All Statuses</option>
+                <option value="open">Open</option>
+                <option value="closed">Closed</option>
+            </select>
+            <select id="crm-deal-filter-owner">
+                <option value="">All Owners</option>
+                <?php foreach ( $users as $u ) : ?>
+                    <option value="<?php echo intval( $u->ID ); ?>">
+                        <?php echo esc_html( $u->display_name ); ?>
+                    </option>
+                <?php endforeach; ?>
+            </select>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;flex-shrink:0;">
+            <div class="crm-view-toggle">
+                <button class="crm-view-btn active" id="crm-deal-view-list" data-view="list"
+                        title="List View">
+                    <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                              d="M4 6h16M4 10h16M4 14h16M4 18h16"/>
+                    </svg>
+                </button>
+                <button class="crm-view-btn" id="crm-deal-view-board" data-view="board"
+                        title="Board View">
+                    <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                              d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2"/>
+                    </svg>
+                </button>
+            </div>
+            <button class="bntm-btn-primary" id="crm-deal-add-btn">
+                <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+                </svg>
+                Add Deal
+            </button>
+        </div>
+    </div>
+
+    <!-- List View -->
+    <div id="crm-deals-list-view">
+        <div class="bntm-form-section" style="padding:0;overflow:hidden;">
+            <div id="crm-deals-table-wrap">
+                <div class="crm-empty" style="padding:48px;">
+                    <p>Loading deals...</p>
+                </div>
+            </div>
+            <div id="crm-deals-pagination"
+                 style="padding:16px 20px;border-top:1px solid #f3f4f6;
+                        display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            </div>
+        </div>
+    </div>
+
+    <!-- Board View -->
+    <div id="crm-deals-board-view" style="display:none;">
+        <div id="crm-deals-board-wrap">
+            <div class="crm-empty" style="padding:48px;">
+                <p>Loading board...</p>
+            </div>
+        </div>
+    </div>
+    </div>
+
+    <!-- Add / Edit Deal Modal -->
+    <div class="crm-modal-overlay" id="crm-deal-modal">
+        <div class="crm-modal">
+            <div class="crm-modal-header">
+                <h3 data-default="Add Deal">Add Deal</h3>
+                <button class="crm-modal-close" onclick="crmCloseModal('crm-deal-modal')">
+                    <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                              d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="crm-modal-body">
+                <input type="hidden" id="crm-deal-id" name="record_id" value="">
+
+                <div class="crm-field-group">
+                    <label>Deal Name <span style="color:#ef4444;">*</span></label>
+                    <input type="text" id="crm-deal-name" placeholder="e.g. Website Redesign Project">
+                </div>
+
+                <div class="crm-field-row">
+                    <div class="crm-field-group">
+                        <label>Amount</label>
+                        <input type="number" id="crm-deal-amount" placeholder="0.00" min="0" step="0.01">
+                    </div>
+                    <div class="crm-field-group">
+                        <label>Expected Close Date</label>
+                        <input type="date" id="crm-deal-close-date">
+                    </div>
+                </div>
+
+                <div class="crm-field-row">
+                    <div class="crm-field-group">
+                        <label>Stage <span style="color:#ef4444;">*</span></label>
+                        <select id="crm-deal-stage">
+                            <option value="">Select stage...</option>
+                            <?php foreach ( $stages as $stage ) : ?>
+                                <option value="<?php echo intval( $stage->id ); ?>">
+                                    <?php echo esc_html( $stage->name ); ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div class="crm-field-group">
+                        <label>Status</label>
+                        <select id="crm-deal-status">
+                            <option value="open">Open</option>
+                            <option value="closed">Closed</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="crm-field-row">
+                    <div class="crm-field-group">
+                        <label>Owner</label>
+                        <select id="crm-deal-owner">
+                            <option value="">Unassigned</option>
+                            <?php foreach ( $users as $u ) : ?>
+                                <option value="<?php echo intval( $u->ID ); ?>">
+                                    <?php echo esc_html( $u->display_name ); ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="crm-field-row">
+                    <div class="crm-field-group">
+                        <label>Contact <span style="color:#ef4444;">*</span></label>
+                        <select id="crm-deal-contact">
+                            <option value="">Select contact...</option>
+                            <?php foreach ( $contacts as $ct ) : ?>
+                                <option value="<?php echo intval( $ct->id ); ?>">
+                                    <?php echo esc_html( trim( $ct->first_name . ' ' . $ct->last_name ) ); ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div class="crm-field-group">
+                        <label>Company <span style="font-weight:400;color:#9ca3af;">(optional)</span></label>
+                        <select id="crm-deal-company">
+                            <option value="0">No company</option>
+                            <?php foreach ( $companies as $co ) : ?>
+                                <option value="<?php echo intval( $co->id ); ?>">
+                                    <?php echo esc_html( $co->name ); ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                </div>
+
+                <?php if ( ! empty( $custom_props ) ) : ?>
+                    <div style="border-top:1px solid #f3f4f6;padding-top:16px;margin-top:4px;">
+                        <p style="font-size:12px;font-weight:600;color:#6b7280;
+                                  text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px;">
+                            Custom Properties
+                        </p>
+                        <?php foreach ( $custom_props as $prop ) : ?>
+                            <div class="crm-field-group">
+                                <label><?php echo esc_html( $prop->field_label ); ?></label>
+                                <?php if ( $prop->field_type === 'textarea' ) : ?>
+                                    <textarea id="crm-dl-cprop-<?php echo esc_attr( $prop->field_name ); ?>"
+                                              data-prop="<?php echo esc_attr( $prop->field_name ); ?>"
+                                              class="crm-deal-custom-prop-field"
+                                              rows="3"></textarea>
+                                <?php elseif ( $prop->field_type === 'select' ) :
+                                    $opts = json_decode( $prop->field_options, true ) ?: [];
+                                ?>
+                                    <select id="crm-dl-cprop-<?php echo esc_attr( $prop->field_name ); ?>"
+                                            data-prop="<?php echo esc_attr( $prop->field_name ); ?>"
+                                            class="crm-deal-custom-prop-field">
+                                        <option value="">Select...</option>
+                                        <?php foreach ( $opts as $opt ) : ?>
+                                            <option value="<?php echo esc_attr( $opt ); ?>">
+                                                <?php echo esc_html( $opt ); ?>
+                                            </option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                <?php else : ?>
+                                    <input type="<?php echo $prop->field_type === 'number'
+                                                        ? 'number'
+                                                        : ( $prop->field_type === 'date' ? 'date' : 'text' ); ?>"
+                                           id="crm-dl-cprop-<?php echo esc_attr( $prop->field_name ); ?>"
+                                           data-prop="<?php echo esc_attr( $prop->field_name ); ?>"
+                                           class="crm-deal-custom-prop-field">
+                                <?php endif; ?>
+                            </div>
+                        <?php endforeach; ?>
+                    </div>
+                <?php endif; ?>
+            </div>
+            <div class="crm-modal-footer">
+                <button class="bntm-btn-secondary" onclick="crmCloseModal('crm-deal-modal')">Cancel</button>
+                <button class="bntm-btn-primary" id="crm-deal-save-btn">Save Deal</button>
+            </div>
+        </div>
+    </div>
+
+    <style>
+    .crm-view-toggle {
+        display: flex;
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        overflow: hidden;
+    }
+    .crm-view-btn {
+        background: #fff;
+        border: none;
+        padding: 8px 12px;
+        cursor: pointer;
+        color: #6b7280;
+        display: flex;
+        align-items: center;
+        transition: background .15s, color .15s;
+    }
+    .crm-view-btn:hover  { background: #f9fafb; color: #374151; }
+    .crm-view-btn.active { background: var(--bntm-primary); color: #fff; }
+    .crm-deal-amount-col {
+        font-weight: 700;
+        color: var(--bntm-primary);
+    }
+    .crm-close-date-warn { color: #ef4444; font-weight: 600; }
+    </style>
+
+    <script>
+    (function() {
+        var currentView = 'list';
+        var page        = 1;
+        var perPage     = 20;
+        var totalPages  = 1;
+        var searchTimer = null;
+        var cachedDeals = [];
+        var isDetailView = <?php echo $is_detail_view ? 'true' : 'false'; ?>;
+        var detailRecord = <?php echo wp_json_encode( $detail_record ); ?>;
+        var initialLoadStarted = false;
+        var stagesData  = <?php echo wp_json_encode(
+            array_map( function($s) {
+                return [ 'id' => (int)$s->id, 'name' => $s->name, 'color' => $s->color ];
+            }, $stages )
+        ); ?>;
+
+        function whenDetailApiReady(cb, tries) {
+            tries = tries || 0;
+            if (typeof crmInitRecordDetailView === 'function' && typeof crmRegisterDetailEditor === 'function') {
+                cb();
+                return;
+            }
+            if (tries > 80) return;
+            setTimeout(function() { whenDetailApiReady(cb, tries + 1); }, 25);
+        }
+
+        // ── View toggle ──
+        document.getElementById('crm-deal-view-list').addEventListener('click', function() {
+            setView('list');
+        });
+        document.getElementById('crm-deal-view-board').addEventListener('click', function() {
+            setView('board');
+        });
+
+        function setView(view) {
+            currentView = view;
+            document.getElementById('crm-deals-list-view').style.display  = view === 'list'  ? 'block' : 'none';
+            document.getElementById('crm-deals-board-view').style.display = view === 'board' ? 'block' : 'none';
+            document.getElementById('crm-deal-view-list').classList.toggle('active',  view === 'list');
+            document.getElementById('crm-deal-view-board').classList.toggle('active', view === 'board');
+            if ( view === 'list' )  loadDealsList();
+            if ( view === 'board' ) loadDealsBoard();
+        }
+
+        // ── List View ──
+        function loadDealsList() {
+            var wrap = document.getElementById('crm-deals-table-wrap');
+            wrap.innerHTML = '<div class="crm-empty" style="padding:48px;"><p>Loading...</p></div>';
+
+            crmPost( 'crm_get_deals', {
+                search:   document.getElementById('crm-deal-search').value,
+                stage_id: document.getElementById('crm-deal-filter-stage').value,
+                status:   document.getElementById('crm-deal-filter-status').value,
+                owner_id: document.getElementById('crm-deal-filter-owner').value,
+                page:     page,
+                per_page: perPage
+            }, function(data) {
+                cachedDeals = data.deals || [];
+                totalPages  = data.total_pages || 1;
+                renderDealsTable( cachedDeals );
+                renderPagination( data.total || 0 );
+            });
+        }
+
+        function renderDealsTable(deals) {
+            var wrap = document.getElementById('crm-deals-table-wrap');
+
+            if ( deals.length === 0 ) {
+                wrap.innerHTML = '<div class="crm-empty" style="padding:48px;">'
+                    + '<svg width="36" height="36" fill="none" stroke="currentColor" viewBox="0 0 24 24">'
+                    + '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" '
+                    + 'd="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 '
+                    + '2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 '
+                    + '0 11-18 0 9 9 0 0118 0z"/></svg>'
+                    + '<p>No deals found.</p></div>';
+                return;
+            }
+
+            var today = new Date();
+            today.setHours(0,0,0,0);
+
+            var html = '<div class="bntm-table-wrapper" style="border:none;border-radius:0;">'
+                + '<table class="bntm-table"><thead><tr>'
+                + '<th>Deal</th><th>Amount</th><th>Stage</th>'
+                + '<th>Close Date</th><th>Owner</th>'
+                + '<th>Contact</th><th>Company</th>'
+                + '<th>Status</th><th>Actions</th>'
+                + '</tr></thead><tbody>';
+
+            deals.forEach(function(d) {
+                var stObj     = stagesData.find(function(s){ return s.id == d.stage_id; });
+                var stName    = stObj ? stObj.name  : '—';
+                var stColor   = stObj ? stObj.color : '#9ca3af';
+                var statusCls = 'crm-badge-' + (d.status || 'open');
+                var detailUrl = crmBuildUrl({ tab: 'deals', view: 'deal', id: d.id });
+
+                var closeDateHtml = '—';
+                if ( d.expected_close_date ) {
+                    var cd = new Date(d.expected_close_date);
+                    cd.setHours(0,0,0,0);
+                    var isPast = cd < today && d.status === 'open';
+                    closeDateHtml = '<span class="' + (isPast ? 'crm-close-date-warn' : '') + '">'
+                        + crmEsc(d.expected_close_date) + '</span>';
+                }
+
+                html += '<tr>'
+                    + '<td style="max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'
+                    + '<a href="' + crmEsc(detailUrl) + '" class="crm-detail-inline-link" style="font-weight:600;">' + crmEsc(d.name) + '</a></td>'
+                    + '<td class="crm-deal-amount-col">' + crmFormatCurrency(d.amount) + '</td>'
+                    + '<td>'
+                    + '<span style="display:inline-flex;align-items:center;gap:5px;">'
+                    + '<span class="crm-stage-dot" style="background:' + crmEsc(stColor) + ';"></span>'
+                    + crmEsc(stName)
+                    + '</span></td>'
+                    + '<td>' + closeDateHtml + '</td>'
+                    + '<td>' + ( d.owner_name   ? crmEsc(d.owner_name)   : '—' ) + '</td>'
+                    + '<td>' + ( d.contact_name ? crmEsc(d.contact_name) : '—' ) + '</td>'
+                    + '<td>' + ( d.company_name ? crmEsc(d.company_name) : '—' ) + '</td>'
+                    + '<td><span class="crm-badge ' + statusCls + '">'
+                    + crmEsc(d.status || 'open') + '</span></td>'
+                    + '<td style="white-space:nowrap;">'
+                    + '<button class="bntm-btn-secondary bntm-btn-small crm-deal-edit-btn" '
+                    + 'data-id="' + d.id + '">Edit</button> '
+                    + '<button class="bntm-btn-danger bntm-btn-small crm-deal-delete-btn" '
+                    + 'data-id="' + d.id + '">Delete</button>'
+                    + '</td>'
+                    + '</tr>';
+            });
+
+            html += '</tbody></table></div>';
+            wrap.innerHTML = html;
+
+            wrap.querySelectorAll('.crm-deal-edit-btn').forEach(function(btn) {
+                btn.addEventListener('click', function() { openEditDeal(this.dataset.id); });
+            });
+            wrap.querySelectorAll('.crm-deal-delete-btn').forEach(function(btn) {
+                btn.addEventListener('click', function() { deleteDeal(this.dataset.id); });
+            });
+        }
+
+        function renderPagination(total) {
+            var pag = document.getElementById('crm-deals-pagination');
+            if ( totalPages <= 1 ) {
+                pag.innerHTML = '<span style="font-size:13px;color:#9ca3af;">Showing '
+                    + total + ' deal' + (total === 1 ? '' : 's') + '</span>';
+                return;
+            }
+            var html = '<span style="font-size:13px;color:#6b7280;margin-right:8px;">'
+                + 'Page ' + page + ' of ' + totalPages + ' &nbsp;|&nbsp; ' + total + ' total</span>';
+            if ( page > 1 )          html += '<button class="bntm-btn-secondary bntm-btn-small" id="crm-deal-prev">Prev</button> ';
+            if ( page < totalPages ) html += '<button class="bntm-btn-secondary bntm-btn-small" id="crm-deal-next">Next</button>';
+            pag.innerHTML = html;
+
+            var p = document.getElementById('crm-deal-prev');
+            var n = document.getElementById('crm-deal-next');
+            if (p) p.addEventListener('click', function() { page--; loadDealsList(); });
+            if (n) n.addEventListener('click', function() { page++; loadDealsList(); });
+        }
+
+        // ── Board View ──
+        function loadDealsBoard() {
+            var wrap = document.getElementById('crm-deals-board-wrap');
+            wrap.innerHTML = '<div class="crm-empty" style="padding:48px;"><p>Loading board...</p></div>';
+
+            crmPost( 'crm_get_deals', {
+                page:     1,
+                per_page: 500,
+                status:   'open'
+            }, function(data) {
+                var allDeals = data.deals || [];
+                renderBoard(allDeals);
+            });
+        }
+
+        function renderBoard(deals) {
+            var wrap = document.getElementById('crm-deals-board-wrap');
+
+            if ( stagesData.length === 0 ) {
+                wrap.innerHTML = '<div class="crm-empty" style="padding:48px;">'
+                    + '<p>No pipeline stages configured. Go to Settings to add stages.</p></div>';
+                return;
+            }
+
+            var html = '<div class="crm-board">';
+
+            stagesData.forEach(function(stage) {
+                var stageDeals = deals.filter(function(d) { return d.stage_id == stage.id; });
+                var stageVal   = stageDeals.reduce(function(sum, d) { return sum + parseFloat(d.amount || 0); }, 0);
+
+                html += '<div class="crm-board-col" data-stage-id="' + stage.id + '">';
+                html += '<div class="crm-board-col-header">';
+                html += '<h4>'
+                    + '<span class="crm-stage-dot" style="background:' + crmEsc(stage.color) + ';"></span>'
+                    + crmEsc(stage.name)
+                    + '</h4>';
+                html += '<span class="crm-board-col-count">' + stageDeals.length + '</span>';
+                html += '</div>';
+                html += '<div style="font-size:11px;color:#9ca3af;margin-bottom:10px;">'
+                    + crmFormatCurrency(stageVal) + '</div>';
+
+                if ( stageDeals.length === 0 ) {
+                    html += '<div class="crm-board-empty-col">'
+                        + '<p style="font-size:12px;color:#d1d5db;text-align:center;padding:16px 0;">'
+                        + 'No deals</p></div>';
+                }
+
+                stageDeals.forEach(function(d) {
+                    var today = new Date(); today.setHours(0,0,0,0);
+                    var isOverdue = false;
+                    var detailUrl = crmBuildUrl({ tab: 'deals', view: 'deal', id: d.id });
+                    if ( d.expected_close_date ) {
+                        var cd = new Date(d.expected_close_date); cd.setHours(0,0,0,0);
+                        isOverdue = cd < today;
+                    }
+                    html += '<div class="crm-deal-card" draggable="true" '
+                        + 'data-deal-id="' + d.id + '" data-stage-id="' + stage.id + '">';
+                    html += '<div class="crm-deal-card-name"><a href="' + crmEsc(detailUrl) + '" class="crm-detail-inline-link">' + crmEsc(d.name) + '</a></div>';
+                    html += '<div class="crm-deal-card-amount">' + crmFormatCurrency(d.amount) + '</div>';
+                    if ( d.contact_name ) {
+                        html += '<div class="crm-deal-card-meta">'
+                            + '<svg width="11" height="11" fill="none" stroke="currentColor" viewBox="0 0 24 24" '
+                            + 'style="display:inline;vertical-align:middle;">'
+                            + '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" '
+                            + 'd="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>'
+                            + '</svg> ' + crmEsc(d.contact_name) + '</div>';
+                    }
+                    if ( d.expected_close_date ) {
+                        html += '<div class="crm-deal-card-meta" style="margin-top:4px;'
+                            + (isOverdue ? 'color:#ef4444;font-weight:600;' : '') + '">'
+                            + '<svg width="11" height="11" fill="none" stroke="currentColor" viewBox="0 0 24 24" '
+                            + 'style="display:inline;vertical-align:middle;">'
+                            + '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" '
+                            + 'd="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>'
+                            + '</svg> ' + crmEsc(d.expected_close_date) + '</div>';
+                    }
+                    html += '<div style="display:flex;gap:6px;margin-top:8px;">'
+                        + '<button class="bntm-btn-secondary bntm-btn-small crm-board-edit-btn" '
+                        + 'data-id="' + d.id + '" style="flex:1;">Edit</button>'
+                        + '</div>';
+                    html += '</div>';
+                });
+
+                html += '</div>';
+            });
+
+            html += '</div>';
+            wrap.innerHTML = html;
+
+            initBoardDragDrop();
+
+            wrap.querySelectorAll('.crm-board-edit-btn').forEach(function(btn) {
+                btn.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    openEditDealById(this.dataset.id);
+                });
+            });
+        }
+
+        function initBoardDragDrop() {
+            var draggingCard = null;
+
+            document.querySelectorAll('.crm-deal-card').forEach(function(card) {
+                card.addEventListener('dragstart', function(e) {
+                    draggingCard = card;
+                    card.classList.add('dragging');
+                    e.dataTransfer.effectAllowed = 'move';
+                });
+                card.addEventListener('dragend', function() {
+                    card.classList.remove('dragging');
+                    document.querySelectorAll('.crm-board-col').forEach(function(col) {
+                        col.classList.remove('drag-over');
+                    });
+                    draggingCard = null;
+                });
+            });
+
+            document.querySelectorAll('.crm-board-col').forEach(function(col) {
+                col.addEventListener('dragover', function(e) {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = 'move';
+                    col.classList.add('drag-over');
+                });
+                col.addEventListener('dragleave', function() {
+                    col.classList.remove('drag-over');
+                });
+                col.addEventListener('drop', function(e) {
+                    e.preventDefault();
+                    col.classList.remove('drag-over');
+
+                    if ( ! draggingCard ) return;
+
+                    var dealId      = draggingCard.dataset.dealId;
+                    var fromStageId = draggingCard.dataset.stageId;
+                    var toStageId   = col.dataset.stageId;
+
+                    if ( fromStageId === toStageId ) return;
+
+                    crmPost( 'crm_move_deal_stage', {
+                        deal_id:  dealId,
+                        stage_id: toStageId
+                    }, function(data) {
+                        crmToast(data.message || 'Deal moved.', 'success');
+                        loadDealsBoard();
+                    });
+                });
+            });
+        }
+
+        // ── Open Edit Deal ──
+        function openEditDeal(id) {
+            var d = cachedDeals.find(function(x) { return x.id == id; });
+            if ( ! d ) { openEditDealById(id); return; }
+            populateDealModal(d);
+        }
+
+        function openEditDealById(id) {
+            crmPost( 'crm_get_deals', {
+                deal_id:  id,
+                page:     1,
+                per_page: 1
+            }, function(data) {
+                var deals = data.deals || [];
+                if ( deals.length > 0 ) populateDealModal(deals[0]);
+            });
+        }
+
+        function resetDealModal() {
+            document.getElementById('crm-deal-id').value = '';
+            document.getElementById('crm-deal-name').value = '';
+            document.getElementById('crm-deal-amount').value = '';
+            document.getElementById('crm-deal-close-date').value = '';
+            document.getElementById('crm-deal-stage').value = '';
+            document.getElementById('crm-deal-status').value = 'open';
+            document.getElementById('crm-deal-owner').value = '';
+            document.getElementById('crm-deal-contact').value = '';
+            document.getElementById('crm-deal-company').value = 0;
+            document.querySelectorAll('.crm-deal-custom-prop-field').forEach(function(el) {
+                el.value = '';
+            });
+        }
+
+        function populateDealModal(d) {
+            document.getElementById('crm-deal-id').value         = d.id || '';
+            document.getElementById('crm-deal-name').value       = d.name              || '';
+            document.getElementById('crm-deal-amount').value     = d.amount            || '';
+            document.getElementById('crm-deal-close-date').value = d.expected_close_date || '';
+            document.getElementById('crm-deal-stage').value      = d.stage_id          || '';
+            document.getElementById('crm-deal-status').value     = d.status            || 'open';
+            document.getElementById('crm-deal-owner').value      = d.owner_id          || '';
+            document.getElementById('crm-deal-contact').value    = d.contact_id        || '';
+            document.getElementById('crm-deal-company').value    = d.company_id        || 0;
+
+            var customProps = {};
+            try { customProps = JSON.parse(d.custom_properties || '{}'); } catch(e) {}
+            document.querySelectorAll('.crm-deal-custom-prop-field').forEach(function(el) {
+                var prop = el.dataset.prop;
+                if ( prop && customProps[prop] !== undefined ) el.value = customProps[prop];
+            });
+
+            document.querySelector('#crm-deal-modal .crm-modal-header h3').textContent = 'Edit Deal';
+            crmOpenModal('crm-deal-modal');
+        }
+
+        function deleteDeal(id) {
+            crmConfirm('Delete this deal? This cannot be undone.', function() {
+                crmPost( 'crm_delete_deal', { deal_id: id }, function(data) {
+                    crmToast(data.message || 'Deal deleted.', 'success');
+                    if ( currentView === 'list' )  loadDealsList();
+                    if ( currentView === 'board' ) loadDealsBoard();
+                });
+            });
+        }
+
+        // ── Add button ──
+        document.getElementById('crm-deal-add-btn').addEventListener('click', function() {
+            resetDealModal();
+            document.querySelector('#crm-deal-modal .crm-modal-header h3').textContent = 'Add Deal';
+            crmOpenModal('crm-deal-modal');
+        });
+
+        // ── Save button ──
+        document.getElementById('crm-deal-save-btn').addEventListener('click', function() {
+            var btn     = this;
+            var dealId  = document.getElementById('crm-deal-id').value;
+            var name    = document.getElementById('crm-deal-name').value.trim();
+            var stageId = document.getElementById('crm-deal-stage').value;
+            var contact = document.getElementById('crm-deal-contact').value;
+
+            if ( ! name )    { crmToast('Deal name is required.',    'error'); return; }
+            if ( ! stageId ) { crmToast('Please select a stage.',    'error'); return; }
+            if ( ! contact ) { crmToast('Please select a contact.', 'error'); return; }
+
+            var customProps = {};
+            document.querySelectorAll('.crm-deal-custom-prop-field').forEach(function(el) {
+                if ( el.dataset.prop ) customProps[el.dataset.prop] = el.value;
+            });
+
+            var action      = dealId ? 'crm_update_deal' : 'crm_create_deal';
+            btn.disabled    = true;
+            btn.textContent = 'Saving...';
+
+            crmPost( action, {
+                deal_id:              dealId,
+                name:                 name,
+                amount:               document.getElementById('crm-deal-amount').value     || 0,
+                expected_close_date:  document.getElementById('crm-deal-close-date').value || '',
+                stage_id:             stageId,
+                status:               document.getElementById('crm-deal-status').value     || 'open',
+                owner_id:             document.getElementById('crm-deal-owner').value      || '',
+                contact_id:           contact,
+                company_id:           document.getElementById('crm-deal-company').value    || 0,
+                custom_properties:    JSON.stringify(customProps)
+            }, function(data) {
+                crmToast(data.message || 'Saved.', 'success');
+                crmCloseModal('crm-deal-modal');
+                if (isDetailView) {
+                    window.location.reload();
+                    return;
+                }
+                if ( currentView === 'list' )  loadDealsList();
+                if ( currentView === 'board' ) loadDealsBoard();
+                btn.disabled    = false;
+                btn.textContent = 'Save Deal';
+            }, function() {
+                btn.disabled    = false;
+                btn.textContent = 'Save Deal';
+            });
+        });
+
+        // ── Filters ──
+        document.getElementById('crm-deal-search').addEventListener('input', function() {
+            clearTimeout(searchTimer);
+            searchTimer = setTimeout(function() { page = 1; loadDealsList(); }, 380);
+        });
+        ['crm-deal-filter-stage','crm-deal-filter-status','crm-deal-filter-owner'].forEach(function(id) {
+            document.getElementById(id).addEventListener('change', function() {
+                page = 1;
+                if ( currentView === 'list' )  loadDealsList();
+                if ( currentView === 'board' ) loadDealsBoard();
+            });
+        });
+
+        // ── Initial load ──
+        function startInitialLoad() {
+            if (initialLoadStarted) return;
+            initialLoadStarted = true;
+
+            if (isDetailView && detailRecord && detailRecord.id) {
+                window.crmDetailViewContext = { objectType: 'deal', recordId: detailRecord.id };
+                whenDetailApiReady(function() {
+                    crmInitRecordDetailView({
+                        containerId: 'crm-record-detail-deal',
+                        objectType: 'deal',
+                        recordId: detailRecord.id,
+                        initialTab: 'activity'
+                    });
+                    crmRegisterDetailEditor('deal', function(fieldKey) {
+                        populateDealModal(detailRecord);
+                        document.querySelector('#crm-deal-modal .crm-modal-header h3').textContent = 'Edit Deal';
+                        crmOpenModal('crm-deal-modal');
+                        if (fieldKey) {
+                            window.crmFocusDetailEditField('deal', fieldKey);
+                        }
+                    });
+                });
+                return;
+            }
+
+            loadDealsList();
+        }
+
+        window.bntmWhenCrmCoreReady(startInitialLoad);
+    })();
+    </script>
+    <?php
+    return ob_get_clean();
+}
+
+// =============================================================================
+// TAB 5 — TASKS
+// =============================================================================
+
+function crm_tasks_tab( $business_id ) {
+    global $wpdb;
+
+    $users = get_users( [ 'fields' => [ 'ID', 'display_name' ] ] );
+
+    $contacts = $wpdb->get_results( $wpdb->prepare(
+        "SELECT id, first_name, last_name FROM {$wpdb->prefix}crm_contacts
+         WHERE business_id = %d AND status = 'active'
+         ORDER BY first_name ASC",
+        $business_id
+    ) );
+
+    $companies = $wpdb->get_results( $wpdb->prepare(
+        "SELECT id, name FROM {$wpdb->prefix}crm_companies
+         WHERE business_id = %d AND status = 'active'
+         ORDER BY name ASC",
+        $business_id
+    ) );
+
+    $deals = $wpdb->get_results( $wpdb->prepare(
+        "SELECT id, name FROM {$wpdb->prefix}crm_deals
+         WHERE business_id = %d AND status = 'open'
+         ORDER BY name ASC",
+        $business_id
+    ) );
+
+    $today = current_time( 'Y-m-d' );
+
+    $overdue_tasks = $wpdb->get_results( $wpdb->prepare(
+        "SELECT t.*,
+                u.display_name AS assignee_name,
+                DATEDIFF(%s, t.due_date) AS days_overdue
+         FROM {$wpdb->prefix}crm_tasks t
+         LEFT JOIN {$wpdb->users} u ON u.ID = t.assignee_id
+         WHERE t.business_id = %d
+           AND t.status = 'pending'
+           AND t.due_date < %s
+         ORDER BY t.due_date ASC",
+        $today, $business_id, $today
+    ) );
+
+    $upcoming_tasks = $wpdb->get_results( $wpdb->prepare(
+        "SELECT t.*,
+                u.display_name AS assignee_name,
+                DATEDIFF(t.due_date, %s) AS days_until
+         FROM {$wpdb->prefix}crm_tasks t
+         LEFT JOIN {$wpdb->users} u ON u.ID = t.assignee_id
+         WHERE t.business_id = %d
+           AND t.status = 'pending'
+           AND t.due_date >= %s
+         ORDER BY t.due_date ASC
+         LIMIT 50",
+        $today, $business_id, $today
+    ) );
+
+    $closed_tasks = $wpdb->get_results( $wpdb->prepare(
+        "SELECT t.*,
+                u.display_name AS assignee_name
+         FROM {$wpdb->prefix}crm_tasks t
+         LEFT JOIN {$wpdb->users} u ON u.ID = t.assignee_id
+         WHERE t.business_id = %d
+           AND t.status = 'complete'
+         ORDER BY t.updated_at DESC, t.id DESC",
+        $business_id
+    ) );
+
+    ob_start();
+    ?>
+
+    <!-- Filter Row -->
+    <div class="crm-filter-row" style="justify-content:space-between;">
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;flex:1;">
+            <input type="text" id="crm-task-search"
+                   placeholder="Search tasks..."
+                   style="min-width:200px;flex:1;">
+            <select id="crm-task-filter-assignee">
+                <option value="">All Assignees</option>
+                <?php foreach ( $users as $u ) : ?>
+                    <option value="<?php echo intval( $u->ID ); ?>">
+                        <?php echo esc_html( $u->display_name ); ?>
+                    </option>
+                <?php endforeach; ?>
+            </select>
+            <select id="crm-task-filter-linked-type">
+                <option value="">All Record Types</option>
+                <option value="contact">Contact</option>
+                <option value="company">Company</option>
+                <option value="deal">Deal</option>
+            </select>
+        </div>
+        <button class="bntm-btn-primary" id="crm-task-add-btn">
+            <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+            </svg>
+            Add Task
+        </button>
+    </div>
+
+    <!-- Summary Strip -->
+    <div class="crm-task-summary-strip">
+        <div class="crm-task-summary-item crm-task-summary-overdue">
+            <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                      d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            <span><?php echo count( $overdue_tasks ); ?> Overdue</span>
+        </div>
+        <div class="crm-task-summary-item crm-task-summary-upcoming">
+            <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                      d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2
+                         M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+            </svg>
+            <span><?php echo count( $upcoming_tasks ); ?> Upcoming</span>
+        </div>
+    </div>
+
+    <div id="crm-tasks-wrap">
+
+        <!-- Overdue Section -->
+        <?php if ( ! empty( $overdue_tasks ) ) : ?>
+        <div class="bntm-form-section crm-overdue-section" id="crm-overdue-section">
+            <h3 style="color:#dc2626;display:flex;align-items:center;gap:8px;">
+                <svg width="18" height="18" fill="none" stroke="#dc2626" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                          d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+                Overdue Tasks
+                <span class="crm-task-section-count" style="background:#fef2f2;color:#dc2626;">
+                    <?php echo count( $overdue_tasks ); ?>
+                </span>
+            </h3>
+            <div class="bntm-table-wrapper">
+                <table class="bntm-table">
+                    <thead>
+                        <tr>
+                            <th>Task</th>
+                            <th>Linked To</th>
+                            <th>Assignee</th>
+                            <th>Due Date</th>
+                            <th>Overdue By</th>
+                            <th>Reminder</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="crm-overdue-tbody">
+                        <?php foreach ( $overdue_tasks as $task ) :
+                            $linked_label = crm_get_linked_record_label(
+                                $task->linked_type,
+                                $task->linked_id,
+                                $business_id
+                            );
+                            $days_over = max( 0, intval( $task->days_overdue ) );
+                        ?>
+                        <tr data-task-id="<?php echo intval( $task->id ); ?>">
+                            <td>
+                                <span style="font-weight:600;color:#111827;">
+                                    <?php echo esc_html( $task->title ); ?>
+                                </span>
+                            </td>
+                            <td>
+                                <?php if ( $task->linked_type && $task->linked_id ) : ?>
+                                    <span class="crm-linked-type-badge crm-linked-<?php echo esc_attr( $task->linked_type ); ?>">
+                                        <?php echo esc_html( ucfirst( $task->linked_type ) ); ?>
+                                    </span>
+                                    <span style="font-size:12px;color:#6b7280;margin-left:4px;">
+                                        <?php echo esc_html( $linked_label ); ?>
+                                    </span>
+                                <?php else : ?>
+                                    <span style="color:#9ca3af;">—</span>
+                                <?php endif; ?>
+                            </td>
+                            <td><?php echo esc_html( $task->assignee_name ?: '—' ); ?></td>
+                            <td>
+                                <span style="color:#dc2626;font-weight:600;">
+                                    <?php echo esc_html( $task->due_date ); ?>
+                                </span>
+                            </td>
+                            <td>
+                                <span class="crm-badge crm-badge-overdue">
+                                    <?php echo $days_over; ?> day<?php echo $days_over === 1 ? '' : 's'; ?>
+                                </span>
+                            </td>
+                            <td>
+                                <?php if ( $task->reminder_days > 0 ) : ?>
+                                    <span class="crm-reminder-chip">
+                                        <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                  d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002
+                                                     6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388
+                                                     6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3
+                                                     0 11-6 0v-1m6 0H9"/>
+                                        </svg>
+                                        <?php echo intval( $task->reminder_days ); ?>d reminder
+                                    </span>
+                                <?php else : ?>
+                                    <span style="color:#9ca3af;font-size:12px;">None</span>
+                                <?php endif; ?>
+                            </td>
+                            <td style="white-space:nowrap;">
+                                <button class="bntm-btn-primary bntm-btn-small crm-task-complete-btn"
+                                        data-id="<?php echo intval( $task->id ); ?>">
+                                    <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                              d="M5 13l4 4L19 7"/>
+                                    </svg>
+                                    Done
+                                </button>
+                                <button class="bntm-btn-secondary bntm-btn-small crm-task-edit-btn"
+                                        data-id="<?php echo intval( $task->id ); ?>"
+                                        data-task='<?php echo esc_attr( wp_json_encode( $task ) ); ?>'>
+                                    Edit
+                                </button>
+                                <button class="bntm-btn-danger bntm-btn-small crm-task-delete-btn"
+                                        data-id="<?php echo intval( $task->id ); ?>">
+                                    Delete
+                                </button>
+                            </td>
+                        </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <?php else : ?>
+        <div class="bntm-form-section" style="border-left:3px solid #22c55e;padding:16px 20px;">
+            <div style="display:flex;align-items:center;gap:10px;">
+                <svg width="20" height="20" fill="none" stroke="#22c55e" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                          d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+                <span style="font-size:14px;font-weight:500;color:#15803d;">
+                    No overdue tasks — you are all caught up.
+                </span>
+            </div>
+        </div>
+        <?php endif; ?>
+
+        <!-- Upcoming Section -->
+        <div class="bntm-form-section crm-upcoming-section" id="crm-upcoming-section">
+            <h3 style="display:flex;align-items:center;gap:8px;">
+                <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                          d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5
+                             a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                </svg>
+                Upcoming Tasks
+                <span class="crm-task-section-count">
+                    <?php echo count( $upcoming_tasks ); ?>
+                </span>
+            </h3>
+
+            <?php if ( empty( $upcoming_tasks ) ) : ?>
+                <div class="crm-empty" style="padding:32px 0;">
+                    <svg width="36" height="36" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                              d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0
+                                 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+                    </svg>
+                    <p>No upcoming tasks. Add a task to get started.</p>
+                </div>
+            <?php else : ?>
+                <div class="bntm-table-wrapper">
+                    <table class="bntm-table">
+                        <thead>
+                            <tr>
+                                <th>Task</th>
+                                <th>Linked To</th>
+                                <th>Assignee</th>
+                                <th>Due Date</th>
+                                <th>Due In</th>
+                                <th>Reminder</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="crm-upcoming-tbody">
+                            <?php foreach ( $upcoming_tasks as $task ) :
+                                $linked_label = crm_get_linked_record_label(
+                                    $task->linked_type,
+                                    $task->linked_id,
+                                    $business_id
+                                );
+                                $days_until = max( 0, intval( $task->days_until ) );
+                                $is_today   = $days_until === 0;
+                                $is_soon    = $days_until <= 3 && ! $is_today;
+                            ?>
+                            <tr data-task-id="<?php echo intval( $task->id ); ?>">
+                                <td>
+                                    <span style="font-weight:600;color:#111827;">
+                                        <?php echo esc_html( $task->title ); ?>
+                                    </span>
+                                </td>
+                                <td>
+                                    <?php if ( $task->linked_type && $task->linked_id ) : ?>
+                                        <span class="crm-linked-type-badge crm-linked-<?php echo esc_attr( $task->linked_type ); ?>">
+                                            <?php echo esc_html( ucfirst( $task->linked_type ) ); ?>
+                                        </span>
+                                        <span style="font-size:12px;color:#6b7280;margin-left:4px;">
+                                            <?php echo esc_html( $linked_label ); ?>
+                                        </span>
+                                    <?php else : ?>
+                                        <span style="color:#9ca3af;">—</span>
+                                    <?php endif; ?>
+                                </td>
+                                <td><?php echo esc_html( $task->assignee_name ?: '—' ); ?></td>
+                                <td>
+                                    <span style="<?php echo $is_today ? 'color:#d97706;font-weight:600;' : ''; ?>">
+                                        <?php echo esc_html( $task->due_date ); ?>
+                                    </span>
+                                </td>
+                                <td>
+                                    <?php if ( $is_today ) : ?>
+                                        <span class="crm-badge crm-badge-pending">Today</span>
+                                    <?php elseif ( $is_soon ) : ?>
+                                        <span class="crm-badge crm-badge-pending">
+                                            <?php echo $days_until; ?> day<?php echo $days_until === 1 ? '' : 's'; ?>
+                                        </span>
+                                    <?php else : ?>
+                                        <span style="font-size:13px;color:#6b7280;">
+                                            <?php echo $days_until; ?> day<?php echo $days_until === 1 ? '' : 's'; ?>
+                                        </span>
+                                    <?php endif; ?>
+                                </td>
+                                <td>
+                                    <?php if ( $task->reminder_days > 0 ) : ?>
+                                        <?php
+                                        $remind_on     = date( 'Y-m-d', strtotime( $task->due_date . ' -' . $task->reminder_days . ' days' ) );
+                                        $remind_active = $remind_on <= $today && $task->due_date >= $today;
+                                        ?>
+                                        <span class="crm-reminder-chip <?php echo $remind_active ? 'crm-reminder-active' : ''; ?>">
+                                            <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                      d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118
+                                                         14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0
+                                                         10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0
+                                                         .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3
+                                                         0 11-6 0v-1m6 0H9"/>
+                                            </svg>
+                                            <?php echo intval( $task->reminder_days ); ?>d
+                                            <?php if ( $remind_active ) : ?>
+                                                <span style="color:#d97706;font-size:10px;font-weight:700;">
+                                                    &bull; Now
+                                                </span>
+                                            <?php endif; ?>
+                                        </span>
+                                    <?php else : ?>
+                                        <span style="color:#9ca3af;font-size:12px;">None</span>
+                                    <?php endif; ?>
+                                </td>
+                                <td style="white-space:nowrap;">
+                                    <button class="bntm-btn-primary bntm-btn-small crm-task-complete-btn"
+                                            data-id="<?php echo intval( $task->id ); ?>">
+                                        <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                  d="M5 13l4 4L19 7"/>
+                                        </svg>
+                                        Done
+                                    </button>
+                                    <button class="bntm-btn-secondary bntm-btn-small crm-task-edit-btn"
+                                            data-id="<?php echo intval( $task->id ); ?>"
+                                            data-task='<?php echo esc_attr( wp_json_encode( $task ) ); ?>'>
+                                        Edit
+                                    </button>
+                                    <button class="bntm-btn-danger bntm-btn-small crm-task-delete-btn"
+                                            data-id="<?php echo intval( $task->id ); ?>">
+                                        Delete
+                                    </button>
+                                </td>
+                            </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+            <?php endif; ?>
+        </div>
+
+        <!-- Closed Section -->
+        <div class="bntm-form-section crm-closed-section" id="crm-closed-section">
+            <button type="button"
+                    class="crm-task-section-toggle"
+                    id="crm-closed-toggle"
+                    aria-expanded="false"
+                    aria-controls="crm-closed-body">
+                <span class="crm-task-section-toggle-label">
+                    <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                              d="M5 13l4 4L19 7"/>
+                    </svg>
+                    Closed Tasks
+                    <span class="crm-task-section-count" id="crm-closed-count"><?php echo count( $closed_tasks ); ?></span>
+                </span>
+                <svg class="crm-task-section-chevron" width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                          d="M19 9l-7 7-7-7"/>
+                </svg>
+            </button>
+
+            <div class="crm-task-section-body" id="crm-closed-body" hidden>
+                <?php if ( empty( $closed_tasks ) ) : ?>
+                    <div class="crm-empty" style="padding:32px 0;">
+                        <svg width="36" height="36" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                  d="M5 13l4 4L19 7"/>
+                        </svg>
+                        <p>No closed tasks yet.</p>
+                    </div>
+                <?php else : ?>
+                    <div class="bntm-table-wrapper">
+                        <table class="bntm-table">
+                            <thead>
+                                <tr>
+                                    <th>Task</th>
+                                    <th>Linked To</th>
+                                    <th>Assignee</th>
+                                    <th>Due Date</th>
+                                    <th>Status</th>
+                                    <th>Reminder</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="crm-closed-tbody">
+                                <?php foreach ( $closed_tasks as $task ) :
+                                    $linked_label = crm_get_linked_record_label(
+                                        $task->linked_type,
+                                        $task->linked_id,
+                                        $business_id
+                                    );
+                                ?>
+                                <tr data-task-id="<?php echo intval( $task->id ); ?>">
+                                    <td>
+                                        <span style="font-weight:600;color:#111827;">
+                                            <?php echo esc_html( $task->title ); ?>
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <?php if ( $task->linked_type && $task->linked_id ) : ?>
+                                            <span class="crm-linked-type-badge crm-linked-<?php echo esc_attr( $task->linked_type ); ?>">
+                                                <?php echo esc_html( ucfirst( $task->linked_type ) ); ?>
+                                            </span>
+                                            <span style="font-size:12px;color:#6b7280;margin-left:4px;">
+                                                <?php echo esc_html( $linked_label ); ?>
+                                            </span>
+                                        <?php else : ?>
+                                            <span style="color:#9ca3af;">—</span>
+                                        <?php endif; ?>
+                                    </td>
+                                    <td><?php echo esc_html( $task->assignee_name ?: '—' ); ?></td>
+                                    <td>
+                                        <span style="color:#6b7280;">
+                                            <?php echo esc_html( $task->due_date ?: '—' ); ?>
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <span class="crm-badge crm-badge-complete">Closed</span>
+                                    </td>
+                                    <td>
+                                        <?php if ( $task->reminder_days > 0 ) : ?>
+                                            <span class="crm-reminder-chip">
+                                                <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                          d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002
+                                                             6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388
+                                                             6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3
+                                                             0 11-6 0v-1m6 0H9"/>
+                                                </svg>
+                                                <?php echo intval( $task->reminder_days ); ?>d
+                                            </span>
+                                        <?php else : ?>
+                                            <span style="color:#9ca3af;font-size:12px;">None</span>
+                                        <?php endif; ?>
+                                    </td>
+                                    <td style="white-space:nowrap;">
+                                        <button class="bntm-btn-secondary bntm-btn-small crm-task-edit-btn"
+                                                data-id="<?php echo intval( $task->id ); ?>"
+                                                data-task='<?php echo esc_attr( wp_json_encode( $task ) ); ?>'>
+                                            Edit
+                                        </button>
+                                        <button class="bntm-btn-danger bntm-btn-small crm-task-delete-btn"
+                                                data-id="<?php echo intval( $task->id ); ?>">
+                                            Delete
+                                        </button>
+                                    </td>
+                                </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                <?php endif; ?>
+            </div>
+        </div>
+
+    </div><!-- /#crm-tasks-wrap -->
+
+    <!-- Add / Edit Task Modal -->
+    <div class="crm-modal-overlay" id="crm-task-modal">
+        <div class="crm-modal">
+            <div class="crm-modal-header">
+                <h3 data-default="Add Task">Add Task</h3>
+                <button class="crm-modal-close" onclick="crmCloseModal('crm-task-modal')">
+                    <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                              d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="crm-modal-body">
+                <input type="hidden" id="crm-task-id" name="record_id" value="">
+
+                <div class="crm-field-group">
+                    <label>Task Title <span style="color:#ef4444;">*</span></label>
+                    <input type="text" id="crm-task-title"
+                           placeholder="e.g. Follow up with client">
+                </div>
+
+                <div class="crm-field-row">
+                    <div class="crm-field-group">
+                        <label>Assignee</label>
+                        <select id="crm-task-assignee">
+                            <option value="">Unassigned</option>
+                            <?php foreach ( $users as $u ) : ?>
+                                <option value="<?php echo intval( $u->ID ); ?>">
+                                    <?php echo esc_html( $u->display_name ); ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div class="crm-field-group">
+                        <label>Due Date</label>
+                        <input type="date" id="crm-task-due-date">
+                    </div>
+                </div>
+
+                <div class="crm-field-group">
+                    <label>
+                        Remind Me In
+                        <span style="font-weight:400;color:#9ca3af;">(days before due date)</span>
+                    </label>
+                    <div style="display:flex;align-items:center;gap:10px;">
+                        <input type="number" id="crm-task-reminder-days"
+                               placeholder="0" min="0" max="365"
+                               style="width:120px;">
+                        <span style="font-size:13px;color:#6b7280;">
+                            days before due date
+                            <span id="crm-task-reminder-preview"
+                                  style="color:var(--bntm-primary);font-weight:600;"></span>
+                        </span>
+                    </div>
+                </div>
+
+                <div style="border-top:1px solid #f3f4f6;padding-top:16px;margin-top:4px;">
+                    <p style="font-size:12px;font-weight:600;color:#6b7280;
+                              text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px;">
+                        Link to Record
+                        <span style="font-weight:400;text-transform:none;letter-spacing:0;">(optional)</span>
+                    </p>
+                    <div class="crm-field-row">
+                        <div class="crm-field-group">
+                            <label>Record Type</label>
+                            <select id="crm-task-linked-type">
+                                <option value="">None</option>
+                                <option value="contact">Contact</option>
+                                <option value="company">Company</option>
+                                <option value="deal">Deal</option>
+                            </select>
+                        </div>
+                        <div class="crm-field-group">
+                            <label>Record</label>
+                            <select id="crm-task-linked-id" disabled>
+                                <option value="">Select type first...</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="crm-modal-footer">
+                <button class="bntm-btn-secondary" onclick="crmCloseModal('crm-task-modal')">
+                    Cancel
+                </button>
+                <button class="bntm-btn-primary" id="crm-task-save-btn">Save Task</button>
+            </div>
+        </div>
+    </div>
+
+    <style>
+    .crm-task-summary-strip {
+        display: flex;
+        gap: 12px;
+        margin-bottom: 20px;
+        flex-wrap: wrap;
+    }
+    .crm-task-summary-item {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        padding: 8px 16px;
+        border-radius: 20px;
+        font-size: 13px;
+        font-weight: 600;
+    }
+    .crm-task-summary-overdue {
+        background: #fef2f2;
+        color: #dc2626;
+        border: 1px solid #fecaca;
+    }
+    .crm-task-summary-upcoming {
+        background: #f0fdf4;
+        color: #16a34a;
+        border: 1px solid #bbf7d0;
+    }
+    .bntm-btn-primary.crm-task-complete-btn {
+        background: var(--bntm-primary);
+        border-color: var(--bntm-primary);
+        color: #fff;
+    }
+    .bntm-btn-primary.crm-task-complete-btn:hover {
+        background: var(--bntm-primary-hover);
+        border-color: var(--bntm-primary-hover);
+        color: #fff;
+    }
+    .crm-task-section-count {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background: #f3f4f6;
+        color: #374151;
+        font-size: 12px;
+        font-weight: 700;
+        min-width: 24px;
+        height: 24px;
+        padding: 0 7px;
+        border-radius: 20px;
+    }
+    .crm-closed-section {
+        border-left: 3px solid #64748b;
+    }
+    .crm-task-section-toggle {
+        width: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 0;
+        border: none;
+        background: none;
+        cursor: pointer;
+        color: inherit;
+        text-align: left;
+    }
+    .crm-task-section-toggle-label {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 16px;
+        font-weight: 600;
+        color: #111827;
+    }
+    .crm-task-section-chevron {
+        flex-shrink: 0;
+        color: #6b7280;
+        transition: transform .2s ease;
+    }
+    .crm-task-section-toggle[aria-expanded="true"] .crm-task-section-chevron {
+        transform: rotate(180deg);
+    }
+    .crm-task-section-body {
+        margin-top: 16px;
+    }
+    .crm-linked-type-badge {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 6px;
+        font-size: 10px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: .4px;
+    }
+    .crm-linked-contact { background: #eff6ff; color: #2563eb; }
+    .crm-linked-company { background: #f0fdf4; color: #16a34a; }
+    .crm-linked-deal    { background: #fdf4ff; color: #9333ea; }
+    .crm-reminder-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        background: #f9fafb;
+        border: 1px solid #e5e7eb;
+        border-radius: 6px;
+        padding: 3px 8px;
+        font-size: 12px;
+        color: #374151;
+        font-weight: 500;
+    }
+    .crm-reminder-active {
+        background: #fffbeb;
+        border-color: #fde68a;
+        color: #d97706;
+    }
+    </style>
+
+    <script>
+    (function() {
+        var contactsData  = <?php echo wp_json_encode(
+            array_map( function($c) {
+                return [
+                    'id'   => (int) $c->id,
+                    'name' => trim( $c->first_name . ' ' . $c->last_name ),
+                ];
+            }, $contacts )
+        ); ?>;
+        var companiesData = <?php echo wp_json_encode(
+            array_map( function($co) {
+                return [ 'id' => (int) $co->id, 'name' => $co->name ];
+            }, $companies )
+        ); ?>;
+        var dealsData     = <?php echo wp_json_encode(
+            array_map( function($d) {
+                return [ 'id' => (int) $d->id, 'name' => $d->name ];
+            }, $deals )
+        ); ?>;
+
+        // ── Linked type → populate linked id select ──
+        var linkedTypeEl = document.getElementById('crm-task-linked-type');
+        var linkedIdEl   = document.getElementById('crm-task-linked-id');
+
+        linkedTypeEl.addEventListener('change', function() {
+            populateLinkedIdSelect( this.value, 0 );
+        });
+
+        function populateLinkedIdSelect(type, selectedId) {
+            linkedIdEl.innerHTML = '';
+            if ( ! type ) {
+                linkedIdEl.disabled = true;
+                linkedIdEl.innerHTML = '<option value="">Select type first...</option>';
+                return;
+            }
+
+            linkedIdEl.disabled = false;
+            var opt = document.createElement('option');
+            opt.value = ''; opt.textContent = 'Select...';
+            linkedIdEl.appendChild(opt);
+
+            var records = [];
+            if ( type === 'contact' ) records = contactsData;
+            if ( type === 'company' ) records = companiesData;
+            if ( type === 'deal' )    records = dealsData;
+
+            records.forEach(function(r) {
+                var o = document.createElement('option');
+                o.value       = r.id;
+                o.textContent = r.name;
+                if ( r.id == selectedId ) o.selected = true;
+                linkedIdEl.appendChild(o);
+            });
+        }
+
+        // ── Reminder preview ──
+        function updateReminderPreview() {
+            var dueDate     = document.getElementById('crm-task-due-date').value;
+            var remindDays  = parseInt( document.getElementById('crm-task-reminder-days').value ) || 0;
+            var previewEl   = document.getElementById('crm-task-reminder-preview');
+
+            if ( dueDate && remindDays > 0 ) {
+                var remindDate = new Date(dueDate);
+                remindDate.setDate( remindDate.getDate() - remindDays );
+                var formatted = remindDate.toISOString().substring(0,10);
+                previewEl.textContent = '(remind on ' + formatted + ')';
+            } else {
+                previewEl.textContent = '';
+            }
+        }
+
+        document.getElementById('crm-task-due-date').addEventListener('change', updateReminderPreview);
+        document.getElementById('crm-task-reminder-days').addEventListener('input', updateReminderPreview);
+
+        // ── Add button ──
+        document.getElementById('crm-task-add-btn').addEventListener('click', function() {
+            document.getElementById('crm-task-id').value            = '';
+            document.getElementById('crm-task-title').value         = '';
+            document.getElementById('crm-task-assignee').value      = '';
+            document.getElementById('crm-task-due-date').value      = '';
+            document.getElementById('crm-task-reminder-days').value = '';
+            document.getElementById('crm-task-reminder-preview').textContent = '';
+            linkedTypeEl.value = '';
+            populateLinkedIdSelect('', 0);
+            document.querySelector('#crm-task-modal .crm-modal-header h3').textContent = 'Add Task';
+            crmOpenModal('crm-task-modal');
+        });
+
+        // ── Edit button ──
+        document.addEventListener('click', function(e) {
+            var editBtn = e.target.closest('.crm-task-edit-btn');
+            if ( ! editBtn ) return;
+
+            var task = {};
+            try { task = JSON.parse( editBtn.dataset.task || '{}' ); } catch(err) {}
+
+            document.getElementById('crm-task-id').value            = task.id            || '';
+            document.getElementById('crm-task-title').value         = task.title         || '';
+            document.getElementById('crm-task-assignee').value      = task.assignee_id   || '';
+            document.getElementById('crm-task-due-date').value      = task.due_date      || '';
+            document.getElementById('crm-task-reminder-days').value = task.reminder_days || 0;
+
+            linkedTypeEl.value = task.linked_type || '';
+            populateLinkedIdSelect( task.linked_type || '', task.linked_id || 0 );
+
+            updateReminderPreview();
+            document.querySelector('#crm-task-modal .crm-modal-header h3').textContent = 'Edit Task';
+            crmOpenModal('crm-task-modal');
+        });
+
+        function crmAdjustClosedTaskCount(delta) {
+            var countEl = document.getElementById('crm-closed-count');
+            if ( ! countEl ) return;
+
+            var count = parseInt( countEl.textContent, 10 ) || 0;
+            countEl.textContent = Math.max( 0, count + delta );
+        }
+
+        function crmApplyTaskFilters() {
+            var qEl        = document.getElementById('crm-task-search');
+            var assigneeEl = document.getElementById('crm-task-filter-assignee');
+            var linkedEl   = document.getElementById('crm-task-filter-linked-type');
+            var q          = qEl ? qEl.value.toLowerCase() : '';
+            var assigneeId = assigneeEl ? assigneeEl.value : '';
+            var linkedType = linkedEl ? linkedEl.value : '';
+
+            document.querySelectorAll('#crm-overdue-tbody tr, #crm-upcoming-tbody tr, #crm-closed-tbody tr')
+                .forEach(function(row) {
+                    var visible = true;
+                    var editBtn = row.querySelector('.crm-task-edit-btn');
+                    var task    = {};
+
+                    if ( q && row.textContent.toLowerCase().indexOf(q) === -1 ) {
+                        visible = false;
+                    }
+
+                    if ( visible && assigneeId ) {
+                        if ( editBtn ) {
+                            try { task = JSON.parse( editBtn.dataset.task || '{}' ); } catch(e) {}
+                            visible = String( task.assignee_id || '' ) === String( assigneeId );
+                        } else {
+                            visible = false;
+                        }
+                    }
+
+                    if ( visible && linkedType ) {
+                        if ( editBtn ) {
+                            if ( ! task.id ) {
+                                try { task = JSON.parse( editBtn.dataset.task || '{}' ); } catch(e) {}
+                            }
+                            visible = String( task.linked_type || '' ) === String( linkedType );
+                        } else {
+                            visible = false;
+                        }
+                    }
+
+                    row.style.display = visible ? '' : 'none';
+                });
+        }
+
+        var closedToggle = document.getElementById('crm-closed-toggle');
+        var closedBody    = document.getElementById('crm-closed-body');
+        if ( closedToggle && closedBody ) {
+            closedToggle.addEventListener('click', function() {
+                var expanded = this.getAttribute('aria-expanded') === 'true';
+                this.setAttribute('aria-expanded', expanded ? 'false' : 'true');
+                closedBody.hidden = expanded;
+                if ( ! expanded ) {
+                    crmApplyTaskFilters();
+                }
+            });
+        }
+
+        // ── Complete button ──
+        document.addEventListener('click', function(e) {
+            var btn = e.target.closest('.crm-task-complete-btn');
+            if ( ! btn ) return;
+
+            var taskId      = btn.dataset.id;
+            var row         = document.querySelector('tr[data-task-id="' + taskId + '"]');
+            var closedTbody  = document.getElementById('crm-closed-tbody');
+            btn.disabled    = true;
+
+            crmPost( 'crm_complete_task', { task_id: taskId }, function(data) {
+                crmToast(data.message || 'Task marked complete.', 'success');
+
+                if ( row && closedTbody ) {
+                    var closedRow = row.cloneNode( true );
+                    closedRow.style.transition = '';
+                    closedRow.style.opacity    = '1';
+                    closedRow.style.background = '';
+
+                    var statusCell = closedRow.children[4];
+                    if ( statusCell ) {
+                        statusCell.innerHTML = '<span class="crm-badge crm-badge-complete">Closed</span>';
+                    }
+
+                    var actionCell = closedRow.children[6];
+                    if ( actionCell ) {
+                        var completeBtn = actionCell.querySelector('.crm-task-complete-btn');
+                        if ( completeBtn ) {
+                            completeBtn.remove();
+                        }
+                    }
+
+                    closedTbody.prepend( closedRow );
+                    crmAdjustClosedTaskCount( 1 );
+                }
+
+                if ( row ) {
+                    row.style.transition = 'opacity .3s';
+                    row.style.opacity    = '0';
+                    setTimeout(function() { row.remove(); }, 300);
+                }
+
+                crmApplyTaskFilters();
+            }, function() {
+                btn.disabled = false;
+            });
+        });
+
+        // ── Delete button ──
+        document.addEventListener('click', function(e) {
+            var btn = e.target.closest('.crm-task-delete-btn');
+            if ( ! btn ) return;
+
+            var taskId = btn.dataset.id;
+            crmConfirm('Delete this task? This cannot be undone.', function() {
+                crmPost( 'crm_delete_task', { task_id: taskId }, function(data) {
+                    crmToast(data.message || 'Task deleted.', 'success');
+                    var row = document.querySelector('tr[data-task-id="' + taskId + '"]');
+                    if ( row ) {
+                        if ( row.parentElement && row.parentElement.id === 'crm-closed-tbody' ) {
+                            crmAdjustClosedTaskCount( -1 );
+                        }
+                        row.style.transition = 'opacity .3s';
+                        row.style.opacity    = '0';
+                        setTimeout(function() { row.remove(); }, 300);
+                    }
+                    crmApplyTaskFilters();
+                });
+            });
+        });
+
+        // ── Save button ──
+        document.getElementById('crm-task-save-btn').addEventListener('click', function() {
+            var btn    = this;
+            var taskId = document.getElementById('crm-task-id').value;
+            var title  = document.getElementById('crm-task-title').value.trim();
+
+            if ( ! title ) {
+                crmToast('Task title is required.', 'error');
+                return;
+            }
+
+            var action      = taskId ? 'crm_update_task' : 'crm_create_task';
+            btn.disabled    = true;
+            btn.textContent = 'Saving...';
+
+            crmPost( action, {
+                task_id:       taskId,
+                title:         title,
+                assignee_id:   document.getElementById('crm-task-assignee').value      || '',
+                due_date:      document.getElementById('crm-task-due-date').value       || '',
+                reminder_days: document.getElementById('crm-task-reminder-days').value  || 0,
+                linked_type:   linkedTypeEl.value                                        || '',
+                linked_id:     linkedIdEl.value                                          || 0
+            }, function(data) {
+                crmToast(data.message || 'Saved.', 'success');
+                crmCloseModal('crm-task-modal');
+                btn.disabled    = false;
+                btn.textContent = 'Save Task';
+                setTimeout(function() { window.location.reload(); }, 800);
+            }, function() {
+                btn.disabled    = false;
+                btn.textContent = 'Save Task';
+            });
+        });
+
+        // ── Client-side search filter ──
+        var searchTimer = null;
+        document.getElementById('crm-task-search').addEventListener('input', function() {
+            clearTimeout(searchTimer);
+            searchTimer = setTimeout(function() {
+                crmApplyTaskFilters();
+            }, 250);
+        });
+
+        document.getElementById('crm-task-filter-assignee').addEventListener('change', function() {
+            crmApplyTaskFilters();
+        });
+
+        document.getElementById('crm-task-filter-linked-type').addEventListener('change', function() {
+            crmApplyTaskFilters();
+        });
+
+        crmApplyTaskFilters();
+
+    })();
+    </script>
+    <?php
+    return ob_get_clean();
+}
+
+//Last marker: Tab 5. Continue to Tab 6 in claude Ayano
+// =============================================================================
+// TAB 6 — SETTINGS
+// =============================================================================
+
+function crm_settings_tab( $business_id ) {
+    global $wpdb;
+
+    if ( ! current_user_can( 'manage_options' ) ) {
+        return '<div class="bntm-notice bntm-notice-error">You do not have permission to access settings.</div>';
+    }
+
+    $stages = $wpdb->get_results( $wpdb->prepare(
+        "SELECT * FROM {$wpdb->prefix}crm_pipeline_stages
+         WHERE business_id = %d AND pipeline_id = 1 AND status = 'active'
+         ORDER BY sort_order ASC",
+        $business_id
+    ) );
+
+    $custom_props = $wpdb->get_results( $wpdb->prepare(
+        "SELECT * FROM {$wpdb->prefix}crm_custom_properties
+         WHERE business_id = %d AND status = 'active'
+         ORDER BY object_type ASC, sort_order ASC",
+        $business_id
+    ) );
+
+    $lifecycle_statuses = [
+        'lead'     => 'Lead',
+        'prospect' => 'Prospect',
+        'customer' => 'Customer',
+        'churned'  => 'Churned',
+    ];
+
+    ob_start();
+    ?>
+
+    <div class="crm-settings-grid">
+
+        <!-- LEFT COLUMN -->
+        <div class="crm-settings-col">
+
+            <!-- Pipeline Stages -->
+            <div class="bntm-form-section">
+                <div style="display:flex;align-items:center;justify-content:space-between;
+                            margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid #f3f4f6;">
+                    <div>
+                        <h3 style="margin:0;padding:0;border:none;">Pipeline Stages</h3>
+                        <p style="font-size:13px;color:#6b7280;margin:4px 0 0;">
+                            Drag to reorder. Changes are saved automatically.
+                        </p>
+                    </div>
+                    <button class="bntm-btn-primary bntm-btn-small crm-settings-cta" id="crm-stage-add-btn">
+                        <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                  d="M12 4v16m8-8H4"/>
+                        </svg>
+                        Add Stage
+                    </button>
+                </div>
+
+                <ul class="crm-stage-list" id="crm-stage-sortable">
+                    <?php if ( empty( $stages ) ) : ?>
+                        <li id="crm-stage-empty-msg"
+                            style="text-align:center;padding:24px;color:#9ca3af;font-size:13px;list-style:none;">
+                            No stages yet. Add your first pipeline stage.
+                        </li>
+                    <?php else : ?>
+                        <?php foreach ( $stages as $stage ) : ?>
+                        <li class="crm-stage-item"
+                            data-id="<?php echo intval( $stage->id ); ?>"
+                            draggable="true">
+                            <span class="crm-stage-drag-handle">
+                                <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                          d="M4 8h16M4 16h16"/>
+                                </svg>
+                            </span>
+                            <span class="crm-stage-color-dot"
+                                  style="background:<?php echo esc_attr( $stage->color ); ?>;"></span>
+                            <span class="crm-stage-name">
+                                <?php echo esc_html( $stage->name ); ?>
+                            </span>
+                            <button class="bntm-btn-secondary bntm-btn-small crm-stage-edit-btn"
+                                    data-id="<?php echo intval( $stage->id ); ?>"
+                                    data-name="<?php echo esc_attr( $stage->name ); ?>"
+                                    data-color="<?php echo esc_attr( $stage->color ); ?>">
+                                Edit
+                            </button>
+                            <button class="bntm-btn-danger bntm-btn-small crm-stage-delete-btn"
+                                    data-id="<?php echo intval( $stage->id ); ?>"
+                                    data-name="<?php echo esc_attr( $stage->name ); ?>">
+                                Delete
+                            </button>
+                        </li>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </ul>
+            </div>
+
+            <!-- Lifecycle Status Labels -->
+            <div class="bntm-form-section">
+                <h3>Lifecycle Status Labels</h3>
+                <p style="font-size:13px;color:#6b7280;margin:-8px 0 16px;">
+                    These are the default contact lifecycle stages used across the CRM.
+                </p>
+                <div class="bntm-table-wrapper">
+                    <table class="bntm-table">
+                        <thead>
+                            <tr>
+                                <th>Key</th>
+                                <th>Label</th>
+                                <th>Badge Preview</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ( $lifecycle_statuses as $key => $label ) : ?>
+                            <tr>
+                                <td>
+                                    <code style="background:#f3f4f6;padding:2px 7px;
+                                                 border-radius:4px;font-size:12px;">
+                                        <?php echo esc_html( $key ); ?>
+                                    </code>
+                                </td>
+                                <td style="font-weight:500;"><?php echo esc_html( $label ); ?></td>
+                                <td>
+                                    <span class="crm-badge crm-badge-<?php echo esc_attr( $key ); ?>">
+                                        <?php echo esc_html( $label ); ?>
+                                    </span>
+                                </td>
+                            </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+                <p style="font-size:12px;color:#9ca3af;margin-top:12px;">
+                    Lifecycle status labels are fixed in v1. Custom label editing will be available in a future update.
+                </p>
+            </div>
+
+        </div>
+
+        <!-- RIGHT COLUMN -->
+        <div class="crm-settings-col">
+
+            <!-- Custom Properties -->
+            <div class="bntm-form-section">
+                <div style="display:flex;align-items:center;justify-content:space-between;
+                            margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid #f3f4f6;">
+                    <div>
+                        <h3 style="margin:0;padding:0;border:none;">Custom Properties</h3>
+                        <p style="font-size:13px;color:#6b7280;margin:4px 0 0;">
+                            Add extra fields to contacts, companies, or deals.
+                        </p>
+                    </div>
+                    <button class="bntm-btn-primary bntm-btn-small crm-settings-cta" id="crm-prop-add-btn">
+                        <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                  d="M12 4v16m8-8H4"/>
+                        </svg>
+                        Add Property
+                    </button>
+                </div>
+
+                <!-- Props grouped by object type -->
+                <?php
+                $grouped = [ 'contact' => [], 'company' => [], 'deal' => [] ];
+                foreach ( $custom_props as $prop ) {
+                    if ( isset( $grouped[ $prop->object_type ] ) ) {
+                        $grouped[ $prop->object_type ][] = $prop;
+                    }
+                }
+                $group_labels = [
+                    'contact' => 'Contact Properties',
+                    'company' => 'Company Properties',
+                    'deal'    => 'Deal Properties',
+                ];
+                $group_colors = [
+                    'contact' => '#eff6ff',
+                    'company' => '#f0fdf4',
+                    'deal'    => '#fdf4ff',
+                ];
+                $group_text = [
+                    'contact' => '#2563eb',
+                    'company' => '#16a34a',
+                    'deal'    => '#9333ea',
+                ];
+                ?>
+
+                <?php foreach ( $grouped as $type => $props ) : ?>
+                <div style="margin-bottom:20px;" id="crm-props-group-<?php echo esc_attr( $type ); ?>">
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+                        <span style="display:inline-block;background:<?php echo $group_colors[$type]; ?>;
+                                     color:<?php echo $group_text[$type]; ?>;font-size:11px;
+                                     font-weight:700;text-transform:uppercase;letter-spacing:.5px;
+                                     padding:3px 10px;border-radius:20px;">
+                            <?php echo esc_html( $group_labels[$type] ); ?>
+                        </span>
+                        <span style="font-size:12px;color:#9ca3af;">
+                            <?php echo count($props); ?> propert<?php echo count($props) === 1 ? 'y' : 'ies'; ?>
+                        </span>
+                    </div>
+
+                    <?php if ( empty( $props ) ) : ?>
+                        <p style="font-size:13px;color:#9ca3af;padding:8px 0;">
+                            No custom properties for <?php echo esc_html( $type ); ?>s yet.
+                        </p>
+                    <?php else : ?>
+                        <div class="bntm-table-wrapper">
+                            <table class="bntm-table">
+                                <thead>
+                                    <tr>
+                                        <th>Label</th>
+                                        <th>Field Name</th>
+                                        <th>Type</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="crm-props-tbody-<?php echo esc_attr( $type ); ?>">
+                                    <?php foreach ( $props as $prop ) : ?>
+                                    <tr data-prop-id="<?php echo intval( $prop->id ); ?>">
+                                        <td style="font-weight:500;">
+                                            <?php echo esc_html( $prop->field_label ); ?>
+                                        </td>
+                                        <td>
+                                            <code style="background:#f3f4f6;padding:2px 7px;
+                                                         border-radius:4px;font-size:12px;">
+                                                <?php echo esc_html( $prop->field_name ); ?>
+                                            </code>
+                                        </td>
+                                        <td>
+                                            <span class="crm-prop-type-badge">
+                                                <?php echo esc_html( $prop->field_type ); ?>
+                                            </span>
+                                        </td>
+                                        <td style="white-space:nowrap;">
+                                            <button class="bntm-btn-secondary bntm-btn-small
+                                                           crm-prop-edit-btn"
+                                                    data-id="<?php echo intval( $prop->id ); ?>"
+                                                    data-label="<?php echo esc_attr( $prop->field_label ); ?>"
+                                                    data-name="<?php echo esc_attr( $prop->field_name ); ?>"
+                                                    data-type="<?php echo esc_attr( $prop->field_type ); ?>"
+                                                    data-object="<?php echo esc_attr( $prop->object_type ); ?>"
+                                                    data-options="<?php echo esc_attr( $prop->field_options ?: '' ); ?>">
+                                                Edit
+                                            </button>
+                                            <button class="bntm-btn-danger bntm-btn-small
+                                                           crm-prop-delete-btn"
+                                                    data-id="<?php echo intval( $prop->id ); ?>"
+                                                    data-label="<?php echo esc_attr( $prop->field_label ); ?>">
+                                                Delete
+                                            </button>
+                                        </td>
+                                    </tr>
+                                    <?php endforeach; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                    <?php endif; ?>
+                </div>
+                <?php endforeach; ?>
+
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Add / Edit Stage Modal -->
+    <div class="crm-modal-overlay" id="crm-stage-modal">
+        <div class="crm-modal" style="max-width:420px;">
+            <div class="crm-modal-header">
+                <h3 data-default="Add Stage">Add Stage</h3>
+                <button class="crm-modal-close" onclick="crmCloseModal('crm-stage-modal')">
+                    <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                              d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="crm-modal-body">
+                <input type="hidden" id="crm-stage-id" value="">
+                <div class="crm-field-group">
+                    <label>Stage Name <span style="color:#ef4444;">*</span></label>
+                    <input type="text" id="crm-stage-name" placeholder="e.g. Qualified">
+                </div>
+                <div class="crm-field-group">
+                    <label>Color</label>
+                    <div style="display:flex;align-items:center;gap:12px;">
+                        <input type="color" id="crm-stage-color" value="#6366f1"
+                               style="width:48px;height:36px;padding:2px;border:1px solid #d1d5db;
+                                      border-radius:8px;cursor:pointer;">
+                        <div class="crm-stage-color-swatches">
+                            <?php
+                            $swatches = [
+                                '#6366f1','#8b5cf6','#ec4899','#ef4444',
+                                '#f59e0b','#10b981','#06b6d4','#3b82f6',
+                                '#64748b','#1f2937',
+                            ];
+                            foreach ( $swatches as $sw ) :
+                            ?>
+                                <button class="crm-color-swatch"
+                                        data-color="<?php echo esc_attr( $sw ); ?>"
+                                        style="background:<?php echo esc_attr( $sw ); ?>;"
+                                        title="<?php echo esc_attr( $sw ); ?>">
+                                </button>
+                            <?php endforeach; ?>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="crm-modal-footer">
+                <button class="bntm-btn-secondary" onclick="crmCloseModal('crm-stage-modal')">
+                    Cancel
+                </button>
+                <button class="bntm-btn-primary" id="crm-stage-save-btn">Save Stage</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add / Edit Custom Property Modal -->
+    <div class="crm-modal-overlay" id="crm-prop-modal">
+        <div class="crm-modal" style="max-width:480px;">
+            <div class="crm-modal-header">
+                <h3 data-default="Add Custom Property">Add Custom Property</h3>
+                <button class="crm-modal-close" onclick="crmCloseModal('crm-prop-modal')">
+                    <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                              d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="crm-modal-body">
+                <input type="hidden" id="crm-prop-id" value="">
+
+                <div class="crm-field-row">
+                    <div class="crm-field-group">
+                        <label>Field Label <span style="color:#ef4444;">*</span></label>
+                        <input type="text" id="crm-prop-label"
+                               placeholder="e.g. LinkedIn URL">
+                    </div>
+                    <div class="crm-field-group">
+                        <label>
+                            Field Name
+                            <span style="font-weight:400;color:#9ca3af;">(auto)</span>
+                        </label>
+                        <input type="text" id="crm-prop-name"
+                               placeholder="e.g. linkedin_url"
+                               style="font-family:monospace;font-size:13px;">
+                    </div>
+                </div>
+
+                <div class="crm-field-row">
+                    <div class="crm-field-group">
+                        <label>Object Type <span style="color:#ef4444;">*</span></label>
+                        <select id="crm-prop-object">
+                            <option value="contact">Contact</option>
+                            <option value="company">Company</option>
+                            <option value="deal">Deal</option>
+                        </select>
+                    </div>
+                    <div class="crm-field-group">
+                        <label>Field Type <span style="color:#ef4444;">*</span></label>
+                        <select id="crm-prop-type">
+                            <option value="text">Text</option>
+                            <option value="number">Number</option>
+                            <option value="date">Date</option>
+                            <option value="textarea">Textarea</option>
+                            <option value="select">Select (dropdown)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="crm-field-group" id="crm-prop-options-group" style="display:none;">
+                    <label>
+                        Dropdown Options
+                        <span style="font-weight:400;color:#9ca3af;">(one per line)</span>
+                    </label>
+                    <textarea id="crm-prop-options" rows="4"
+                              placeholder="Option 1&#10;Option 2&#10;Option 3"></textarea>
+                </div>
+
+                <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;
+                            padding:12px;margin-top:4px;">
+                    <p style="font-size:12px;color:#6b7280;margin:0;">
+                        <svg width="14" height="14" fill="none" stroke="currentColor"
+                             viewBox="0 0 24 24" style="display:inline;vertical-align:middle;margin-right:4px;">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                  d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                        </svg>
+                        Custom property values are stored as JSON on each record and displayed
+                        in the create/edit form for the selected object type.
+                    </p>
+                </div>
+            </div>
+            <div class="crm-modal-footer">
+                <button class="bntm-btn-secondary" onclick="crmCloseModal('crm-prop-modal')">
+                    Cancel
+                </button>
+                <button class="bntm-btn-primary" id="crm-prop-save-btn">Save Property</button>
+            </div>
+        </div>
+    </div>
+
+    <style>
+    .crm-settings-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 20px;
+        align-items: start;
+    }
+    @media (max-width: 900px) {
+        .crm-settings-grid { grid-template-columns: 1fr; }
+    }
+    .crm-settings-col { display: flex; flex-direction: column; gap: 20px; }
+    .crm-stage-color-swatches {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+    }
+    .crm-color-swatch {
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        border: 2px solid transparent;
+        cursor: pointer;
+        transition: transform .15s, border-color .15s;
+        padding: 0;
+    }
+    .crm-color-swatch:hover        { transform: scale(1.2); }
+    .crm-color-swatch.selected     { border-color: #111827; transform: scale(1.15); }
+    </style>
+
+    <script>
+    (function() {
+
+        // ====================================================================
+        // PIPELINE STAGES
+        // ====================================================================
+
+        var stageList    = document.getElementById('crm-stage-sortable');
+        var draggedStage = null;
+
+        // ── Stage drag-and-drop reorder ──
+        stageList.addEventListener('dragstart', function(e) {
+            var li = e.target.closest('.crm-stage-item');
+            if ( ! li ) return;
+            draggedStage = li;
+            li.style.opacity = '.45';
+            e.dataTransfer.effectAllowed = 'move';
+        });
+
+        stageList.addEventListener('dragend', function(e) {
+            var li = e.target.closest('.crm-stage-item');
+            if ( li ) li.style.opacity = '1';
+            document.querySelectorAll('.crm-stage-item').forEach(function(el) {
+                el.classList.remove('drag-over');
+            });
+            draggedStage = null;
+            saveStageOrder();
+        });
+
+        stageList.addEventListener('dragover', function(e) {
+            e.preventDefault();
+            var li = e.target.closest('.crm-stage-item');
+            if ( ! li || li === draggedStage ) return;
+            document.querySelectorAll('.crm-stage-item').forEach(function(el) {
+                el.classList.remove('drag-over');
+            });
+            li.classList.add('drag-over');
+            var rect     = li.getBoundingClientRect();
+            var midpoint = rect.top + rect.height / 2;
+            if ( e.clientY < midpoint ) {
+                stageList.insertBefore( draggedStage, li );
+            } else {
+                stageList.insertBefore( draggedStage, li.nextSibling );
+            }
+        });
+
+        stageList.addEventListener('dragleave', function(e) {
+            var li = e.target.closest('.crm-stage-item');
+            if ( li ) li.classList.remove('drag-over');
+        });
+
+        function saveStageOrder() {
+            var ids = [];
+            stageList.querySelectorAll('.crm-stage-item[data-id]').forEach(function(li) {
+                ids.push( li.dataset.id );
+            });
+            if ( ids.length === 0 ) return;
+            crmPost( 'crm_reorder_stages', { stage_ids: ids.join(',') }, function() {
+                crmToast('Stage order saved.', 'success');
+            });
+        }
+
+        // ── Add stage button ──
+        document.getElementById('crm-stage-add-btn').addEventListener('click', function() {
+            document.getElementById('crm-stage-id').value   = '';
+            document.getElementById('crm-stage-name').value = '';
+            document.getElementById('crm-stage-color').value = '#6366f1';
+            document.querySelectorAll('.crm-color-swatch').forEach(function(s) {
+                s.classList.remove('selected');
+            });
+            document.querySelector('#crm-stage-modal .crm-modal-header h3').textContent = 'Add Stage';
+            crmOpenModal('crm-stage-modal');
+        });
+
+        // ── Edit stage buttons ──
+        document.addEventListener('click', function(e) {
+            var btn = e.target.closest('.crm-stage-edit-btn');
+            if ( ! btn ) return;
+            document.getElementById('crm-stage-id').value    = btn.dataset.id;
+            document.getElementById('crm-stage-name').value  = btn.dataset.name;
+            document.getElementById('crm-stage-color').value = btn.dataset.color;
+            document.querySelectorAll('.crm-color-swatch').forEach(function(s) {
+                s.classList.toggle('selected', s.dataset.color === btn.dataset.color);
+            });
+            document.querySelector('#crm-stage-modal .crm-modal-header h3').textContent = 'Edit Stage';
+            crmOpenModal('crm-stage-modal');
+        });
+
+        // ── Delete stage buttons ──
+        document.addEventListener('click', function(e) {
+            var btn = e.target.closest('.crm-stage-delete-btn');
+            if ( ! btn ) return;
+            crmConfirm(
+                'Delete stage "' + btn.dataset.name + '"? Deals in this stage will need reassignment.',
+                function() {
+                    crmPost( 'crm_delete_stage', { stage_id: btn.dataset.id }, function(data) {
+                        crmToast(data.message || 'Stage deleted.', 'success');
+                        var li = stageList.querySelector('.crm-stage-item[data-id="' + btn.dataset.id + '"]');
+                        if ( li ) {
+                            li.style.transition = 'opacity .3s';
+                            li.style.opacity    = '0';
+                            setTimeout(function() { li.remove(); }, 300);
+                        }
+                    });
+                }
+            );
+        });
+
+        // ── Color swatches ──
+        document.querySelectorAll('.crm-color-swatch').forEach(function(swatch) {
+            swatch.addEventListener('click', function() {
+                document.querySelectorAll('.crm-color-swatch').forEach(function(s) {
+                    s.classList.remove('selected');
+                });
+                this.classList.add('selected');
+                document.getElementById('crm-stage-color').value = this.dataset.color;
+            });
+        });
+
+        // ── Save stage ──
+        document.getElementById('crm-stage-save-btn').addEventListener('click', function() {
+            var btn     = this;
+            var stageId = document.getElementById('crm-stage-id').value;
+            var name    = document.getElementById('crm-stage-name').value.trim();
+            var color   = document.getElementById('crm-stage-color').value;
+
+            if ( ! name ) { crmToast('Stage name is required.', 'error'); return; }
+
+            var action      = stageId ? 'crm_save_stage' : 'crm_save_stage';
+            btn.disabled    = true;
+            btn.textContent = 'Saving...';
+
+            crmPost( action, {
+                stage_id: stageId,
+                name:     name,
+                color:    color
+            }, function(data) {
+                crmToast(data.message || 'Stage saved.', 'success');
+                crmCloseModal('crm-stage-modal');
+                btn.disabled    = false;
+                btn.textContent = 'Save Stage';
+
+                if ( stageId ) {
+                    var li     = stageList.querySelector('.crm-stage-item[data-id="' + stageId + '"]');
+                    var dotEl  = li  ? li.querySelector('.crm-stage-color-dot') : null;
+                    var nameEl = li  ? li.querySelector('.crm-stage-name')      : null;
+                    var editBtn = li ? li.querySelector('.crm-stage-edit-btn')  : null;
+                    if ( dotEl )  dotEl.style.background = color;
+                    if ( nameEl ) nameEl.textContent     = name;
+                    if ( editBtn ) {
+                        editBtn.dataset.name  = name;
+                        editBtn.dataset.color = color;
+                    }
+                } else {
+                    var newId   = data.stage_id || 0;
+                    var emptyMsg = document.getElementById('crm-stage-empty-msg');
+                    if ( emptyMsg ) emptyMsg.remove();
+
+                    var li = document.createElement('li');
+                    li.className   = 'crm-stage-item';
+                    li.dataset.id  = newId;
+                    li.draggable   = true;
+                    li.innerHTML   =
+                        '<span class="crm-stage-drag-handle">'
+                        + '<svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">'
+                        + '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8h16M4 16h16"/>'
+                        + '</svg></span>'
+                        + '<span class="crm-stage-color-dot" style="background:' + crmEsc(color) + ';"></span>'
+                        + '<span class="crm-stage-name">' + crmEsc(name) + '</span>'
+                        + '<button class="bntm-btn-secondary bntm-btn-small crm-stage-edit-btn" '
+                        + 'data-id="' + newId + '" data-name="' + crmEsc(name) + '" '
+                        + 'data-color="' + crmEsc(color) + '">Edit</button>'
+                        + '<button class="bntm-btn-danger bntm-btn-small crm-stage-delete-btn" '
+                        + 'data-id="' + newId + '" data-name="' + crmEsc(name) + '">Delete</button>';
+                    stageList.appendChild(li);
+                }
+            }, function() {
+                btn.disabled    = false;
+                btn.textContent = 'Save Stage';
+            });
+        });
+
+        // ====================================================================
+        // CUSTOM PROPERTIES
+        // ====================================================================
+
+        var propTypeEl    = document.getElementById('crm-prop-type');
+        var propOptGroup  = document.getElementById('crm-prop-options-group');
+        var propLabelEl   = document.getElementById('crm-prop-label');
+        var propNameEl    = document.getElementById('crm-prop-name');
+
+        // ── Show/hide options textarea based on type ──
+        propTypeEl.addEventListener('change', function() {
+            propOptGroup.style.display = this.value === 'select' ? 'block' : 'none';
+        });
+
+        // ── Auto-generate field name from label ──
+        propLabelEl.addEventListener('input', function() {
+            if ( document.getElementById('crm-prop-id').value ) return;
+            propNameEl.value = this.value
+                .toLowerCase()
+                .trim()
+                .replace(/[^a-z0-9\s_]/g, '')
+                .replace(/\s+/g, '_')
+                .substring(0, 60);
+        });
+
+        // ── Add property button ──
+        document.getElementById('crm-prop-add-btn').addEventListener('click', function() {
+            document.getElementById('crm-prop-id').value      = '';
+            propLabelEl.value                                  = '';
+            propNameEl.value                                   = '';
+            document.getElementById('crm-prop-object').value  = 'contact';
+            propTypeEl.value                                   = 'text';
+            document.getElementById('crm-prop-options').value = '';
+            propOptGroup.style.display                         = 'none';
+            document.querySelector('#crm-prop-modal .crm-modal-header h3').textContent = 'Add Custom Property';
+            crmOpenModal('crm-prop-modal');
+        });
+
+        // ── Edit property buttons ──
+        document.addEventListener('click', function(e) {
+            var btn = e.target.closest('.crm-prop-edit-btn');
+            if ( ! btn ) return;
+
+            document.getElementById('crm-prop-id').value     = btn.dataset.id;
+            propLabelEl.value                                  = btn.dataset.label  || '';
+            propNameEl.value                                   = btn.dataset.name   || '';
+            document.getElementById('crm-prop-object').value  = btn.dataset.object || 'contact';
+            propTypeEl.value                                   = btn.dataset.type   || 'text';
+            propOptGroup.style.display                         = btn.dataset.type === 'select' ? 'block' : 'none';
+
+            var rawOpts = btn.dataset.options || '';
+            var opts    = [];
+            try { opts = JSON.parse(rawOpts) || []; } catch(e) {}
+            document.getElementById('crm-prop-options').value = opts.join('\n');
+
+            document.querySelector('#crm-prop-modal .crm-modal-header h3').textContent = 'Edit Custom Property';
+            crmOpenModal('crm-prop-modal');
+        });
+
+        // ── Delete property buttons ──
+        document.addEventListener('click', function(e) {
+            var btn = e.target.closest('.crm-prop-delete-btn');
+            if ( ! btn ) return;
+            crmConfirm(
+                'Delete property "' + btn.dataset.label + '"? '
+                + 'Existing values stored on records will no longer display.',
+                function() {
+                    crmPost( 'crm_delete_custom_property', { prop_id: btn.dataset.id }, function(data) {
+                        crmToast(data.message || 'Property deleted.', 'success');
+                        var row = document.querySelector('tr[data-prop-id="' + btn.dataset.id + '"]');
+                        if ( row ) {
+                            row.style.transition = 'opacity .3s';
+                            row.style.opacity    = '0';
+                            setTimeout(function() { row.remove(); }, 300);
+                        }
+                    });
+                }
+            );
+        });
+
+        // ── Save property ──
+        document.getElementById('crm-prop-save-btn').addEventListener('click', function() {
+            var btn    = this;
+            var propId = document.getElementById('crm-prop-id').value;
+            var label  = propLabelEl.value.trim();
+            var name   = propNameEl.value.trim();
+            var object = document.getElementById('crm-prop-object').value;
+            var type   = propTypeEl.value;
+
+            if ( ! label )  { crmToast('Field label is required.',  'error'); return; }
+            if ( ! name )   { crmToast('Field name is required.',   'error'); return; }
+            if ( ! /^[a-z0-9_]+$/.test(name) ) {
+                crmToast('Field name must be lowercase letters, numbers, or underscores only.', 'error');
+                return;
+            }
+
+            var options = '';
+            if ( type === 'select' ) {
+                var rawLines = document.getElementById('crm-prop-options').value
+                    .split('\n')
+                    .map(function(l){ return l.trim(); })
+                    .filter(function(l){ return l.length > 0; });
+                if ( rawLines.length === 0 ) {
+                    crmToast('Please add at least one dropdown option.', 'error');
+                    return;
+                }
+                options = JSON.stringify(rawLines);
+            }
+
+            btn.disabled    = true;
+            btn.textContent = 'Saving...';
+
+            crmPost( 'crm_save_custom_property', {
+                prop_id:      propId,
+                field_label:  label,
+                field_name:   name,
+                object_type:  object,
+                field_type:   type,
+                field_options: options
+            }, function(data) {
+                crmToast(data.message || 'Property saved.', 'success');
+                crmCloseModal('crm-prop-modal');
+                btn.disabled    = false;
+                btn.textContent = 'Save Property';
+                setTimeout(function() { window.location.reload(); }, 900);
+            }, function() {
+                btn.disabled    = false;
+                btn.textContent = 'Save Property';
+            });
+        });
+
+    })();
+    </script>
+    <?php
+    return ob_get_clean();
+}
+
+// =============================================================================
+// AJAX HANDLERS — DASHBOARD
+// =============================================================================
+
+function bntm_ajax_crm_get_dashboard_stats() {
+    check_ajax_referer( 'crm_nonce', 'nonce' );
+
+    if ( ! is_user_logged_in() ) {
+        wp_send_json_error( [ 'message' => 'Unauthorized.' ] );
+    }
+
+    global $wpdb;
+    $business_id = crm_get_current_business_scope_id();
+    $today       = current_time( 'Y-m-d' );
+
+    $total_contacts = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(*) FROM {$wpdb->prefix}crm_contacts
+         WHERE business_id = %d AND status = 'active'",
+        $business_id
+    ) );
+
+    $total_companies = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(*) FROM {$wpdb->prefix}crm_companies
+         WHERE business_id = %d AND status = 'active'",
+        $business_id
+    ) );
+
+    $total_open_deals = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(*) FROM {$wpdb->prefix}crm_deals
+         WHERE business_id = %d AND status = 'open'",
+        $business_id
+    ) );
+
+    $pipeline_value = (float) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COALESCE(SUM(amount), 0) FROM {$wpdb->prefix}crm_deals
+         WHERE business_id = %d AND status = 'open'",
+        $business_id
+    ) );
+
+    $overdue_tasks = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(*) FROM {$wpdb->prefix}crm_tasks
+         WHERE business_id = %d AND status = 'pending' AND due_date < %s",
+        $business_id, $today
+    ) );
+
+    $this_month_contacts = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(*) FROM {$wpdb->prefix}crm_contacts
+         WHERE business_id = %d AND status = 'active'
+           AND MONTH(created_at) = MONTH(%s)
+           AND YEAR(created_at)  = YEAR(%s)",
+        $business_id, $today, $today
+    ) );
+
+    $stage_breakdown = $wpdb->get_results( $wpdb->prepare(
+        "SELECT ps.id, ps.name, ps.color,
+                COUNT(d.id)                   AS deal_count,
+                COALESCE(SUM(d.amount), 0)    AS stage_value
+         FROM {$wpdb->prefix}crm_pipeline_stages ps
+         LEFT JOIN {$wpdb->prefix}crm_deals d
+           ON d.stage_id    = ps.id
+           AND d.business_id = %d
+           AND d.status      = 'open'
+         WHERE ps.business_id = %d
+           AND ps.pipeline_id = 1
+           AND ps.status      = 'active'
+         GROUP BY ps.id, ps.name, ps.color, ps.sort_order
+         ORDER BY ps.sort_order ASC",
+        $business_id, $business_id
+    ) );
+
+    wp_send_json_success( [
+        'total_contacts'      => $total_contacts,
+        'total_companies'     => $total_companies,
+        'total_open_deals'    => $total_open_deals,
+        'pipeline_value'      => $pipeline_value,
+        'overdue_tasks'       => $overdue_tasks,
+        'this_month_contacts' => $this_month_contacts,
+        'stage_breakdown'     => $stage_breakdown,
+    ] );
+}
+
+function bntm_ajax_crm_get_recent_activity() {
+    check_ajax_referer( 'crm_nonce', 'nonce' );
+
+    if ( ! is_user_logged_in() ) {
+        wp_send_json_error( [ 'message' => 'Unauthorized.' ] );
+    }
+
+    global $wpdb;
+    $business_id = crm_get_current_business_scope_id();
+    $limit       = min( intval( $_POST['limit'] ?? 10 ), 50 );
+
+    $activities = $wpdb->get_results( $wpdb->prepare(
+        "SELECT a.*, u.display_name AS author_name
+         FROM {$wpdb->prefix}crm_activities a
+         LEFT JOIN {$wpdb->users} u ON u.ID = a.author_id
+         WHERE a.business_id = %d AND a.status = 'active'
+         ORDER BY a.created_at DESC
+         LIMIT %d",
+        $business_id, $limit
+    ) );
+
+    wp_send_json_success( [ 'activities' => $activities ] );
+}
+
+function crm_get_detail_record( $object_type, $record_id, $business_id ) {
+    global $wpdb;
+
+    $record_id = intval( $record_id );
+    if ( $record_id <= 0 ) {
+        return null;
+    }
+
+    switch ( $object_type ) {
+        case 'contact':
+            $record = $wpdb->get_row( $wpdb->prepare(
+                "SELECT c.*,
+                        u.display_name AS owner_name,
+                        co.name AS company_name
+                 FROM {$wpdb->prefix}crm_contacts c
+                 LEFT JOIN {$wpdb->users} u ON u.ID = c.owner_id
+                 LEFT JOIN {$wpdb->prefix}crm_companies co ON co.id = c.company_id
+                 WHERE c.id = %d AND c.business_id = %d AND c.status = 'active'",
+                $record_id, $business_id
+            ), ARRAY_A );
+
+            if ( ! $record ) {
+                return null;
+            }
+
+            $record['display_name'] = trim( $record['first_name'] . ' ' . $record['last_name'] );
+            $record['related_deals'] = $wpdb->get_results( $wpdb->prepare(
+                "SELECT d.id, d.name, d.amount, d.status, ps.name AS stage_name
+                 FROM {$wpdb->prefix}crm_deals d
+                 LEFT JOIN {$wpdb->prefix}crm_pipeline_stages ps ON ps.id = d.stage_id
+                 WHERE d.contact_id = %d AND d.business_id = %d AND d.status != 'deleted'
+                 ORDER BY d.created_at DESC",
+                $record_id, $business_id
+            ), ARRAY_A );
+            return $record;
+
+        case 'company':
+            $record = $wpdb->get_row( $wpdb->prepare(
+                "SELECT co.*,
+                        u.display_name AS owner_name
+                 FROM {$wpdb->prefix}crm_companies co
+                 LEFT JOIN {$wpdb->users} u ON u.ID = co.owner_id
+                 WHERE co.id = %d AND co.business_id = %d AND co.status = 'active'",
+                $record_id, $business_id
+            ), ARRAY_A );
+
+            if ( ! $record ) {
+                return null;
+            }
+
+            $record['display_name'] = $record['name'];
+            $record['related_contacts'] = $wpdb->get_results( $wpdb->prepare(
+                "SELECT id, first_name, last_name, email, lifecycle_status
+                 FROM {$wpdb->prefix}crm_contacts
+                 WHERE company_id = %d AND business_id = %d AND status = 'active'
+                 ORDER BY first_name ASC, last_name ASC",
+                $record_id, $business_id
+            ), ARRAY_A );
+            $record['related_deals'] = $wpdb->get_results( $wpdb->prepare(
+                "SELECT d.id, d.name, d.amount, d.status, ps.name AS stage_name
+                 FROM {$wpdb->prefix}crm_deals d
+                 LEFT JOIN {$wpdb->prefix}crm_pipeline_stages ps ON ps.id = d.stage_id
+                 WHERE d.company_id = %d AND d.business_id = %d AND d.status != 'deleted'
+                 ORDER BY d.created_at DESC",
+                $record_id, $business_id
+            ), ARRAY_A );
+            return $record;
+
+        case 'deal':
+            $record = $wpdb->get_row( $wpdb->prepare(
+                "SELECT d.*,
+                        ps.name AS stage_name,
+                        ps.color AS stage_color,
+                        u.display_name AS owner_name,
+                        CONCAT(c.first_name, ' ', c.last_name) AS contact_name,
+                        co.name AS company_name
+                 FROM {$wpdb->prefix}crm_deals d
+                 LEFT JOIN {$wpdb->prefix}crm_pipeline_stages ps ON ps.id = d.stage_id
+                 LEFT JOIN {$wpdb->users} u ON u.ID = d.owner_id
+                 LEFT JOIN {$wpdb->prefix}crm_contacts c ON c.id = d.contact_id
+                 LEFT JOIN {$wpdb->prefix}crm_companies co ON co.id = d.company_id
+                 WHERE d.id = %d AND d.business_id = %d AND d.status != 'deleted'",
+                $record_id, $business_id
+            ), ARRAY_A );
+
+            if ( ! $record ) {
+                return null;
+            }
+
+            $record['display_name'] = $record['name'];
+            return $record;
+    }
+
+    return null;
+}
+
+function crm_get_detail_url( $tab, $view, $record_id = 0 ) {
+    $args = [
+        'tab'  => $tab,
+        'view' => $view,
+    ];
+
+    if ( intval( $record_id ) > 0 ) {
+        $args['id'] = intval( $record_id );
+    }
+
+    return esc_url( add_query_arg( $args, remove_query_arg( [ 'view', 'id' ] ) ) );
+}
+
+function crm_get_tab_url( $tab ) {
+    return esc_url( add_query_arg(
+        [ 'tab' => $tab ],
+        remove_query_arg( [ 'view', 'id' ] )
+    ) );
+}
+
+function bntm_ajax_crm_get_record_detail() {
+    check_ajax_referer( 'crm_nonce', 'nonce' );
+
+    if ( ! is_user_logged_in() ) {
+        wp_send_json_error( [ 'message' => 'Unauthorized.' ] );
+    }
+
+    $object_type = sanitize_text_field( $_POST['object_type'] ?? '' );
+    $record_id   = intval( $_POST['record_id'] ?? 0 );
+    $business_id = crm_get_current_business_scope_id();
+
+    if ( ! in_array( $object_type, [ 'contact', 'company', 'deal' ], true ) ) {
+        wp_send_json_error( [ 'message' => 'Invalid record type.' ] );
+    }
+
+    $detail = crm_get_detail_record( $object_type, $record_id, $business_id );
+    if ( ! $detail ) {
+        wp_send_json_error( [ 'message' => 'Record not found.' ] );
+    }
+
+    wp_send_json_success( [ 'detail' => $detail ] );
+}
+
+function bntm_ajax_crm_get_record_activity() {
+    check_ajax_referer( 'crm_nonce', 'nonce' );
+
+    if ( ! is_user_logged_in() ) {
+        wp_send_json_error( [ 'message' => 'Unauthorized.' ] );
+    }
+
+    global $wpdb;
+    $object_type = sanitize_text_field( $_POST['object_type'] ?? '' );
+    $record_id   = intval( $_POST['record_id'] ?? 0 );
+    $business_id = crm_get_current_business_scope_id();
+
+    if ( ! in_array( $object_type, [ 'contact', 'company', 'deal' ], true ) || $record_id <= 0 ) {
+        wp_send_json_error( [ 'message' => 'Invalid record request.' ] );
+    }
+
+    $exists = crm_get_detail_record( $object_type, $record_id, $business_id );
+    if ( ! $exists ) {
+        wp_send_json_error( [ 'message' => 'Record not found.' ] );
+    }
+
+    $activities = $wpdb->get_results( $wpdb->prepare(
+        "SELECT a.*, u.display_name AS author_name
+         FROM {$wpdb->prefix}crm_activities a
+         LEFT JOIN {$wpdb->users} u ON u.ID = a.author_id
+         WHERE a.business_id = %d
+           AND a.linked_type = %s
+           AND a.linked_id = %d
+           AND a.status = 'active'
+         ORDER BY a.created_at DESC",
+        $business_id, $object_type, $record_id
+    ) );
+
+    wp_send_json_success( [ 'activities' => $activities ] );
+}
+
+function bntm_ajax_crm_get_notes() {
+    check_ajax_referer( 'crm_nonce', 'nonce' );
+
+    if ( ! is_user_logged_in() ) {
+        wp_send_json_error( [ 'message' => 'Unauthorized.' ] );
+    }
+
+    global $wpdb;
+    $object_type = sanitize_text_field( $_POST['object_type'] ?? '' );
+    $record_id   = intval( $_POST['record_id'] ?? 0 );
+    $business_id = crm_get_current_business_scope_id();
+
+    if ( ! in_array( $object_type, [ 'contact', 'company', 'deal' ], true ) || $record_id <= 0 ) {
+        wp_send_json_error( [ 'message' => 'Invalid record request.' ] );
+    }
+
+    $exists = crm_get_detail_record( $object_type, $record_id, $business_id );
+    if ( ! $exists ) {
+        wp_send_json_error( [ 'message' => 'Record not found.' ] );
+    }
+
+    $notes = $wpdb->get_results( $wpdb->prepare(
+        "SELECT n.*, u.display_name AS author_name
+         FROM {$wpdb->prefix}crm_notes n
+         LEFT JOIN {$wpdb->users} u ON u.ID = n.author_id
+         WHERE n.business_id = %d
+           AND n.linked_type = %s
+           AND n.linked_id = %d
+           AND n.status = 'active'
+         ORDER BY n.updated_at DESC, n.created_at DESC",
+        $business_id, $object_type, $record_id
+    ) );
+
+    wp_send_json_success( [ 'notes' => $notes ] );
+}
+
+function bntm_ajax_crm_save_note() {
+    check_ajax_referer( 'crm_nonce', 'nonce' );
+
+    if ( ! is_user_logged_in() ) {
+        wp_send_json_error( [ 'message' => 'Unauthorized.' ] );
+    }
+
+    global $wpdb;
+    $business_id = crm_get_current_business_scope_id();
+    $author_id   = get_current_user_id();
+    $note_id     = intval( $_POST['note_id'] ?? 0 );
+    $object_type = sanitize_text_field( $_POST['object_type'] ?? '' );
+    $record_id   = intval( $_POST['record_id'] ?? 0 );
+    $body        = sanitize_textarea_field( $_POST['body'] ?? '' );
+
+    if ( ! in_array( $object_type, [ 'contact', 'company', 'deal' ], true ) || $record_id <= 0 ) {
+        wp_send_json_error( [ 'message' => 'Invalid record request.' ] );
+    }
+    if ( $body === '' ) {
+        wp_send_json_error( [ 'message' => 'Note body is required.' ] );
+    }
+
+    $record = crm_get_detail_record( $object_type, $record_id, $business_id );
+    if ( ! $record ) {
+        wp_send_json_error( [ 'message' => 'Record not found.' ] );
+    }
+
+    if ( $note_id > 0 ) {
+        $exists = (int) $wpdb->get_var( $wpdb->prepare(
+            "SELECT COUNT(*) FROM {$wpdb->prefix}crm_notes
+             WHERE id = %d AND business_id = %d AND linked_type = %s AND linked_id = %d AND status = 'active'",
+            $note_id, $business_id, $object_type, $record_id
+        ) );
+
+        if ( ! $exists ) {
+            wp_send_json_error( [ 'message' => 'Note not found.' ] );
+        }
+
+        $updated = $wpdb->update(
+            $wpdb->prefix . 'crm_notes',
+            [ 'body' => $body ],
+            [
+                'id'          => $note_id,
+                'business_id' => $business_id,
+            ],
+            [ '%s' ],
+            [ '%d', '%d' ]
+        );
+
+        if ( $updated === false ) {
+            wp_send_json_error( [ 'message' => 'Failed to update note. Please try again.' ] );
+        }
+
+        crm_log_activity(
+            $business_id,
+            $author_id,
+            $object_type,
+            $record_id,
+            'note',
+            'Note updated'
+        );
+
+        wp_send_json_success( [ 'message' => 'Note updated successfully.' ] );
+    }
+
+    $inserted = $wpdb->insert(
+        $wpdb->prefix . 'crm_notes',
+        [
+            'rand_id'     => bntm_rand_id(),
+            'business_id' => $business_id,
+            'author_id'   => $author_id,
+            'linked_type' => $object_type,
+            'linked_id'   => $record_id,
+            'body'        => $body,
+            'status'      => 'active',
+        ],
+        [ '%s', '%d', '%d', '%s', '%d', '%s', '%s' ]
+    );
+
+    if ( ! $inserted ) {
+        wp_send_json_error( [ 'message' => 'Failed to save note. Please try again.' ] );
+    }
+
+    crm_log_activity(
+        $business_id,
+        $author_id,
+        $object_type,
+        $record_id,
+        'note',
+        'Note added'
+    );
+
+    wp_send_json_success( [
+        'message' => 'Note added successfully.',
+        'note_id' => $wpdb->insert_id,
+    ] );
+}
+
+function bntm_ajax_crm_delete_note() {
+    check_ajax_referer( 'crm_nonce', 'nonce' );
+
+    if ( ! is_user_logged_in() ) {
+        wp_send_json_error( [ 'message' => 'Unauthorized.' ] );
+    }
+
+    global $wpdb;
+    $business_id = crm_get_current_business_scope_id();
+    $note_id     = intval( $_POST['note_id'] ?? 0 );
+
+    if ( $note_id <= 0 ) {
+        wp_send_json_error( [ 'message' => 'Invalid note.' ] );
+    }
+
+    $note = $wpdb->get_row( $wpdb->prepare(
+        "SELECT * FROM {$wpdb->prefix}crm_notes
+         WHERE id = %d AND business_id = %d AND status = 'active'",
+        $note_id, $business_id
+    ) );
+
+    if ( ! $note ) {
+        wp_send_json_error( [ 'message' => 'Note not found.' ] );
+    }
+
+    $deleted = $wpdb->update(
+        $wpdb->prefix . 'crm_notes',
+        [ 'status' => 'deleted' ],
+        [
+            'id'          => $note_id,
+            'business_id' => $business_id,
+        ],
+        [ '%s' ],
+        [ '%d', '%d' ]
+    );
+
+    if ( $deleted === false ) {
+        wp_send_json_error( [ 'message' => 'Failed to delete note. Please try again.' ] );
+    }
+
+    wp_send_json_success( [ 'message' => 'Note deleted successfully.' ] );
+}
+
+// =============================================================================
+// AJAX HANDLERS — CONTACTS
+// =============================================================================
+
+function bntm_ajax_crm_get_contacts() {
+    check_ajax_referer( 'crm_nonce', 'nonce' );
+
+    if ( ! is_user_logged_in() ) {
+        wp_send_json_error( [ 'message' => 'Unauthorized.' ] );
+    }
+
+    global $wpdb;
+    $business_id     = crm_get_current_business_scope_id();
+    $search          = sanitize_text_field( $_POST['search']           ?? '' );
+    $lifecycle       = sanitize_text_field( $_POST['lifecycle_status'] ?? '' );
+    $owner_id        = intval( $_POST['owner_id']                      ?? 0 );
+    $page            = max( 1, intval( $_POST['page']                  ?? 1 ) );
+    $per_page        = min( intval( $_POST['per_page']                 ?? 20 ), 100 );
+    $offset          = ( $page - 1 ) * $per_page;
+
+    $where  = [ $wpdb->prepare( 'c.business_id = %d', $business_id ) ];
+    $where[] = "c.status = 'active'";
+
+    if ( $search !== '' ) {
+        $like    = '%' . $wpdb->esc_like( $search ) . '%';
+        $where[] = $wpdb->prepare(
+            "(c.first_name LIKE %s OR c.last_name LIKE %s OR c.email LIKE %s OR c.phone LIKE %s)",
+            $like, $like, $like, $like
+        );
+    }
+    if ( $lifecycle !== '' ) {
+        $where[] = $wpdb->prepare( 'c.lifecycle_status = %s', $lifecycle );
+    }
+    if ( $owner_id > 0 ) {
+        $where[] = $wpdb->prepare( 'c.owner_id = %d', $owner_id );
+    }
+
+    $where_sql = 'WHERE ' . implode( ' AND ', $where );
+
+    $total = (int) $wpdb->get_var(
+        "SELECT COUNT(*) FROM {$wpdb->prefix}crm_contacts c {$where_sql}"
+    );
+
+    $contacts = $wpdb->get_results( $wpdb->prepare(
+        "SELECT c.*,
+                u.display_name  AS owner_name,
+                co.name         AS company_name
+         FROM {$wpdb->prefix}crm_contacts c
+         LEFT JOIN {$wpdb->users} u          ON u.ID   = c.owner_id
+         LEFT JOIN {$wpdb->prefix}crm_companies co ON co.id  = c.company_id
+         {$where_sql}
+         ORDER BY c.created_at DESC
+         LIMIT %d OFFSET %d",
+        $per_page, $offset
+    ) );
+
+    wp_send_json_success( [
+        'contacts'    => $contacts,
+        'total'       => $total,
+        'total_pages' => $per_page > 0 ? ceil( $total / $per_page ) : 1,
+    ] );
+}
+
+function bntm_ajax_crm_create_contact() {
+    check_ajax_referer( 'crm_nonce', 'nonce' );
+
+    if ( ! is_user_logged_in() ) {
+        wp_send_json_error( [ 'message' => 'Unauthorized.' ] );
+    }
+
+    global $wpdb;
+    $business_id = crm_get_current_business_scope_id();
+
+    $first_name       = sanitize_text_field( $_POST['first_name']        ?? '' );
+    $last_name        = sanitize_text_field( $_POST['last_name']         ?? '' );
+    $email            = sanitize_email(      $_POST['email']             ?? '' );
+    $phone            = sanitize_text_field( $_POST['phone']             ?? '' );
+    $job_title        = sanitize_text_field( $_POST['job_title']         ?? '' );
+    $address          = sanitize_textarea_field( $_POST['address']       ?? '' );
+    $lead_source      = sanitize_text_field( $_POST['lead_source']       ?? '' );
+    $lifecycle_status = sanitize_text_field( $_POST['lifecycle_status']  ?? 'lead' );
+    $owner_id         = intval(              $_POST['owner_id']          ?? 0 );
+    $company_id       = intval(              $_POST['company_id']        ?? 0 );
+    $tags             = sanitize_text_field( $_POST['tags']              ?? '' );
+    $custom_raw       = sanitize_textarea_field( $_POST['custom_properties'] ?? '' );
+
+    if ( $first_name === '' ) {
+        wp_send_json_error( [ 'message' => 'First name is required.' ] );
+    }
+
+    $allowed_statuses = [ 'lead', 'prospect', 'customer', 'churned' ];
+    if ( ! in_array( $lifecycle_status, $allowed_statuses, true ) ) {
+        $lifecycle_status = 'lead';
+    }
+
+    $custom_props = '{}';
+    if ( $custom_raw !== '' ) {
+        $decoded = json_decode( $custom_raw, true );
+        if ( is_array( $decoded ) ) {
+            $sanitized = [];
+            foreach ( $decoded as $k => $v ) {
+                $sanitized[ sanitize_key( $k ) ] = sanitize_text_field( $v );
+            }
+            $custom_props = wp_json_encode( $sanitized );
+        }
+    }
+
+    $wpdb->query( 'START TRANSACTION' );
+
+    $inserted = $wpdb->insert(
+        $wpdb->prefix . 'crm_contacts',
+        [
+            'rand_id'           => bntm_rand_id(),
+            'business_id'       => $business_id,
+            'owner_id'          => $owner_id,
+            'company_id'        => $company_id,
+            'first_name'        => $first_name,
+            'last_name'         => $last_name,
+            'email'             => $email,
+            'phone'             => $phone,
+            'job_title'         => $job_title,
+            'address'           => $address,
+            'lead_source'       => $lead_source,
+            'lifecycle_status'  => $lifecycle_status,
+            'tags'              => $tags,
+            'custom_properties' => $custom_props,
+            'status'            => 'active',
+        ],
+        [ '%s','%d','%d','%d','%s','%s','%s','%s','%s','%s','%s','%s','%s','%s','%s' ]
+    );
+
+    if ( ! $inserted ) {
+        $wpdb->query( 'ROLLBACK' );
+        wp_send_json_error( [ 'message' => 'Failed to create contact. Please try again.' ] );
+    }
+
+    $contact_id = $wpdb->insert_id;
+
+    crm_log_activity(
+        $business_id,
+        $business_id,
+        'contact',
+        $contact_id,
+        'note',
+        'Contact created: ' . trim( $first_name . ' ' . $last_name )
+    );
+
+    $wpdb->query( 'COMMIT' );
+
+    wp_send_json_success( [
+        'message'    => 'Contact created successfully.',
+        'contact_id' => $contact_id,
+    ] );
+}
+
+function bntm_ajax_crm_update_contact() {
+    check_ajax_referer( 'crm_nonce', 'nonce' );
+
+    if ( ! is_user_logged_in() ) {
+        wp_send_json_error( [ 'message' => 'Unauthorized.' ] );
+    }
+
+    global $wpdb;
+    $business_id = crm_get_current_business_scope_id();
+
+    $contact_id       = intval(              $_POST['contact_id']       ?? 0 );
+    $first_name       = sanitize_text_field( $_POST['first_name']       ?? '' );
+    $last_name        = sanitize_text_field( $_POST['last_name']        ?? '' );
+    $email            = sanitize_email(      $_POST['email']            ?? '' );
+    $phone            = sanitize_text_field( $_POST['phone']            ?? '' );
+    $job_title        = sanitize_text_field( $_POST['job_title']        ?? '' );
+    $address          = sanitize_textarea_field( $_POST['address']      ?? '' );
+    $lead_source      = sanitize_text_field( $_POST['lead_source']      ?? '' );
+    $lifecycle_status = sanitize_text_field( $_POST['lifecycle_status'] ?? 'lead' );
+    $owner_id         = intval(              $_POST['owner_id']         ?? 0 );
+    $company_id       = intval(              $_POST['company_id']       ?? 0 );
+    $tags             = sanitize_text_field( $_POST['tags']             ?? '' );
+    $custom_raw       = sanitize_textarea_field( $_POST['custom_properties'] ?? '' );
+
+    if ( $contact_id <= 0 ) {
+        wp_send_json_error( [ 'message' => 'Invalid contact.' ] );
+    }
+    if ( $first_name === '' ) {
+        wp_send_json_error( [ 'message' => 'First name is required.' ] );
+    }
+
+    $exists = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(*) FROM {$wpdb->prefix}crm_contacts
+         WHERE id = %d AND business_id = %d",
+        $contact_id, $business_id
+    ) );
+
+    if ( ! $exists ) {
+        wp_send_json_error( [ 'message' => 'Contact not found.' ] );
+    }
+
+    $allowed_statuses = [ 'lead', 'prospect', 'customer', 'churned' ];
+    if ( ! in_array( $lifecycle_status, $allowed_statuses, true ) ) {
+        $lifecycle_status = 'lead';
+    }
+
+    $custom_props = '{}';
+    if ( $custom_raw !== '' ) {
+        $decoded = json_decode( $custom_raw, true );
+        if ( is_array( $decoded ) ) {
+            $sanitized = [];
+            foreach ( $decoded as $k => $v ) {
+                $sanitized[ sanitize_key( $k ) ] = sanitize_text_field( $v );
+            }
+            $custom_props = wp_json_encode( $sanitized );
+        }
+    }
+
+    $wpdb->query( 'START TRANSACTION' );
+
+    $updated = $wpdb->update(
+        $wpdb->prefix . 'crm_contacts',
+        [
+            'owner_id'          => $owner_id,
+            'company_id'        => $company_id,
+            'first_name'        => $first_name,
+            'last_name'         => $last_name,
+            'email'             => $email,
+            'phone'             => $phone,
+            'job_title'         => $job_title,
+            'address'           => $address,
+            'lead_source'       => $lead_source,
+            'lifecycle_status'  => $lifecycle_status,
+            'tags'              => $tags,
+            'custom_properties' => $custom_props,
+        ],
+        [ 'id' => $contact_id, 'business_id' => $business_id ],
+        [ '%d','%d','%s','%s','%s','%s','%s','%s','%s','%s','%s','%s' ],
+        [ '%d','%d' ]
+    );
+
+    if ( $updated === false ) {
+        $wpdb->query( 'ROLLBACK' );
+        wp_send_json_error( [ 'message' => 'Failed to update contact. Please try again.' ] );
+    }
+
+    crm_log_activity(
+        $business_id,
+        $business_id,
+        'contact',
+        $contact_id,
+        'status_changed',
+        'Contact updated: ' . trim( $first_name . ' ' . $last_name )
+    );
+
+    $wpdb->query( 'COMMIT' );
+
+    wp_send_json_success( [ 'message' => 'Contact updated successfully.' ] );
+}
+
+function bntm_ajax_crm_delete_contact() {
+    check_ajax_referer( 'crm_nonce', 'nonce' );
+
+    if ( ! is_user_logged_in() ) {
+        wp_send_json_error( [ 'message' => 'Unauthorized.' ] );
+    }
+
+    global $wpdb;
+    $business_id = crm_get_current_business_scope_id();
+    $contact_id  = intval( $_POST['contact_id'] ?? 0 );
+
+    if ( $contact_id <= 0 ) {
+        wp_send_json_error( [ 'message' => 'Invalid contact.' ] );
+    }
+
+    $open_deals = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(*) FROM {$wpdb->prefix}crm_deals
+         WHERE contact_id = %d AND business_id = %d AND status = 'open'",
+        $contact_id, $business_id
+    ) );
+
+    if ( $open_deals > 0 ) {
+        wp_send_json_error( [
+            'message' => 'Cannot delete contact with ' . $open_deals . ' open deal(s). Close or reassign deals first.',
+        ] );
+    }
+
+    $wpdb->query( 'START TRANSACTION' );
+
+    $deleted = $wpdb->update(
+        $wpdb->prefix . 'crm_contacts',
+        [ 'status' => 'deleted' ],
+        [ 'id' => $contact_id, 'business_id' => $business_id ],
+        [ '%s' ],
+        [ '%d', '%d' ]
+    );
+
+    if ( $deleted === false ) {
+        $wpdb->query( 'ROLLBACK' );
+        wp_send_json_error( [ 'message' => 'Failed to delete contact. Please try again.' ] );
+    }
+
+    $wpdb->update(
+        $wpdb->prefix . 'crm_tasks',
+        [ 'status' => 'deleted' ],
+        [ 'linked_type' => 'contact', 'linked_id' => $contact_id, 'business_id' => $business_id ],
+        [ '%s' ],
+        [ '%s', '%d', '%d' ]
+    );
+
+    $wpdb->query( 'COMMIT' );
+
+    wp_send_json_success( [ 'message' => 'Contact deleted successfully.' ] );
+}
+
+// =============================================================================
+// AJAX HANDLERS — COMPANIES
+// =============================================================================
+
+function bntm_ajax_crm_get_companies() {
+    check_ajax_referer( 'crm_nonce', 'nonce' );
+
+    if ( ! is_user_logged_in() ) {
+        wp_send_json_error( [ 'message' => 'Unauthorized.' ] );
+    }
+
+    global $wpdb;
+    $business_id = crm_get_current_business_scope_id();
+    $search      = sanitize_text_field( $_POST['search']     ?? '' );
+    $owner_id    = intval(              $_POST['owner_id']   ?? 0 );
+    $company_id  = intval(              $_POST['company_id'] ?? 0 );
+    $detail      = sanitize_text_field( $_POST['detail']     ?? '' );
+    $page        = max( 1, intval( $_POST['page']     ?? 1 ) );
+    $per_page    = min( intval( $_POST['per_page']    ?? 20 ), 999 );
+    $offset      = ( $page - 1 ) * $per_page;
+
+    if ( $detail === '1' && $company_id > 0 ) {
+        $detail_row = $wpdb->get_row( $wpdb->prepare(
+            "SELECT * FROM {$wpdb->prefix}crm_companies
+             WHERE id = %d AND business_id = %d",
+            $company_id, $business_id
+        ) );
+
+        $contacts = $wpdb->get_results( $wpdb->prepare(
+            "SELECT id, first_name, last_name, email, lifecycle_status
+             FROM {$wpdb->prefix}crm_contacts
+             WHERE company_id = %d AND business_id = %d AND status = 'active'
+             ORDER BY first_name ASC",
+            $company_id, $business_id
+        ) );
+
+        $deals = $wpdb->get_results( $wpdb->prepare(
+            "SELECT d.*, ps.name AS stage_name
+             FROM {$wpdb->prefix}crm_deals d
+             LEFT JOIN {$wpdb->prefix}crm_pipeline_stages ps ON ps.id = d.stage_id
+             WHERE d.company_id = %d AND d.business_id = %d
+             ORDER BY d.created_at DESC",
+            $company_id, $business_id
+        ) );
+
+        wp_send_json_success( [
+            'detail'   => $detail_row,
+            'contacts' => $contacts,
+            'deals'    => $deals,
+        ] );
+    }
+
+    $where   = [ $wpdb->prepare( 'co.business_id = %d', $business_id ) ];
+    $where[] = "co.status = 'active'";
+
+    if ( $search !== '' ) {
+        $like    = '%' . $wpdb->esc_like( $search ) . '%';
+        $where[] = $wpdb->prepare(
+            "(co.name LIKE %s OR co.industry LIKE %s OR co.website LIKE %s)",
+            $like, $like, $like
+        );
+    }
+    if ( $owner_id > 0 ) {
+        $where[] = $wpdb->prepare( 'co.owner_id = %d', $owner_id );
+    }
+
+    $where_sql = 'WHERE ' . implode( ' AND ', $where );
+
+    $total = (int) $wpdb->get_var(
+        "SELECT COUNT(*) FROM {$wpdb->prefix}crm_companies co {$where_sql}"
+    );
+
+    $companies = $wpdb->get_results( $wpdb->prepare(
+        "SELECT co.*,
+                u.display_name AS owner_name,
+                (SELECT COUNT(*) FROM {$wpdb->prefix}crm_contacts c
+                 WHERE c.company_id = co.id AND c.status = 'active') AS contact_count,
+                (SELECT COUNT(*) FROM {$wpdb->prefix}crm_deals d
+                 WHERE d.company_id = co.id) AS deal_count
+         FROM {$wpdb->prefix}crm_companies co
+         LEFT JOIN {$wpdb->users} u ON u.ID = co.owner_id
+         {$where_sql}
+         ORDER BY co.created_at DESC
+         LIMIT %d OFFSET %d",
+        $per_page, $offset
+    ) );
+
+    wp_send_json_success( [
+        'companies'   => $companies,
+        'total'       => $total,
+        'total_pages' => $per_page > 0 ? ceil( $total / $per_page ) : 1,
+    ] );
+}
+
+function bntm_ajax_crm_create_company() {
+    check_ajax_referer( 'crm_nonce', 'nonce' );
+
+    if ( ! is_user_logged_in() ) {
+        wp_send_json_error( [ 'message' => 'Unauthorized.' ] );
+    }
+
+    global $wpdb;
+    $business_id = crm_get_current_business_scope_id();
+
+    $name       = sanitize_text_field( $_POST['name']     ?? '' );
+    $industry   = sanitize_text_field( $_POST['industry'] ?? '' );
+    $phone      = sanitize_text_field( $_POST['phone']    ?? '' );
+    $email      = sanitize_email(      $_POST['email']    ?? '' );
+    $address    = sanitize_textarea_field( $_POST['address'] ?? '' );
+    $lead_source = sanitize_text_field( $_POST['lead_source'] ?? '' );
+    $website    = esc_url_raw(         $_POST['website']  ?? '' );
+    $owner_id   = intval(              $_POST['owner_id'] ?? 0 );
+    $tags       = sanitize_text_field( $_POST['tags']     ?? '' );
+    $custom_raw = sanitize_textarea_field( $_POST['custom_properties'] ?? '' );
+
+    if ( $name === '' ) {
+        wp_send_json_error( [ 'message' => 'Company name is required.' ] );
+    }
+
+    $custom_props = '{}';
+    if ( $custom_raw !== '' ) {
+        $decoded = json_decode( $custom_raw, true );
+        if ( is_array( $decoded ) ) {
+            $sanitized = [];
+            foreach ( $decoded as $k => $v ) {
+                $sanitized[ sanitize_key( $k ) ] = sanitize_text_field( $v );
+            }
+            $custom_props = wp_json_encode( $sanitized );
+        }
+    }
+
+    $wpdb->query( 'START TRANSACTION' );
+
+    $inserted = $wpdb->insert(
+        $wpdb->prefix . 'crm_companies',
+        [
+            'rand_id'           => bntm_rand_id(),
+            'business_id'       => $business_id,
+            'owner_id'          => $owner_id,
+            'name'              => $name,
+            'industry'          => $industry,
+            'phone'             => $phone,
+            'email'             => $email,
+            'address'           => $address,
+            'lead_source'       => $lead_source,
+            'website'           => $website,
+            'tags'              => $tags,
+            'custom_properties' => $custom_props,
+            'status'            => 'active',
+        ],
+        [ '%s','%d','%d','%s','%s','%s','%s','%s','%s','%s','%s','%s','%s' ]
+    );
+
+    if ( ! $inserted ) {
+        $wpdb->query( 'ROLLBACK' );
+        wp_send_json_error( [ 'message' => 'Failed to create company. Please try again.' ] );
+    }
+
+    $company_id = $wpdb->insert_id;
+
+    crm_log_activity(
+        $business_id,
+        $business_id,
+        'company',
+        $company_id,
+        'note',
+        'Company created: ' . $name
+    );
+
+    $wpdb->query( 'COMMIT' );
+
+    wp_send_json_success( [
+        'message'    => 'Company created successfully.',
+        'company_id' => $company_id,
+    ] );
+}
+
+function bntm_ajax_crm_update_company() {
+    check_ajax_referer( 'crm_nonce', 'nonce' );
+
+    if ( ! is_user_logged_in() ) {
+        wp_send_json_error( [ 'message' => 'Unauthorized.' ] );
+    }
+
+    global $wpdb;
+    $business_id = crm_get_current_business_scope_id();
+
+    $company_id = intval(              $_POST['company_id'] ?? 0 );
+    $name       = sanitize_text_field( $_POST['name']       ?? '' );
+    $industry   = sanitize_text_field( $_POST['industry']   ?? '' );
+    $phone      = sanitize_text_field( $_POST['phone']      ?? '' );
+    $email      = sanitize_email(      $_POST['email']      ?? '' );
+    $address    = sanitize_textarea_field( $_POST['address'] ?? '' );
+    $lead_source = sanitize_text_field( $_POST['lead_source'] ?? '' );
+    $website    = esc_url_raw(         $_POST['website']    ?? '' );
+    $owner_id   = intval(              $_POST['owner_id']   ?? 0 );
+    $tags       = sanitize_text_field( $_POST['tags']       ?? '' );
+    $custom_raw = sanitize_textarea_field( $_POST['custom_properties'] ?? '' );
+
+    if ( $company_id <= 0 ) {
+        wp_send_json_error( [ 'message' => 'Invalid company.' ] );
+    }
+    if ( $name === '' ) {
+        wp_send_json_error( [ 'message' => 'Company name is required.' ] );
+    }
+
+    $exists = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(*) FROM {$wpdb->prefix}crm_companies
+         WHERE id = %d AND business_id = %d",
+        $company_id, $business_id
+    ) );
+
+    if ( ! $exists ) {
+        wp_send_json_error( [ 'message' => 'Company not found.' ] );
+    }
+
+    $custom_props = '{}';
+    if ( $custom_raw !== '' ) {
+        $decoded = json_decode( $custom_raw, true );
+        if ( is_array( $decoded ) ) {
+            $sanitized = [];
+            foreach ( $decoded as $k => $v ) {
+                $sanitized[ sanitize_key( $k ) ] = sanitize_text_field( $v );
+            }
+            $custom_props = wp_json_encode( $sanitized );
+        }
+    }
+
+    $wpdb->query( 'START TRANSACTION' );
+
+    $updated = $wpdb->update(
+        $wpdb->prefix . 'crm_companies',
+        [
+            'owner_id'          => $owner_id,
+            'name'              => $name,
+            'industry'          => $industry,
+            'phone'             => $phone,
+            'email'             => $email,
+            'address'           => $address,
+            'lead_source'       => $lead_source,
+            'website'           => $website,
+            'tags'              => $tags,
+            'custom_properties' => $custom_props,
+        ],
+        [ 'id' => $company_id, 'business_id' => $business_id ],
+        [ '%d','%s','%s','%s','%s','%s','%s','%s','%s','%s' ],
+        [ '%d','%d' ]
+    );
+
+    if ( $updated === false ) {
+        $wpdb->query( 'ROLLBACK' );
+        wp_send_json_error( [ 'message' => 'Failed to update company. Please try again.' ] );
+    }
+
+    crm_log_activity(
+        $business_id,
+        $business_id,
+        'company',
+        $company_id,
+        'status_changed',
+        'Company updated: ' . $name
+    );
+
+    $wpdb->query( 'COMMIT' );
+
+    wp_send_json_success( [ 'message' => 'Company updated successfully.' ] );
+}
+
+function bntm_ajax_crm_delete_company() {
+    check_ajax_referer( 'crm_nonce', 'nonce' );
+
+    if ( ! is_user_logged_in() ) {
+        wp_send_json_error( [ 'message' => 'Unauthorized.' ] );
+    }
+
+    global $wpdb;
+    $business_id = crm_get_current_business_scope_id();
+    $company_id  = intval( $_POST['company_id'] ?? 0 );
+
+    if ( $company_id <= 0 ) {
+        wp_send_json_error( [ 'message' => 'Invalid company.' ] );
+    }
+
+    $open_deals = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(*) FROM {$wpdb->prefix}crm_deals
+         WHERE company_id = %d AND business_id = %d AND status = 'open'",
+        $company_id, $business_id
+    ) );
+
+    if ( $open_deals > 0 ) {
+        wp_send_json_error( [
+            'message' => 'Cannot delete company with ' . $open_deals . ' open deal(s). Close or reassign deals first.',
+        ] );
+    }
+
+    $wpdb->query( 'START TRANSACTION' );
+
+    $deleted = $wpdb->update(
+        $wpdb->prefix . 'crm_companies',
+        [ 'status' => 'deleted' ],
+        [ 'id' => $company_id, 'business_id' => $business_id ],
+        [ '%s' ],
+        [ '%d', '%d' ]
+    );
+
+    if ( $deleted === false ) {
+        $wpdb->query( 'ROLLBACK' );
+        wp_send_json_error( [ 'message' => 'Failed to delete company. Please try again.' ] );
+    }
+
+    $wpdb->update(
+        $wpdb->prefix . 'crm_contacts',
+        [ 'company_id' => 0 ],
+        [ 'company_id' => $company_id, 'business_id' => $business_id ],
+        [ '%d' ],
+        [ '%d', '%d' ]
+    );
+
+    $wpdb->update(
+        $wpdb->prefix . 'crm_tasks',
+        [ 'status' => 'deleted' ],
+        [ 'linked_type' => 'company', 'linked_id' => $company_id, 'business_id' => $business_id ],
+        [ '%s' ],
+        [ '%s', '%d', '%d' ]
+    );
+
+    $wpdb->query( 'COMMIT' );
+
+    wp_send_json_success( [ 'message' => 'Company deleted successfully.' ] );
+}
+
+// =============================================================================
+// AJAX HANDLERS — DEALS
+// =============================================================================
+
+function bntm_ajax_crm_get_deals() {
+    check_ajax_referer( 'crm_nonce', 'nonce' );
+
+    if ( ! is_user_logged_in() ) {
+        wp_send_json_error( [ 'message' => 'Unauthorized.' ] );
+    }
+
+    global $wpdb;
+    $business_id = crm_get_current_business_scope_id();
+    $search      = sanitize_text_field( $_POST['search']   ?? '' );
+    $stage_id    = intval(              $_POST['stage_id'] ?? 0 );
+    $owner_id    = intval(              $_POST['owner_id'] ?? 0 );
+    $deal_id     = intval(              $_POST['deal_id']  ?? 0 );
+    $status      = sanitize_text_field( $_POST['status']   ?? '' );
+    $page        = max( 1, intval( $_POST['page']          ?? 1 ) );
+    $per_page    = min( intval( $_POST['per_page']         ?? 20 ), 500 );
+    $offset      = ( $page - 1 ) * $per_page;
+
+    $where   = [ $wpdb->prepare( 'd.business_id = %d', $business_id ) ];
+
+    if ( $deal_id > 0 ) {
+        $where[] = $wpdb->prepare( 'd.id = %d', $deal_id );
+    }
+    if ( $search !== '' ) {
+        $like    = '%' . $wpdb->esc_like( $search ) . '%';
+        $where[] = $wpdb->prepare( 'd.name LIKE %s', $like );
+    }
+    if ( $stage_id > 0 ) {
+        $where[] = $wpdb->prepare( 'd.stage_id = %d', $stage_id );
+    }
+    if ( $owner_id > 0 ) {
+        $where[] = $wpdb->prepare( 'd.owner_id = %d', $owner_id );
+    }
+    if ( $status !== '' ) {
+        $allowed_statuses = [ 'open', 'closed' ];
+        if ( in_array( $status, $allowed_statuses, true ) ) {
+            $where[] = $wpdb->prepare( 'd.status = %s', $status );
+        }
+    }
+
+    $where_sql = 'WHERE ' . implode( ' AND ', $where );
+
+    $total = (int) $wpdb->get_var(
+        "SELECT COUNT(*) FROM {$wpdb->prefix}crm_deals d {$where_sql}"
+    );
+
+    $deals = $wpdb->get_results( $wpdb->prepare(
+        "SELECT d.*,
+                ps.name            AS stage_name,
+                ps.color           AS stage_color,
+                u.display_name     AS owner_name,
+                CONCAT(c.first_name, ' ', c.last_name) AS contact_name,
+                co.name            AS company_name
+         FROM {$wpdb->prefix}crm_deals d
+         LEFT JOIN {$wpdb->prefix}crm_pipeline_stages ps ON ps.id  = d.stage_id
+         LEFT JOIN {$wpdb->users}                     u  ON u.ID   = d.owner_id
+         LEFT JOIN {$wpdb->prefix}crm_contacts        c  ON c.id   = d.contact_id
+         LEFT JOIN {$wpdb->prefix}crm_companies       co ON co.id  = d.company_id
+         {$where_sql}
+         ORDER BY d.created_at DESC
+         LIMIT %d OFFSET %d",
+        $per_page, $offset
+    ) );
+
+    wp_send_json_success( [
+        'deals'       => $deals,
+        'total'       => $total,
+        'total_pages' => $per_page > 0 ? ceil( $total / $per_page ) : 1,
+    ] );
+}
+
+function bntm_ajax_crm_create_deal() {
+    check_ajax_referer( 'crm_nonce', 'nonce' );
+
+    if ( ! is_user_logged_in() ) {
+        wp_send_json_error( [ 'message' => 'Unauthorized.' ] );
+    }
+
+    global $wpdb;
+    $business_id        = crm_get_current_business_scope_id();
+    $name               = sanitize_text_field( $_POST['name']                ?? '' );
+    $amount             = floatval(            $_POST['amount']               ?? 0 );
+    $expected_close_date = sanitize_text_field( $_POST['expected_close_date'] ?? '' );
+    $stage_id           = intval(              $_POST['stage_id']             ?? 0 );
+    $owner_id           = intval(              $_POST['owner_id']             ?? 0 );
+    $contact_id         = intval(              $_POST['contact_id']           ?? 0 );
+    $company_id         = intval(              $_POST['company_id']           ?? 0 );
+    $custom_raw         = sanitize_textarea_field( $_POST['custom_properties'] ?? '' );
+
+    if ( $name === '' ) {
+        wp_send_json_error( [ 'message' => 'Deal name is required.' ] );
+    }
+    if ( $stage_id <= 0 ) {
+        wp_send_json_error( [ 'message' => 'A pipeline stage is required.' ] );
+    }
+    if ( $contact_id <= 0 ) {
+        wp_send_json_error( [ 'message' => 'A contact is required.' ] );
+    }
+    if ( $amount < 0 ) {
+        wp_send_json_error( [ 'message' => 'Amount cannot be negative.' ] );
+    }
+
+    $stage_exists = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(*) FROM {$wpdb->prefix}crm_pipeline_stages
+         WHERE id = %d AND business_id = %d AND status = 'active'",
+        $stage_id, $business_id
+    ) );
+    if ( ! $stage_exists ) {
+        wp_send_json_error( [ 'message' => 'Selected pipeline stage does not exist.' ] );
+    }
+
+    $contact_exists = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(*) FROM {$wpdb->prefix}crm_contacts
+         WHERE id = %d AND business_id = %d AND status = 'active'",
+        $contact_id, $business_id
+    ) );
+    if ( ! $contact_exists ) {
+        wp_send_json_error( [ 'message' => 'Selected contact does not exist.' ] );
+    }
+
+    $close_date = '';
+    if ( $expected_close_date !== '' ) {
+        $parsed = date_create( $expected_close_date );
+        $close_date = $parsed ? date_format( $parsed, 'Y-m-d' ) : '';
+    }
+
+    $custom_props = '{}';
+    if ( $custom_raw !== '' ) {
+        $decoded = json_decode( $custom_raw, true );
+        if ( is_array( $decoded ) ) {
+            $sanitized = [];
+            foreach ( $decoded as $k => $v ) {
+                $sanitized[ sanitize_key( $k ) ] = sanitize_text_field( $v );
+            }
+            $custom_props = wp_json_encode( $sanitized );
+        }
+    }
+
+    $wpdb->query( 'START TRANSACTION' );
+
+    $inserted = $wpdb->insert(
+        $wpdb->prefix . 'crm_deals',
+        [
+            'rand_id'              => bntm_rand_id(),
+            'business_id'          => $business_id,
+            'owner_id'             => $owner_id,
+            'contact_id'           => $contact_id,
+            'company_id'           => $company_id,
+            'pipeline_id'          => 1,
+            'stage_id'             => $stage_id,
+            'name'                 => $name,
+            'amount'               => $amount,
+            'expected_close_date'  => $close_date !== '' ? $close_date : null,
+            'custom_properties'    => $custom_props,
+            'status'               => 'open',
+        ],
+        [ '%s','%d','%d','%d','%d','%d','%d','%s','%f','%s','%s','%s' ]
+    );
+
+    if ( ! $inserted ) {
+        $wpdb->query( 'ROLLBACK' );
+        wp_send_json_error( [ 'message' => 'Failed to create deal. Please try again.' ] );
+    }
+
+    $deal_id = $wpdb->insert_id;
+
+    $stage_name = $wpdb->get_var( $wpdb->prepare(
+        "SELECT name FROM {$wpdb->prefix}crm_pipeline_stages WHERE id = %d",
+        $stage_id
+    ) );
+
+    crm_log_activity(
+        $business_id,
+        $business_id,
+        'deal',
+        $deal_id,
+        'note',
+        'Deal created: ' . $name . ' — Stage: ' . $stage_name
+    );
+
+    $wpdb->query( 'COMMIT' );
+
+    wp_send_json_success( [
+        'message' => 'Deal created successfully.',
+        'deal_id' => $deal_id,
+    ] );
+}
+
+function bntm_ajax_crm_update_deal() {
+    check_ajax_referer( 'crm_nonce', 'nonce' );
+
+    if ( ! is_user_logged_in() ) {
+        wp_send_json_error( [ 'message' => 'Unauthorized.' ] );
+    }
+
+    global $wpdb;
+    $business_id         = crm_get_current_business_scope_id();
+    $deal_id             = intval(              $_POST['deal_id']             ?? 0 );
+    $name                = sanitize_text_field( $_POST['name']                ?? '' );
+    $amount              = floatval(            $_POST['amount']               ?? 0 );
+    $expected_close_date = sanitize_text_field( $_POST['expected_close_date'] ?? '' );
+    $stage_id            = intval(              $_POST['stage_id']             ?? 0 );
+    $status              = sanitize_text_field( $_POST['status']               ?? 'open' );
+    $owner_id            = intval(              $_POST['owner_id']             ?? 0 );
+    $contact_id          = intval(              $_POST['contact_id']           ?? 0 );
+    $company_id          = intval(              $_POST['company_id']           ?? 0 );
+    $custom_raw          = sanitize_textarea_field( $_POST['custom_properties'] ?? '' );
+
+    if ( $deal_id <= 0 ) {
+        wp_send_json_error( [ 'message' => 'Invalid deal.' ] );
+    }
+    if ( $name === '' ) {
+        wp_send_json_error( [ 'message' => 'Deal name is required.' ] );
+    }
+    if ( $stage_id <= 0 ) {
+        wp_send_json_error( [ 'message' => 'A pipeline stage is required.' ] );
+    }
+    if ( $contact_id <= 0 ) {
+        wp_send_json_error( [ 'message' => 'A contact is required.' ] );
+    }
+
+    $allowed_statuses = ['open', 'closed'];
+    if ( ! in_array( $status, $allowed_statuses, true ) ) {
+        $status = 'open';
+    }
+
+    $existing = $wpdb->get_row( $wpdb->prepare(
+        "SELECT id, stage_id, name FROM {$wpdb->prefix}crm_deals
+         WHERE id = %d AND business_id = %d",
+        $deal_id, $business_id
+    ) );
+
+    if ( ! $existing ) {
+        wp_send_json_error( [ 'message' => 'Deal not found.' ] );
+    }
+
+    $stage_exists = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(*) FROM {$wpdb->prefix}crm_pipeline_stages
+         WHERE id = %d AND business_id = %d AND status = 'active'",
+        $stage_id, $business_id
+    ) );
+    if ( ! $stage_exists ) {
+        wp_send_json_error( [ 'message' => 'Selected pipeline stage does not exist.' ] );
+    }
+
+    $close_date = null;
+    if ( $expected_close_date !== '' ) {
+        $parsed     = date_create( $expected_close_date );
+        $close_date = $parsed ? date_format( $parsed, 'Y-m-d' ) : null;
+    }
+
+    $custom_props = '{}';
+    if ( $custom_raw !== '' ) {
+        $decoded = json_decode( $custom_raw, true );
+        if ( is_array( $decoded ) ) {
+            $sanitized = [];
+            foreach ( $decoded as $k => $v ) {
+                $sanitized[ sanitize_key( $k ) ] = sanitize_text_field( $v );
+            }
+            $custom_props = wp_json_encode( $sanitized );
+        }
+    }
+
+    $stage_changed = ( (int) $existing->stage_id !== $stage_id );
+
+    $wpdb->query( 'START TRANSACTION' );
+
+    $updated = $wpdb->update(
+        $wpdb->prefix . 'crm_deals',
+        [
+            'owner_id'            => $owner_id,
+            'contact_id'          => $contact_id,
+            'company_id'          => $company_id,
+            'stage_id'            => $stage_id,
+            'status'              => $status,
+            'name'                => $name,
+            'amount'              => $amount,
+            'expected_close_date' => $close_date,
+            'custom_properties'   => $custom_props,
+        ],
+        [ 'id' => $deal_id, 'business_id' => $business_id ],
+        [ '%d','%d','%d','%d','%s','%s','%f','%s','%s' ],
+        [ '%d','%d' ]
+    );
+
+    if ( $updated === false ) {
+        $wpdb->query( 'ROLLBACK' );
+        wp_send_json_error( [ 'message' => 'Failed to update deal. Please try again.' ] );
+    }
+
+    $activity_body = 'Deal updated: ' . $name;
+    $activity_type = 'status_changed';
+
+    if ( $stage_changed ) {
+        $new_stage_name = $wpdb->get_var( $wpdb->prepare(
+            "SELECT name FROM {$wpdb->prefix}crm_pipeline_stages WHERE id = %d",
+            $stage_id
+        ) );
+        $old_stage_name = $wpdb->get_var( $wpdb->prepare(
+            "SELECT name FROM {$wpdb->prefix}crm_pipeline_stages WHERE id = %d",
+            $existing->stage_id
+        ) );
+        $activity_body  = 'Deal moved from "' . $old_stage_name . '" to "' . $new_stage_name . '"';
+        $activity_type  = 'deal_moved';
+    }
+
+    crm_log_activity(
+        $business_id,
+        $business_id,
+        'deal',
+        $deal_id,
+        $activity_type,
+        $activity_body
+    );
+
+    $wpdb->query( 'COMMIT' );
+
+    wp_send_json_success( [ 'message' => 'Deal updated successfully.' ] );
+}
+
+function bntm_ajax_crm_delete_deal() {
+    check_ajax_referer( 'crm_nonce', 'nonce' );
+
+    if ( ! is_user_logged_in() ) {
+        wp_send_json_error( [ 'message' => 'Unauthorized.' ] );
+    }
+
+    global $wpdb;
+    $business_id = crm_get_current_business_scope_id();
+    $deal_id     = intval( $_POST['deal_id'] ?? 0 );
+
+    if ( $deal_id <= 0 ) {
+        wp_send_json_error( [ 'message' => 'Invalid deal.' ] );
+    }
+
+    $exists = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(*) FROM {$wpdb->prefix}crm_deals
+         WHERE id = %d AND business_id = %d",
+        $deal_id, $business_id
+    ) );
+
+    if ( ! $exists ) {
+        wp_send_json_error( [ 'message' => 'Deal not found.' ] );
+    }
+
+    $wpdb->query( 'START TRANSACTION' );
+
+    $deleted = $wpdb->update(
+        $wpdb->prefix . 'crm_deals',
+        [ 'status' => 'deleted' ],
+        [ 'id' => $deal_id, 'business_id' => $business_id ],
+        [ '%s' ],
+        [ '%d', '%d' ]
+    );
+
+    if ( $deleted === false ) {
+        $wpdb->query( 'ROLLBACK' );
+        wp_send_json_error( [ 'message' => 'Failed to delete deal. Please try again.' ] );
+    }
+
+    $wpdb->update(
+        $wpdb->prefix . 'crm_tasks',
+        [ 'status' => 'deleted' ],
+        [ 'linked_type' => 'deal', 'linked_id' => $deal_id, 'business_id' => $business_id ],
+        [ '%s' ],
+        [ '%s', '%d', '%d' ]
+    );
+
+    $wpdb->query( 'COMMIT' );
+
+    wp_send_json_success( [ 'message' => 'Deal deleted successfully.' ] );
+}
+
+function bntm_ajax_crm_move_deal_stage() {
+    check_ajax_referer( 'crm_nonce', 'nonce' );
+
+    if ( ! is_user_logged_in() ) {
+        wp_send_json_error( [ 'message' => 'Unauthorized.' ] );
+    }
+
+    global $wpdb;
+    $business_id = crm_get_current_business_scope_id();
+    $deal_id     = intval( $_POST['deal_id']  ?? 0 );
+    $stage_id    = intval( $_POST['stage_id'] ?? 0 );
+
+    if ( $deal_id <= 0 || $stage_id <= 0 ) {
+        wp_send_json_error( [ 'message' => 'Invalid deal or stage.' ] );
+    }
+
+    $deal = $wpdb->get_row( $wpdb->prepare(
+        "SELECT id, name, stage_id FROM {$wpdb->prefix}crm_deals
+         WHERE id = %d AND business_id = %d",
+        $deal_id, $business_id
+    ) );
+
+    if ( ! $deal ) {
+        wp_send_json_error( [ 'message' => 'Deal not found.' ] );
+    }
+
+    $stage = $wpdb->get_row( $wpdb->prepare(
+        "SELECT id, name FROM {$wpdb->prefix}crm_pipeline_stages
+         WHERE id = %d AND business_id = %d AND status = 'active'",
+        $stage_id, $business_id
+    ) );
+
+    if ( ! $stage ) {
+        wp_send_json_error( [ 'message' => 'Stage not found.' ] );
+    }
+
+    if ( (int) $deal->stage_id === $stage_id ) {
+        wp_send_json_success( [ 'message' => 'Deal already in this stage.' ] );
+    }
+
+    $old_stage_name = $wpdb->get_var( $wpdb->prepare(
+        "SELECT name FROM {$wpdb->prefix}crm_pipeline_stages WHERE id = %d",
+        $deal->stage_id
+    ) );
+
+    $closed_keywords = [ 'won', 'lost' ];
+    $stage_name_lower = strtolower( $stage->name );
+    $is_closing_stage = false;
+    foreach ( $closed_keywords as $kw ) {
+        if ( strpos( $stage_name_lower, $kw ) !== false ) {
+            $is_closing_stage = true;
+            break;
+        }
+    }
+    $new_deal_status = $is_closing_stage ? 'closed' : 'open';
+
+    $wpdb->query( 'START TRANSACTION' );
+
+    $updated = $wpdb->update(
+        $wpdb->prefix . 'crm_deals',
+        [
+            'stage_id' => $stage_id,
+            'status'   => $new_deal_status,
+        ],
+        [ 'id' => $deal_id, 'business_id' => $business_id ],
+        [ '%d', '%s' ],
+        [ '%d', '%d' ]
+    );
+
+    if ( $updated === false ) {
+        $wpdb->query( 'ROLLBACK' );
+        wp_send_json_error( [ 'message' => 'Failed to move deal. Please try again.' ] );
+    }
+
+    crm_log_activity(
+        $business_id,
+        $business_id,
+        'deal',
+        $deal_id,
+        'deal_moved',
+        'Deal "' . $deal->name . '" moved from "' . $old_stage_name . '" to "' . $stage->name . '"'
+    );
+
+    $wpdb->query( 'COMMIT' );
+
+    wp_send_json_success( [
+        'message'    => 'Deal moved to ' . $stage->name . '.',
+        'new_status' => $new_deal_status,
+    ] );
+}
+
+// =============================================================================
+// AJAX HANDLERS — TASKS
+// =============================================================================
+
+function bntm_ajax_crm_get_tasks() {
+    check_ajax_referer( 'crm_nonce', 'nonce' );
+
+    if ( ! is_user_logged_in() ) {
+        wp_send_json_error( [ 'message' => 'Unauthorized.' ] );
+    }
+
+    global $wpdb;
+    $business_id  = crm_get_current_business_scope_id();
+    $assignee_id  = intval(              $_POST['assignee_id']  ?? 0 );
+    $linked_type  = sanitize_text_field( $_POST['linked_type']  ?? '' );
+    $linked_id    = intval(              $_POST['linked_id']     ?? 0 );
+    $status       = sanitize_text_field( $_POST['status']        ?? '' );
+    $today        = current_time( 'Y-m-d' );
+
+    $where   = [ $wpdb->prepare( 't.business_id = %d', $business_id ) ];
+    $where[] = "t.status != 'deleted'";
+
+    if ( $assignee_id > 0 ) {
+        $where[] = $wpdb->prepare( 't.assignee_id = %d', $assignee_id );
+    }
+    if ( $linked_type !== '' ) {
+        $allowed_types = [ 'contact', 'company', 'deal' ];
+        if ( in_array( $linked_type, $allowed_types, true ) ) {
+            $where[] = $wpdb->prepare( 't.linked_type = %s', $linked_type );
+        }
+    }
+    if ( $linked_id > 0 ) {
+        $where[] = $wpdb->prepare( 't.linked_id = %d', $linked_id );
+    }
+    if ( $status !== '' ) {
+        $allowed_statuses = [ 'pending', 'complete' ];
+        if ( in_array( $status, $allowed_statuses, true ) ) {
+            $where[] = $wpdb->prepare( 't.status = %s', $status );
+        }
+    }
+
+    $where_sql = 'WHERE ' . implode( ' AND ', $where );
+
+    $tasks = $wpdb->get_results(
+        "SELECT t.*,
+                u.display_name AS assignee_name,
+                DATEDIFF(t.due_date, '{$today}') AS days_until,
+                DATEDIFF('{$today}', t.due_date) AS days_overdue
+         FROM {$wpdb->prefix}crm_tasks t
+         LEFT JOIN {$wpdb->users} u ON u.ID = t.assignee_id
+         {$where_sql}
+         ORDER BY t.due_date ASC"
+    );
+
+    $overdue  = [];
+    $upcoming = [];
+
+    foreach ( $tasks as $task ) {
+        if ( $task->status === 'pending' && $task->due_date < $today ) {
+            $overdue[] = $task;
+        } else {
+            $upcoming[] = $task;
+        }
+    }
+
+    wp_send_json_success( [
+        'tasks'    => $tasks,
+        'overdue'  => $overdue,
+        'upcoming' => $upcoming,
+        'total'    => count( $tasks ),
+    ] );
+}
+
+function bntm_ajax_crm_create_task() {
+    check_ajax_referer( 'crm_nonce', 'nonce' );
+
+    if ( ! is_user_logged_in() ) {
+        wp_send_json_error( [ 'message' => 'Unauthorized.' ] );
+    }
+
+    global $wpdb;
+    $business_id   = crm_get_current_business_scope_id();
+    $title         = sanitize_text_field( $_POST['title']         ?? '' );
+    $assignee_id   = intval(              $_POST['assignee_id']   ?? 0 );
+    $due_date      = sanitize_text_field( $_POST['due_date']      ?? '' );
+    $reminder_days = intval(              $_POST['reminder_days'] ?? 0 );
+    $linked_type   = sanitize_text_field( $_POST['linked_type']   ?? '' );
+    $linked_id     = intval(              $_POST['linked_id']      ?? 0 );
+
+    if ( $title === '' ) {
+        wp_send_json_error( [ 'message' => 'Task title is required.' ] );
+    }
+
+    $allowed_types = [ '', 'contact', 'company', 'deal' ];
+    if ( ! in_array( $linked_type, $allowed_types, true ) ) {
+        $linked_type = '';
+    }
+
+    $parsed_date = '';
+    if ( $due_date !== '' ) {
+        $parsed      = date_create( $due_date );
+        $parsed_date = $parsed ? date_format( $parsed, 'Y-m-d' ) : '';
+    }
+
+    if ( $reminder_days < 0 ) {
+        $reminder_days = 0;
+    }
+
+    $wpdb->query( 'START TRANSACTION' );
+
+    $inserted = $wpdb->insert(
+        $wpdb->prefix . 'crm_tasks',
+        [
+            'rand_id'       => bntm_rand_id(),
+            'business_id'   => $business_id,
+            'assignee_id'   => $assignee_id,
+            'linked_type'   => $linked_type,
+            'linked_id'     => $linked_id,
+            'title'         => $title,
+            'due_date'      => $parsed_date !== '' ? $parsed_date : null,
+            'reminder_days' => $reminder_days,
+            'status'        => 'pending',
+        ],
+        [ '%s','%d','%d','%s','%d','%s','%s','%d','%s' ]
+    );
+
+    if ( ! $inserted ) {
+        $wpdb->query( 'ROLLBACK' );
+        wp_send_json_error( [ 'message' => 'Failed to create task. Please try again.' ] );
+    }
+
+    $task_id = $wpdb->insert_id;
+
+    if ( $linked_type !== '' && $linked_id > 0 ) {
+        crm_log_activity(
+            $business_id,
+            $business_id,
+            $linked_type,
+            $linked_id,
+            'task_created',
+            'Task created: ' . $title . ( $parsed_date ? ' — Due: ' . $parsed_date : '' )
+        );
+    }
+
+    $wpdb->query( 'COMMIT' );
+
+    wp_send_json_success( [
+        'message' => 'Task created successfully.',
+        'task_id' => $task_id,
+    ] );
+}
+
+function bntm_ajax_crm_update_task() {
+    check_ajax_referer( 'crm_nonce', 'nonce' );
+
+    if ( ! is_user_logged_in() ) {
+        wp_send_json_error( [ 'message' => 'Unauthorized.' ] );
+    }
+
+    global $wpdb;
+    $business_id   = crm_get_current_business_scope_id();
+    $task_id       = intval(              $_POST['task_id']       ?? 0 );
+    $title         = sanitize_text_field( $_POST['title']         ?? '' );
+    $assignee_id   = intval(              $_POST['assignee_id']   ?? 0 );
+    $due_date      = sanitize_text_field( $_POST['due_date']      ?? '' );
+    $reminder_days = intval(              $_POST['reminder_days'] ?? 0 );
+    $linked_type   = sanitize_text_field( $_POST['linked_type']   ?? '' );
+    $linked_id     = intval(              $_POST['linked_id']      ?? 0 );
+
+    if ( $task_id <= 0 ) {
+        wp_send_json_error( [ 'message' => 'Invalid task.' ] );
+    }
+    if ( $title === '' ) {
+        wp_send_json_error( [ 'message' => 'Task title is required.' ] );
+    }
+
+    $exists = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(*) FROM {$wpdb->prefix}crm_tasks
+         WHERE id = %d AND business_id = %d",
+        $task_id, $business_id
+    ) );
+
+    if ( ! $exists ) {
+        wp_send_json_error( [ 'message' => 'Task not found.' ] );
+    }
+
+    $allowed_types = [ '', 'contact', 'company', 'deal' ];
+    if ( ! in_array( $linked_type, $allowed_types, true ) ) {
+        $linked_type = '';
+    }
+
+    $parsed_date = null;
+    if ( $due_date !== '' ) {
+        $parsed      = date_create( $due_date );
+        $parsed_date = $parsed ? date_format( $parsed, 'Y-m-d' ) : null;
+    }
+
+    if ( $reminder_days < 0 ) {
+        $reminder_days = 0;
+    }
+
+    $updated = $wpdb->update(
+        $wpdb->prefix . 'crm_tasks',
+        [
+            'assignee_id'   => $assignee_id,
+            'linked_type'   => $linked_type,
+            'linked_id'     => $linked_id,
+            'title'         => $title,
+            'due_date'      => $parsed_date,
+            'reminder_days' => $reminder_days,
+        ],
+        [ 'id' => $task_id, 'business_id' => $business_id ],
+        [ '%d','%s','%d','%s','%s','%d' ],
+        [ '%d','%d' ]
+    );
+
+    if ( $updated === false ) {
+        wp_send_json_error( [ 'message' => 'Failed to update task. Please try again.' ] );
+    }
+
+    wp_send_json_success( [ 'message' => 'Task updated successfully.' ] );
+}
+
+function bntm_ajax_crm_delete_task() {
+    check_ajax_referer( 'crm_nonce', 'nonce' );
+
+    if ( ! is_user_logged_in() ) {
+        wp_send_json_error( [ 'message' => 'Unauthorized.' ] );
+    }
+
+    global $wpdb;
+    $business_id = crm_get_current_business_scope_id();
+    $task_id     = intval( $_POST['task_id'] ?? 0 );
+
+    if ( $task_id <= 0 ) {
+        wp_send_json_error( [ 'message' => 'Invalid task.' ] );
+    }
+
+    $exists = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(*) FROM {$wpdb->prefix}crm_tasks
+         WHERE id = %d AND business_id = %d",
+        $task_id, $business_id
+    ) );
+
+    if ( ! $exists ) {
+        wp_send_json_error( [ 'message' => 'Task not found.' ] );
+    }
+
+    $deleted = $wpdb->update(
+        $wpdb->prefix . 'crm_tasks',
+        [ 'status' => 'deleted' ],
+        [ 'id' => $task_id, 'business_id' => $business_id ],
+        [ '%s' ],
+        [ '%d', '%d' ]
+    );
+
+    if ( $deleted === false ) {
+        wp_send_json_error( [ 'message' => 'Failed to delete task. Please try again.' ] );
+    }
+
+    wp_send_json_success( [ 'message' => 'Task deleted successfully.' ] );
+}
+
+function bntm_ajax_crm_complete_task() {
+    check_ajax_referer( 'crm_nonce', 'nonce' );
+
+    if ( ! is_user_logged_in() ) {
+        wp_send_json_error( [ 'message' => 'Unauthorized.' ] );
+    }
+
+    global $wpdb;
+    $business_id = crm_get_current_business_scope_id();
+    $task_id     = intval( $_POST['task_id'] ?? 0 );
+
+    if ( $task_id <= 0 ) {
+        wp_send_json_error( [ 'message' => 'Invalid task.' ] );
+    }
+
+    $task = $wpdb->get_row( $wpdb->prepare(
+        "SELECT * FROM {$wpdb->prefix}crm_tasks
+         WHERE id = %d AND business_id = %d",
+        $task_id, $business_id
+    ) );
+
+    if ( ! $task ) {
+        wp_send_json_error( [ 'message' => 'Task not found.' ] );
+    }
+
+    if ( $task->status === 'complete' ) {
+        wp_send_json_success( [ 'message' => 'Task already marked complete.' ] );
+    }
+
+    $wpdb->query( 'START TRANSACTION' );
+
+    $updated = $wpdb->update(
+        $wpdb->prefix . 'crm_tasks',
+        [ 'status' => 'complete' ],
+        [ 'id' => $task_id, 'business_id' => $business_id ],
+        [ '%s' ],
+        [ '%d', '%d' ]
+    );
+
+    if ( $updated === false ) {
+        $wpdb->query( 'ROLLBACK' );
+        wp_send_json_error( [ 'message' => 'Failed to complete task. Please try again.' ] );
+    }
+
+    if ( $task->linked_type !== '' && $task->linked_id > 0 ) {
+        crm_log_activity(
+            $business_id,
+            $business_id,
+            $task->linked_type,
+            (int) $task->linked_id,
+            'task_completed',
+            'Task completed: ' . $task->title
+        );
+    }
+
+    $wpdb->query( 'COMMIT' );
+
+    wp_send_json_success( [ 'message' => 'Task marked as complete.' ] );
+}
+
+// =============================================================================
+// AJAX HANDLERS — SETTINGS: PIPELINE STAGES
+// =============================================================================
+
+function bntm_ajax_crm_get_stages() {
+    check_ajax_referer( 'crm_nonce', 'nonce' );
+
+    if ( ! is_user_logged_in() ) {
+        wp_send_json_error( [ 'message' => 'Unauthorized.' ] );
+    }
+
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_send_json_error( [ 'message' => 'Insufficient permissions.' ] );
+    }
+
+    global $wpdb;
+    $business_id = crm_get_current_business_scope_id();
+
+    $stages = $wpdb->get_results( $wpdb->prepare(
+        "SELECT * FROM {$wpdb->prefix}crm_pipeline_stages
+         WHERE business_id = %d AND pipeline_id = 1 AND status = 'active'
+         ORDER BY sort_order ASC",
+        $business_id
+    ) );
+
+    wp_send_json_success( [ 'stages' => $stages ] );
+}
+
+function bntm_ajax_crm_save_stage() {
+    check_ajax_referer( 'crm_nonce', 'nonce' );
+
+    if ( ! is_user_logged_in() ) {
+        wp_send_json_error( [ 'message' => 'Unauthorized.' ] );
+    }
+
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_send_json_error( [ 'message' => 'Insufficient permissions.' ] );
+    }
+
+    global $wpdb;
+    $business_id = crm_get_current_business_scope_id();
+    $stage_id    = intval(              $_POST['stage_id'] ?? 0 );
+    $name        = sanitize_text_field( $_POST['name']     ?? '' );
+    $color       = sanitize_text_field( $_POST['color']    ?? '#6366f1' );
+
+    if ( $name === '' ) {
+        wp_send_json_error( [ 'message' => 'Stage name is required.' ] );
+    }
+
+    if ( ! preg_match( '/^#[0-9a-fA-F]{3,6}$/', $color ) ) {
+        $color = '#6366f1';
+    }
+
+    if ( $stage_id > 0 ) {
+        $exists = (int) $wpdb->get_var( $wpdb->prepare(
+            "SELECT COUNT(*) FROM {$wpdb->prefix}crm_pipeline_stages
+             WHERE id = %d AND business_id = %d",
+            $stage_id, $business_id
+        ) );
+
+        if ( ! $exists ) {
+            wp_send_json_error( [ 'message' => 'Stage not found.' ] );
+        }
+
+        $updated = $wpdb->update(
+            $wpdb->prefix . 'crm_pipeline_stages',
+            [
+                'name'  => $name,
+                'color' => $color,
+            ],
+            [ 'id' => $stage_id, 'business_id' => $business_id ],
+            [ '%s', '%s' ],
+            [ '%d', '%d' ]
+        );
+
+        if ( $updated === false ) {
+            wp_send_json_error( [ 'message' => 'Failed to update stage. Please try again.' ] );
+        }
+
+        wp_send_json_success( [
+            'message'  => 'Stage updated successfully.',
+            'stage_id' => $stage_id,
+        ] );
+    }
+
+    $duplicate = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(*) FROM {$wpdb->prefix}crm_pipeline_stages
+         WHERE business_id = %d AND pipeline_id = 1 AND status = 'active'
+           AND name = %s",
+        $business_id, $name
+    ) );
+
+    if ( $duplicate > 0 ) {
+        wp_send_json_error( [ 'message' => 'A stage with this name already exists.' ] );
+    }
+
+    $max_order = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COALESCE(MAX(sort_order), 0)
+         FROM {$wpdb->prefix}crm_pipeline_stages
+         WHERE business_id = %d AND pipeline_id = 1 AND status = 'active'",
+        $business_id
+    ) );
+
+    $inserted = $wpdb->insert(
+        $wpdb->prefix . 'crm_pipeline_stages',
+        [
+            'rand_id'     => bntm_rand_id(),
+            'business_id' => $business_id,
+            'pipeline_id' => 1,
+            'name'        => $name,
+            'sort_order'  => $max_order + 1,
+            'color'       => $color,
+            'status'      => 'active',
+        ],
+        [ '%s', '%d', '%d', '%s', '%d', '%s', '%s' ]
+    );
+
+    if ( ! $inserted ) {
+        wp_send_json_error( [ 'message' => 'Failed to create stage. Please try again.' ] );
+    }
+
+    wp_send_json_success( [
+        'message'  => 'Stage created successfully.',
+        'stage_id' => $wpdb->insert_id,
+    ] );
+}
+
+function bntm_ajax_crm_delete_stage() {
+    check_ajax_referer( 'crm_nonce', 'nonce' );
+
+    if ( ! is_user_logged_in() ) {
+        wp_send_json_error( [ 'message' => 'Unauthorized.' ] );
+    }
+
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_send_json_error( [ 'message' => 'Insufficient permissions.' ] );
+    }
+
+    global $wpdb;
+    $business_id = crm_get_current_business_scope_id();
+    $stage_id    = intval( $_POST['stage_id'] ?? 0 );
+
+    if ( $stage_id <= 0 ) {
+        wp_send_json_error( [ 'message' => 'Invalid stage.' ] );
+    }
+
+    $exists = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(*) FROM {$wpdb->prefix}crm_pipeline_stages
+         WHERE id = %d AND business_id = %d",
+        $stage_id, $business_id
+    ) );
+
+    if ( ! $exists ) {
+        wp_send_json_error( [ 'message' => 'Stage not found.' ] );
+    }
+
+    $active_stage_count = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(*) FROM {$wpdb->prefix}crm_pipeline_stages
+         WHERE business_id = %d AND pipeline_id = 1 AND status = 'active'",
+        $business_id
+    ) );
+
+    if ( $active_stage_count <= 1 ) {
+        wp_send_json_error( [ 'message' => 'You must have at least one pipeline stage. Add another stage before deleting this one.' ] );
+    }
+
+    $deals_in_stage = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(*) FROM {$wpdb->prefix}crm_deals
+         WHERE stage_id = %d AND business_id = %d AND status = 'open'",
+        $stage_id, $business_id
+    ) );
+
+    if ( $deals_in_stage > 0 ) {
+        wp_send_json_error( [
+            'message' => 'Cannot delete stage with ' . $deals_in_stage . ' open deal(s). Move or close those deals first.',
+        ] );
+    }
+
+    $deleted = $wpdb->update(
+        $wpdb->prefix . 'crm_pipeline_stages',
+        [ 'status' => 'deleted' ],
+        [ 'id' => $stage_id, 'business_id' => $business_id ],
+        [ '%s' ],
+        [ '%d', '%d' ]
+    );
+
+    if ( $deleted === false ) {
+        wp_send_json_error( [ 'message' => 'Failed to delete stage. Please try again.' ] );
+    }
+
+    wp_send_json_success( [ 'message' => 'Stage deleted successfully.' ] );
+}
+
+function bntm_ajax_crm_reorder_stages() {
+    check_ajax_referer( 'crm_nonce', 'nonce' );
+
+    if ( ! is_user_logged_in() ) {
+        wp_send_json_error( [ 'message' => 'Unauthorized.' ] );
+    }
+
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_send_json_error( [ 'message' => 'Insufficient permissions.' ] );
+    }
+
+    global $wpdb;
+    $business_id = crm_get_current_business_scope_id();
+    $stage_ids   = sanitize_text_field( $_POST['stage_ids'] ?? '' );
+
+    if ( $stage_ids === '' ) {
+        wp_send_json_error( [ 'message' => 'No stage order provided.' ] );
+    }
+
+    $ids = array_map( 'intval', explode( ',', $stage_ids ) );
+    $ids = array_filter( $ids, function( $id ) { return $id > 0; } );
+    $ids = array_values( $ids );
+
+    if ( empty( $ids ) ) {
+        wp_send_json_error( [ 'message' => 'Invalid stage order data.' ] );
+    }
+
+    $wpdb->query( 'START TRANSACTION' );
+
+    foreach ( $ids as $index => $id ) {
+        $updated = $wpdb->update(
+            $wpdb->prefix . 'crm_pipeline_stages',
+            [ 'sort_order' => $index + 1 ],
+            [ 'id' => $id, 'business_id' => $business_id ],
+            [ '%d' ],
+            [ '%d', '%d' ]
+        );
+
+        if ( $updated === false ) {
+            $wpdb->query( 'ROLLBACK' );
+            wp_send_json_error( [ 'message' => 'Failed to save stage order. Please try again.' ] );
+        }
+    }
+
+    $wpdb->query( 'COMMIT' );
+
+    wp_send_json_success( [ 'message' => 'Stage order saved.' ] );
+}
+
+// =============================================================================
+// AJAX HANDLERS — SETTINGS: CUSTOM PROPERTIES
+// =============================================================================
+
+function bntm_ajax_crm_get_custom_properties() {
+    check_ajax_referer( 'crm_nonce', 'nonce' );
+
+    if ( ! is_user_logged_in() ) {
+        wp_send_json_error( [ 'message' => 'Unauthorized.' ] );
+    }
+
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_send_json_error( [ 'message' => 'Insufficient permissions.' ] );
+    }
+
+    global $wpdb;
+    $business_id = crm_get_current_business_scope_id();
+    $object_type = sanitize_text_field( $_POST['object_type'] ?? '' );
+
+    $where   = [ $wpdb->prepare( 'business_id = %d', $business_id ) ];
+    $where[] = "status = 'active'";
+
+    $allowed_types = [ 'contact', 'company', 'deal' ];
+    if ( $object_type !== '' && in_array( $object_type, $allowed_types, true ) ) {
+        $where[] = $wpdb->prepare( 'object_type = %s', $object_type );
+    }
+
+    $where_sql = 'WHERE ' . implode( ' AND ', $where );
+
+    $props = $wpdb->get_results(
+        "SELECT * FROM {$wpdb->prefix}crm_custom_properties
+         {$where_sql}
+         ORDER BY object_type ASC, sort_order ASC"
+    );
+
+    wp_send_json_success( [ 'properties' => $props ] );
+}
+
+function bntm_ajax_crm_save_custom_property() {
+    check_ajax_referer( 'crm_nonce', 'nonce' );
+
+    if ( ! is_user_logged_in() ) {
+        wp_send_json_error( [ 'message' => 'Unauthorized.' ] );
+    }
+
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_send_json_error( [ 'message' => 'Insufficient permissions.' ] );
+    }
+
+    global $wpdb;
+    $business_id   = crm_get_current_business_scope_id();
+    $prop_id       = intval(              $_POST['prop_id']       ?? 0 );
+    $field_label   = sanitize_text_field( $_POST['field_label']   ?? '' );
+    $field_name    = sanitize_key(        $_POST['field_name']     ?? '' );
+    $object_type   = sanitize_text_field( $_POST['object_type']   ?? '' );
+    $field_type    = sanitize_text_field( $_POST['field_type']    ?? 'text' );
+    $field_options = wp_unslash( $_POST['field_options'] ?? '' );
+    $field_options = is_string( $field_options ) ? trim( $field_options ) : '';
+
+    if ( $field_label === '' ) {
+        wp_send_json_error( [ 'message' => 'Field label is required.' ] );
+    }
+    if ( $field_name === '' ) {
+        wp_send_json_error( [ 'message' => 'Field name is required.' ] );
+    }
+    if ( ! preg_match( '/^[a-z0-9_]+$/', $field_name ) ) {
+        wp_send_json_error( [ 'message' => 'Field name must contain only lowercase letters, numbers, and underscores.' ] );
+    }
+
+    $allowed_object_types = [ 'contact', 'company', 'deal' ];
+    if ( ! in_array( $object_type, $allowed_object_types, true ) ) {
+        wp_send_json_error( [ 'message' => 'Invalid object type.' ] );
+    }
+
+    $allowed_field_types = [ 'text', 'number', 'date', 'textarea', 'select' ];
+    if ( ! in_array( $field_type, $allowed_field_types, true ) ) {
+        $field_type = 'text';
+    }
+
+    $sanitized_options = null;
+    if ( $field_type === 'select' ) {
+        if ( $field_options === '' ) {
+            wp_send_json_error( [ 'message' => 'Dropdown options are required for select fields.' ] );
+        }
+
+        $decoded_options = json_decode( $field_options, true );
+        if ( is_array( $decoded_options ) ) {
+            $options_array = array_filter(
+                array_map( 'sanitize_text_field', $decoded_options ),
+                function( $o ) { return $o !== ''; }
+            );
+        } else {
+            $options_array = array_filter(
+                array_map( 'sanitize_text_field', preg_split( '/\r\n|\r|\n/', $field_options ) ),
+                function( $o ) { return $o !== ''; }
+            );
+        }
+
+        if ( empty( $options_array ) ) {
+            wp_send_json_error( [ 'message' => 'Please provide at least one dropdown option.' ] );
+        }
+        $sanitized_options = wp_json_encode( array_values( $options_array ) );
+    }
+
+    if ( $prop_id > 0 ) {
+        $exists = (int) $wpdb->get_var( $wpdb->prepare(
+            "SELECT COUNT(*) FROM {$wpdb->prefix}crm_custom_properties
+             WHERE id = %d AND business_id = %d",
+            $prop_id, $business_id
+        ) );
+
+        if ( ! $exists ) {
+            wp_send_json_error( [ 'message' => 'Property not found.' ] );
+        }
+
+        $duplicate = (int) $wpdb->get_var( $wpdb->prepare(
+            "SELECT COUNT(*) FROM {$wpdb->prefix}crm_custom_properties
+             WHERE business_id = %d AND object_type = %s
+               AND field_name = %s AND status = 'active' AND id != %d",
+            $business_id, $object_type, $field_name, $prop_id
+        ) );
+
+        if ( $duplicate > 0 ) {
+            wp_send_json_error( [ 'message' => 'A property with this field name already exists for this object type.' ] );
+        }
+
+        $updated = $wpdb->update(
+            $wpdb->prefix . 'crm_custom_properties',
+            [
+                'field_label'   => $field_label,
+                'field_name'    => $field_name,
+                'object_type'   => $object_type,
+                'field_type'    => $field_type,
+                'field_options' => $sanitized_options,
+            ],
+            [ 'id' => $prop_id, 'business_id' => $business_id ],
+            [ '%s', '%s', '%s', '%s', '%s' ],
+            [ '%d', '%d' ]
+        );
+
+        if ( $updated === false ) {
+            wp_send_json_error( [ 'message' => 'Failed to update property. Please try again.' ] );
+        }
+
+        wp_send_json_success( [
+            'message' => 'Property updated successfully.',
+            'prop_id' => $prop_id,
+        ] );
+    }
+
+    $duplicate = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(*) FROM {$wpdb->prefix}crm_custom_properties
+         WHERE business_id = %d AND object_type = %s
+           AND field_name = %s AND status = 'active'",
+        $business_id, $object_type, $field_name
+    ) );
+
+    if ( $duplicate > 0 ) {
+        wp_send_json_error( [ 'message' => 'A property with this field name already exists for this object type.' ] );
+    }
+
+    $max_order = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COALESCE(MAX(sort_order), 0)
+         FROM {$wpdb->prefix}crm_custom_properties
+         WHERE business_id = %d AND object_type = %s AND status = 'active'",
+        $business_id, $object_type
+    ) );
+
+    $inserted = $wpdb->insert(
+        $wpdb->prefix . 'crm_custom_properties',
+        [
+            'rand_id'       => bntm_rand_id(),
+            'business_id'   => $business_id,
+            'object_type'   => $object_type,
+            'field_name'    => $field_name,
+            'field_label'   => $field_label,
+            'field_type'    => $field_type,
+            'field_options' => $sanitized_options,
+            'sort_order'    => $max_order + 1,
+            'status'        => 'active',
+        ],
+        [ '%s', '%d', '%s', '%s', '%s', '%s', '%s', '%d', '%s' ]
+    );
+
+    if ( ! $inserted ) {
+        wp_send_json_error( [ 'message' => 'Failed to create property. Please try again.' ] );
+    }
+
+    wp_send_json_success( [
+        'message' => 'Property created successfully.',
+        'prop_id' => $wpdb->insert_id,
+    ] );
+}
+
+function bntm_ajax_crm_delete_custom_property() {
+    check_ajax_referer( 'crm_nonce', 'nonce' );
+
+    if ( ! is_user_logged_in() ) {
+        wp_send_json_error( [ 'message' => 'Unauthorized.' ] );
+    }
+
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_send_json_error( [ 'message' => 'Insufficient permissions.' ] );
+    }
+
+    global $wpdb;
+    $business_id = crm_get_current_business_scope_id();
+    $prop_id     = intval( $_POST['prop_id'] ?? 0 );
+
+    if ( $prop_id <= 0 ) {
+        wp_send_json_error( [ 'message' => 'Invalid property.' ] );
+    }
+
+    $exists = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(*) FROM {$wpdb->prefix}crm_custom_properties
+         WHERE id = %d AND business_id = %d",
+        $prop_id, $business_id
+    ) );
+
+    if ( ! $exists ) {
+        wp_send_json_error( [ 'message' => 'Property not found.' ] );
+    }
+
+    $deleted = $wpdb->update(
+        $wpdb->prefix . 'crm_custom_properties',
+        [ 'status' => 'deleted' ],
+        [ 'id' => $prop_id, 'business_id' => $business_id ],
+        [ '%s' ],
+        [ '%d', '%d' ]
+    );
+
+    if ( $deleted === false ) {
+        wp_send_json_error( [ 'message' => 'Failed to delete property. Please try again.' ] );
+    }
+
+    wp_send_json_success( [ 'message' => 'Property deleted successfully.' ] );
+}
+
+// =============================================================================
+// HELPER FUNCTIONS
+// =============================================================================
+
+function crm_format_currency( $amount ) {
+    $currency = bntm_get_setting( 'crm_currency', 'PHP' );
     $symbols  = [
         'USD' => '$',
         'EUR' => '&euro;',
         'GBP' => '&pound;',
         'PHP' => '&#8369;',
-        'AED' => 'AED ',
-        'SAR' => 'SAR ',
     ];
-    $symbol = $symbols[$currency] ?? '$';
-    return $symbol . number_format((float)$amount, 2);
+    $symbol = $symbols[ $currency ] ?? '&#8369;';
+    return $symbol . number_format( (float) $amount, 2 );
 }
 
-/**
- * Execute the crm get pipeline types routine.
- * @return array
- */
-function crm_get_pipeline_types() {
-    return [
-        'subscription' => 'Subscription',
-        'enterprise'   => 'Enterprise',
-    ];
-}
-
-/**
- * Return the human-readable label for a pipeline type.
- * @param string $type Type key to describe or label.
- * @return string
- */
-function crm_pipeline_type_label($type) {
-    $types = crm_get_pipeline_types();
-    return $types[$type] ?? ucfirst($type);
-}
-
-/**
- * Execute the crm get default pipeline stages routine.
- * @param mixed $pipeline_type = 'subscription' Parameter for pipeline_type = 'subscription'.
- * @return array
- */
-function crm_get_default_pipeline_stages($pipeline_type = 'subscription') {
-    if ($pipeline_type !== 'enterprise') {
-        $pipeline_type = 'subscription';
-    }
-
-    $defaults = [
-        'subscription' => [
-            'New Lead',
-            'Qualified Lead',
-            'Exploratory Meeting / Demo',
-            'Proposal Sent',
-            'Negotiation / Revision',
-            'Terms Agreed',
-            'Onboarding',
-            'Active Client',
-            'Subscription Ended',
-        ],
-        'enterprise' => [
-            'New Lead',
-            'Qualified Lead',
-            'Exploratory Meeting',
-            'Proposal Sent',
-            'Negotiation / Revision',
-            'Contract Signed',
-            'Initial Payment Received',
-            'Handoff to Operations',
-            'Project Completion',
-            'Final Payment Received',
-            'Lost',
-        ],
-    ];
-
-    return $defaults[$pipeline_type];
-}
-
-/**
- * Execute the crm get pipeline stages routine.
- * @param int $business_id Business ID to scope the CRM data.
- * @param mixed $pipeline_type = 'subscription' Parameter for pipeline_type = 'subscription'.
- * @return array
- */
-function crm_get_pipeline_stages($business_id, $pipeline_type = 'subscription') {
-    $pipeline_type = in_array($pipeline_type, ['subscription', 'enterprise']) ? $pipeline_type : 'subscription';
-    $setting_key = 'crm_pipeline_stages_' . $business_id . '_' . $pipeline_type;
-    $saved = bntm_get_setting($setting_key, '');
-    if ($saved) {
-        $stages = json_decode($saved, true);
-        if (is_array($stages) && !empty($stages)) {
-            return $stages;
-        }
-    }
-
-    $legacy = bntm_get_setting('crm_pipeline_stages_' . $business_id, '');
-    if ($legacy) {
-        $stages = json_decode($legacy, true);
-        if (is_array($stages) && !empty($stages)) {
-            return $stages;
-        }
-    }
-
-    return crm_get_default_pipeline_stages($pipeline_type);
-}
-
-/**
- * Execute the crm get lead sources routine.
- * @return array
- */
-function crm_get_lead_sources() {
-    return [
-        'Website'       => 'Website',
-        'Referral'      => 'Referral',
-        'Email'         => 'Email',
-        'Social Media'  => 'Social Media',
-        'Partner'       => 'Partner',
-        'Event'         => 'Event',
-        'Other'         => 'Other',
-    ];
-}
-
-/**
- * Execute the crm get product types routine.
- * @return array
- */
-function crm_get_product_types() {
-    return [
-        'Hub'   => 'Hub',
-        'Spree' => 'Spree',
-    ];
-}
-
-/**
- * Execute the crm get ended reasons routine.
- * @return array
- */
-function crm_get_ended_reasons() {
-    return [
-        'Cancelled'    => 'Cancelled',
-        'Churned'      => 'Churned',
-        'Expired'      => 'Expired',
-        'Completed'    => 'Completed',
-        'Paused'       => 'Paused',
-        'Non-Renewal'  => 'Non-Renewal',
-    ];
-}
-
-/**
- * Return aggregated CRM statistics for the given business.
- * @param int $business_id Business ID to scope the CRM data.
- * @return array
- */
-function crm_get_stats($business_id) {
+function crm_log_activity(
+    $business_id,
+    $author_id,
+    $linked_type,
+    $linked_id,
+    $activity_type,
+    $body
+) {
     global $wpdb;
 
-    $contacts_table     = $wpdb->prefix . 'crm_contacts';
-    $leads_table        = $wpdb->prefix . 'crm_leads';
-    $interactions_table = $wpdb->prefix . 'crm_interactions';
+    $allowed_types = [ 'note', 'task_created', 'task_completed', 'deal_moved', 'status_changed' ];
+    if ( ! in_array( $activity_type, $allowed_types, true ) ) {
+        $activity_type = 'note';
+    }
 
-    $total_contacts         = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$contacts_table} WHERE business_id = %d", $business_id));
-    $active_contacts        = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$contacts_table} WHERE business_id = %d AND status = 'active'", $business_id));
-    $total_leads            = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$leads_table} WHERE business_id = %d", $business_id));
-    $active_opportunities   = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$leads_table} WHERE business_id = %d AND status = 'open'", $business_id));
-    $pipeline_value         = (float) $wpdb->get_var($wpdb->prepare("SELECT SUM(value) FROM {$leads_table} WHERE business_id = %d AND status = 'open'", $business_id));
-    $won_leads              = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$leads_table} WHERE business_id = %d AND status = 'won'", $business_id));
-    $won_value              = (float) $wpdb->get_var($wpdb->prepare("SELECT SUM(value) FROM {$leads_table} WHERE business_id = %d AND status = 'won'", $business_id));
-    $lost_deals             = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$leads_table} WHERE business_id = %d AND (status = 'lost' OR stage = 'Subscription Ended')", $business_id));
-    $motm_uploaded          = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$leads_table} WHERE business_id = %d AND motm_uploaded = 1", $business_id));
-    $motm_total             = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$leads_table} WHERE business_id = %d", $business_id));
-    $pipeline_type_breakdown = $wpdb->get_results($wpdb->prepare("SELECT pipeline_type, COUNT(*) AS total FROM {$leads_table} WHERE business_id = %d GROUP BY pipeline_type", $business_id), ARRAY_A);
-    $lead_source_breakdown  = $wpdb->get_results($wpdb->prepare("SELECT lead_source, COUNT(*) AS total FROM {$leads_table} WHERE business_id = %d GROUP BY lead_source", $business_id), ARRAY_A);
-    $product_service_breakdown = $wpdb->get_results($wpdb->prepare(
-        "SELECT COALESCE(NULLIF(product_type, ''), NULLIF(service_type, ''), 'Other') AS item, COUNT(*) AS total FROM {$leads_table} WHERE business_id = %d GROUP BY item",
-        $business_id
-    ), ARRAY_A);
-    $total_interactions      = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$interactions_table} WHERE business_id = %d AND status = 'active'", $business_id));
-    $monthly_interactions    = (int) $wpdb->get_var($wpdb->prepare(
-        "SELECT COUNT(*) FROM {$interactions_table} WHERE business_id = %d AND status = 'active' AND interaction_date >= %s",
-        $business_id, date('Y-m-01')
-    ));
+    $allowed_linked = [ 'contact', 'company', 'deal' ];
+    if ( ! in_array( $linked_type, $allowed_linked, true ) ) {
+        return false;
+    }
+
+    return $wpdb->insert(
+        $wpdb->prefix . 'crm_activities',
+        [
+            'rand_id'       => bntm_rand_id(),
+            'business_id'   => intval( $business_id ),
+            'author_id'     => intval( $author_id ),
+            'linked_type'   => sanitize_text_field( $linked_type ),
+            'linked_id'     => intval( $linked_id ),
+            'activity_type' => $activity_type,
+            'body'          => sanitize_textarea_field( $body ),
+            'status'        => 'active',
+        ],
+        [ '%s', '%d', '%d', '%s', '%d', '%s', '%s', '%s' ]
+    );
+}
+
+function crm_activity_label( $type ) {
+    $labels = [
+        'note'           => 'Note added',
+        'task_created'   => 'Task created',
+        'task_completed' => 'Task completed',
+        'deal_moved'     => 'Deal stage changed',
+        'status_changed' => 'Record updated',
+    ];
+    return $labels[ $type ] ?? ucfirst( str_replace( '_', ' ', $type ) );
+}
+
+function crm_time_ago( $datetime ) {
+    $now  = current_time( 'timestamp' );
+    $then = strtotime( $datetime );
+    $diff = max( 0, $now - $then );
+
+    if ( $diff < 60 )         return 'just now';
+    if ( $diff < 3600 )       return floor( $diff / 60 ) . 'm ago';
+    if ( $diff < 86400 )      return floor( $diff / 3600 ) . 'h ago';
+    if ( $diff < 604800 )     return floor( $diff / 86400 ) . 'd ago';
+    if ( $diff < 2592000 )    return floor( $diff / 604800 ) . 'w ago';
+    if ( $diff < 31536000 )   return floor( $diff / 2592000 ) . 'mo ago';
+    return floor( $diff / 31536000 ) . 'y ago';
+}
+
+function crm_get_linked_record_label( $linked_type, $linked_id, $business_id ) {
+    global $wpdb;
+
+    if ( ! $linked_type || ! $linked_id ) {
+        return '';
+    }
+
+    switch ( $linked_type ) {
+        case 'contact':
+            $row = $wpdb->get_row( $wpdb->prepare(
+                "SELECT first_name, last_name
+                 FROM {$wpdb->prefix}crm_contacts
+                 WHERE id = %d AND business_id = %d",
+                $linked_id, $business_id
+            ) );
+            return $row ? trim( $row->first_name . ' ' . $row->last_name ) : '—';
+
+        case 'company':
+            $row = $wpdb->get_row( $wpdb->prepare(
+                "SELECT name FROM {$wpdb->prefix}crm_companies
+                 WHERE id = %d AND business_id = %d",
+                $linked_id, $business_id
+            ) );
+            return $row ? $row->name : '—';
+
+        case 'deal':
+            $row = $wpdb->get_row( $wpdb->prepare(
+                "SELECT name FROM {$wpdb->prefix}crm_deals
+                 WHERE id = %d AND business_id = %d",
+                $linked_id, $business_id
+            ) );
+            return $row ? $row->name : '—';
+
+        default:
+            return '—';
+    }
+}
+
+function crm_get_stats( $business_id ) {
+    global $wpdb;
+    $today = current_time( 'Y-m-d' );
 
     return [
-        'total_contacts'          => $total_contacts,
-        'active_contacts'         => $active_contacts,
-        'total_leads'             => $total_leads,
-        'active_opportunities'    => $active_opportunities,
-        'pipeline_value'          => $pipeline_value ?: 0,
-        'won_leads'               => $won_leads,
-        'won_value'               => $won_value ?: 0,
-        'lost_deals'              => $lost_deals,
-        'motm_uploaded'           => $motm_uploaded,
-        'motm_completion'         => $motm_total ? round($motm_uploaded / $motm_total * 100) : 0,
-        'pipeline_type_breakdown' => $pipeline_type_breakdown,
-        'lead_source_breakdown'   => $lead_source_breakdown,
-        'product_service_breakdown' => $product_service_breakdown,
-        'total_interactions'      => $total_interactions,
-        'monthly_interactions'    => $monthly_interactions,
+        'total_contacts'  => (int) $wpdb->get_var( $wpdb->prepare(
+            "SELECT COUNT(*) FROM {$wpdb->prefix}crm_contacts
+             WHERE business_id = %d AND status = 'active'",
+            $business_id
+        ) ),
+        'total_companies' => (int) $wpdb->get_var( $wpdb->prepare(
+            "SELECT COUNT(*) FROM {$wpdb->prefix}crm_companies
+             WHERE business_id = %d AND status = 'active'",
+            $business_id
+        ) ),
+        'open_deals'      => (int) $wpdb->get_var( $wpdb->prepare(
+            "SELECT COUNT(*) FROM {$wpdb->prefix}crm_deals
+             WHERE business_id = %d AND status = 'open'",
+            $business_id
+        ) ),
+        'pipeline_value'  => (float) $wpdb->get_var( $wpdb->prepare(
+            "SELECT COALESCE(SUM(amount), 0) FROM {$wpdb->prefix}crm_deals
+             WHERE business_id = %d AND status = 'open'",
+            $business_id
+        ) ),
+        'overdue_tasks'   => (int) $wpdb->get_var( $wpdb->prepare(
+            "SELECT COUNT(*) FROM {$wpdb->prefix}crm_tasks
+             WHERE business_id = %d AND status = 'pending' AND due_date < %s",
+            $business_id, $today
+        ) ),
+        'pending_tasks'   => (int) $wpdb->get_var( $wpdb->prepare(
+            "SELECT COUNT(*) FROM {$wpdb->prefix}crm_tasks
+             WHERE business_id = %d AND status = 'pending' AND due_date >= %s",
+            $business_id, $today
+        ) ),
     ];
 }
 
+function crm_get_default_pipeline_stage_blueprints() {
+    return [
+        [ 'name' => 'New Lead',            'color' => '#2563eb', 'sort_order' => 1 ],
+        [ 'name' => 'Qualified Lead',      'color' => '#0ea5e9', 'sort_order' => 2 ],
+        [ 'name' => 'Exploratory Meeting', 'color' => '#8b5cf6', 'sort_order' => 3 ],
+        [ 'name' => 'Proposal Sent',       'color' => '#f59e0b', 'sort_order' => 4 ],
+        [ 'name' => 'Revision',            'color' => '#ec4899', 'sort_order' => 5 ],
+    ];
+}
+
+function crm_sync_default_pipeline_stages_for_business( $business_id ) {
+    global $wpdb;
+
+    $business_id = absint( $business_id );
+    if ( $business_id <= 0 ) {
+        return;
+    }
+
+    $existing_names = $wpdb->get_col( $wpdb->prepare(
+        "SELECT name FROM {$wpdb->prefix}crm_pipeline_stages
+         WHERE business_id = %d AND pipeline_id = 1 AND status = 'active'",
+        $business_id
+    ) );
+
+    $existing_names = array_map( 'strval', (array) $existing_names );
+    $max_order = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COALESCE(MAX(sort_order), 0) FROM {$wpdb->prefix}crm_pipeline_stages
+         WHERE business_id = %d AND pipeline_id = 1 AND status = 'active'",
+        $business_id
+    ) );
+
+    foreach ( crm_get_default_pipeline_stage_blueprints() as $stage ) {
+        if ( in_array( $stage['name'], $existing_names, true ) ) {
+            continue;
+        }
+
+        $sort_order = $max_order > 0 ? $max_order + 1 : (int) $stage['sort_order'];
+        $wpdb->insert(
+            $wpdb->prefix . 'crm_pipeline_stages',
+            [
+                'rand_id'     => bntm_rand_id(),
+                'business_id' => $business_id,
+                'pipeline_id' => 1,
+                'name'        => $stage['name'],
+                'sort_order'  => $sort_order,
+                'color'       => $stage['color'],
+                'status'      => 'active',
+            ],
+            [ '%s', '%d', '%d', '%s', '%d', '%s', '%s' ]
+        );
+
+        $max_order = $sort_order;
+    }
+}
+
+function crm_seed_default_pipeline_stages() {
+    crm_sync_default_pipeline_stages_for_business( crm_get_current_business_scope_id() );
+}
+
+function crm_check_dependencies() {
+    return true;
+}
+
+// =============================================================================
+// SHORTCODE REGISTRATION BOOTSTRAP
+// =============================================================================
+
+function bntm_crm_register_shortcodes() {
+    $shortcodes = bntm_crm_get_shortcodes();
+    foreach ( $shortcodes as $tag => $callback ) {
+        if ( function_exists( $callback ) ) {
+            add_shortcode( $tag, $callback );
+        }
+    }
+}
+add_action( 'init', 'bntm_crm_maybe_upgrade_schema', 5 );
+add_action( 'init', 'bntm_crm_register_shortcodes' );
+
+// =============================================================================
+// PAGE AUTO-CREATION ON ACTIVATION
+// =============================================================================
+
+function bntm_crm_create_pages() {
+    $pages = bntm_crm_get_pages();
+
+    foreach ( $pages as $title => $shortcode ) {
+        $slug = sanitize_title( $title );
+
+        $existing = get_page_by_path( $slug );
+        if ( $existing ) {
+            continue;
+        }
+
+        wp_insert_post( [
+            'post_title'   => $title,
+            'post_name'    => $slug,
+            'post_content' => $shortcode,
+            'post_status'  => 'publish',
+            'post_type'    => 'page',
+            'post_author'  => get_current_user_id(),
+        ] );
+    }
+}
+register_activation_hook( BNTM_CRM_PATH . 'crm.php', 'bntm_crm_create_pages' );
+register_activation_hook( BNTM_CRM_PATH . 'crm.php', 'bntm_crm_create_tables' );
